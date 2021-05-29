@@ -1,8 +1,10 @@
+#include "ucp.h"
+#include "fifo.h"
+#include "cirbuf.h"
+
 #include <uv.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include "ucp.h"
-#include "fifo.h"
 
 #define UCP_POLL_FLAGS(self) \
   (self->send_queue.len > 0 ? UV_WRITABLE : 0) | (self->on_message == NULL ? 0 : UV_READABLE)
@@ -49,7 +51,7 @@ on_uv_poll (uv_poll_t *handle, int status, int events) {
     }
   }
 
-  printf("update polling\n");
+  printf("DEBUG: update polling\n");
   uv_poll_start(poll, UCP_POLL_FLAGS(self), on_uv_poll);
 }
 
@@ -125,4 +127,14 @@ ucp_set_callback (ucp_t *self, enum UCP_TYPE name, void *fn) {
   }
 
   return -1;
+}
+
+int
+ucp_stream_init (ucp_t *self, ucp_stream_t *stream) {
+  return 0;
+}
+
+int
+ucp_stream_write (ucp_stream_t *stream, ucp_write_t *req, const char *buf, size_t buf_len) {
+  return 0;
 }

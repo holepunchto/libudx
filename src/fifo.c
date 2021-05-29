@@ -1,7 +1,5 @@
-#include <stdlib.h>
-#include <string.h>
-#include <stdio.h>
 #include "fifo.h"
+#include <stdlib.h>
 
 void
 ucp_fifo_init (ucp_fifo_t *f, uint32_t initial_max_size) {

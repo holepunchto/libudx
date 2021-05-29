@@ -1,5 +1,8 @@
-#include <uv.h>
+#ifndef UCP_H
+#define UCP_H
+
 #include "fifo.h"
+#include <uv.h>
 
 typedef struct ucp {
   uv_udp_t handle;
@@ -11,7 +14,16 @@ typedef struct ucp {
 
   struct sockaddr_in on_message_addr;
   void (*on_message)(struct ucp *self, const char *buf, ssize_t buf_len, const struct sockaddr_in *from);
+
 } ucp_t;
+
+typedef struct {
+
+} ucp_stream_t;
+
+typedef struct {
+
+} ucp_write_t;
 
 typedef struct {
   struct msghdr h;
@@ -34,3 +46,11 @@ ucp_send (ucp_t *self, ucp_send_t *req, const char *buf, size_t buf_len, const s
 
 int
 ucp_set_callback(ucp_t *self, enum UCP_TYPE name, void *fn);
+
+int
+ucp_stream_init (ucp_t *self, ucp_stream_t *stream);
+
+int
+ucp_stream_write (ucp_stream_t *stream, ucp_write_t *req, const char *buf, size_t buf_len);
+
+#endif

@@ -23,7 +23,7 @@ main () {
   struct sockaddr_in addr;
   uv_ip4_addr("0.0.0.0", 7654, &addr);
 
-  printf("hello world\n");
+  printf("booting...\n");
 
   ucp_t self;
 
@@ -42,6 +42,7 @@ main () {
   ucp_send(&self, &(req[5]), buf, 5, (const struct sockaddr *) &addr);
 
   printf("running...\n");
+
   uv_run(loop, UV_RUN_DEFAULT);
   free(loop);
 
