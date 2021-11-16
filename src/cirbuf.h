@@ -26,6 +26,9 @@ ucp_cirbuf_val_t *
 ucp_cirbuf_get (ucp_cirbuf_t *c, uint32_t seq);
 
 ucp_cirbuf_val_t *
+ucp_cirbuf_get_stored (ucp_cirbuf_t *c, uint32_t seq);
+
+ucp_cirbuf_val_t *
 ucp_cirbuf_remove (ucp_cirbuf_t *c, uint32_t seq);
 
 #endif
