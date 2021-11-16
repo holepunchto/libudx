@@ -4,3 +4,5 @@ ref
 build
 test.js
 main
+server
+client

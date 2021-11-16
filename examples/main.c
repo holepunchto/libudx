@@ -2,10 +2,9 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
-#include "src/ucp.h"
-#include "src/fifo.h"
-#include "src/cirbuf.h"
-
+#include "../src/ucp.h"
+#include "../src/fifo.h"
+#include "../src/cirbuf.h"
 
 static char *buf;
 static size_t buf_len = 1300;
