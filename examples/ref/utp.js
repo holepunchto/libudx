@@ -16,7 +16,7 @@ if (process.argv[2]) {
     drain()
 
     function drain () {
-      if (sent >= 10 * 1024 * 1024) {
+      if (sent >= 100 * 1024 * 1024) {
         console.timeEnd()
         console.log('Sent ' + sent + 'b')
         process.exit()

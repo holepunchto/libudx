@@ -76,7 +76,12 @@ process_packet (ucp_t *self, char *buf, ssize_t buf_len) {
       stream->on_write(stream, pkt->write, 0);
     }
 
-    free(pkt);
+    // If this packet was queued we cannot free it now, mark it as unqueued and free it in the poll
+    if (pkt->queued) {
+      pkt->queued = 0;
+    } else {
+      free(pkt);
+    }
   }
 
   return 1;
@@ -92,6 +97,12 @@ on_uv_poll (uv_poll_t *handle, int status, int events) {
     ucp_outgoing_packet_t *pkt = (ucp_outgoing_packet_t *) ucp_fifo_shift(&(self->send_queue));
     const struct msghdr *h = &(pkt->h);
     const struct sockaddr_in *d = h->msg_name;
+
+    // This was unqueued and therefore no longer valid, free it and restart.
+    if (!pkt->queued) {
+      free(pkt);
+      return;
+    }
 
     pkt->transmits++;
     pkt->queued = 0;
@@ -211,6 +222,9 @@ ucp_send (ucp_t *self, ucp_send_t *req, const char *buf, size_t buf_len, const s
   ucp_outgoing_packet_t *pkt = &(req->pkt);
 
   req->dest = *dest;
+
+  pkt->transmits = 0;
+  pkt->queued = 1;
 
   memset(&(pkt->h), 0, sizeof(struct msghdr));
 
