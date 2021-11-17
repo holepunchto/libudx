@@ -14,12 +14,13 @@ static uv_timer_t timer;
 static uint32_t sbuf;
 
 static size_t sent = 0;
-static int rt = 10000;
-static size_t send_buf_len = 1400;
+static int rt = 100000;
+static size_t send_buf_len = UCP_MAX_PACKET_DATA;
 static char *send_buf;
 
 static void
 on_uv_interval (uv_timer_t *req) {
+  printf("rt is %i\n", rt);
   ucp_stream_resend(&client_sock);
 }
 
@@ -36,7 +37,7 @@ on_message (ucp_t *self, char *buf, ssize_t nread, const struct sockaddr_in *fro
 
   ucp_stream_connect(&client_sock, id, (const struct sockaddr *) from);
 
-  for (int i = 0; i < 530; i++) {
+  for (int i = 0; i < 630; i++) {
     ucp_write_t *req = (ucp_write_t *) malloc(sizeof(ucp_write_t));
     sent += send_buf_len;
     ucp_stream_write(&client_sock, req, send_buf, send_buf_len);
@@ -89,7 +90,7 @@ main () {
 
   sbuf = client_sock.local_id;
 
-  uv_ip4_addr("143.198.60.35", 10101, &addr);
+  uv_ip4_addr("88.99.3.86", 10101, &addr);
   ucp_send(&client, &sreq, (char *) &sbuf, 4, (const struct sockaddr *) &addr);
 
   ucp_stream_set_callback(&client_sock, UCP_ON_WRITE, on_write);
