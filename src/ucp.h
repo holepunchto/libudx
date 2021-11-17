@@ -7,7 +7,9 @@
 #include <string.h>
 #include <uv.h>
 
+#define UCP_PACKET_SIZE 1435
 #define UCP_HEADER_SIZE 16
+#define UCP_MAX_PACKET_DATA (UCP_PACKET_SIZE - UCP_HEADER_SIZE)
 
 typedef struct ucp {
   uv_udp_t handle;
