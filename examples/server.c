@@ -48,6 +48,10 @@ main () {
 
   ucp_init(&server, loop);
 
+  int b = 2 * 1024 * 1024;
+  ucp_send_buffer_size(&server, &b);
+  ucp_recv_buffer_size(&server, &b);
+
   uv_ip4_addr("0.0.0.0", 10101, &addr);
   ucp_bind(&server, (const struct sockaddr *) &addr);
   ucp_set_callback(&server, UCP_ON_MESSAGE, on_message);

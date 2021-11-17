@@ -169,6 +169,16 @@ ucp_set_callback (ucp_t *self, enum UCP_TYPE name, void *fn) {
 }
 
 int
+ucp_send_buffer_size(ucp_t *self, int *value) {
+  return uv_send_buffer_size((uv_handle_t *) &(self->handle), value);
+}
+
+int
+ucp_recv_buffer_size(ucp_t *self, int *value) {
+  return uv_recv_buffer_size((uv_handle_t *) &(self->handle), value);
+}
+
+int
 ucp_bind (ucp_t *self, const struct sockaddr *addr) {
   int err;
 
@@ -290,7 +300,7 @@ ucp_stream_resend (ucp_stream_t *stream) {
   }
 
   pkt->queued = 1;
-
+printf("resending pkt\n");
   int err;
   ucp_fifo_push(&(stream->ucp->send_queue), pkt);
   err = uv_poll_start(&(stream->ucp->io_poll), UCP_POLL_FLAGS(stream->ucp), on_uv_poll);

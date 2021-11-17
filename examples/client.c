@@ -10,12 +10,18 @@
 static ucp_t client;
 static ucp_stream_t client_sock;
 static ucp_send_t sreq;
+static uv_timer_t timer;
 static uint32_t sbuf;
 
 static size_t sent = 0;
-static int rt = 100;
-static size_t send_buf_len = 100;
+static int rt = 10000;
+static size_t send_buf_len = 1400;
 static char *send_buf;
+
+static void
+on_uv_interval (uv_timer_t *req) {
+  ucp_stream_resend(&client_sock);
+}
 
 static void
 on_message (ucp_t *self, char *buf, ssize_t nread, const struct sockaddr_in *from) {
@@ -30,11 +36,13 @@ on_message (ucp_t *self, char *buf, ssize_t nread, const struct sockaddr_in *fro
 
   ucp_stream_connect(&client_sock, id, (const struct sockaddr *) from);
 
-  for (int i = 0; i < 10; i++) {
+  for (int i = 0; i < 530; i++) {
     ucp_write_t *req = (ucp_write_t *) malloc(sizeof(ucp_write_t));
     sent += send_buf_len;
     ucp_stream_write(&client_sock, req, send_buf, send_buf_len);
   }
+
+  uv_timer_start(&timer, on_uv_interval, 2000, 2000);
 }
 
 static void
@@ -46,7 +54,12 @@ on_write (ucp_stream_t *stream, ucp_write_t *req, int status) {
     ucp_stream_write(stream, req, send_buf, send_buf_len);
   }
 
-  printf("total sent=%zu\n", sent);
+  // printf("total sent=%zu, rt=%i\n", sent, rt);
+
+  if (rt == 0) {
+    printf("total sent=%zu, rt=%i\n", sent, rt);
+    exit(0);
+  }
 }
 
 int
@@ -55,10 +68,15 @@ main () {
 
   uv_loop_t* loop = malloc(sizeof(uv_loop_t));
   uv_loop_init(loop);
+  uv_timer_init(loop, &timer);
 
   struct sockaddr_in addr;
 
   ucp_init(&client, loop);
+
+  int b = 2 * 1024 * 1024;
+  ucp_send_buffer_size(&client, &b);
+  ucp_recv_buffer_size(&client, &b);
 
   uv_ip4_addr("0.0.0.0", 10102, &addr);
   ucp_bind(&client, (const struct sockaddr *) &addr);
@@ -71,7 +89,7 @@ main () {
 
   sbuf = client_sock.local_id;
 
-  uv_ip4_addr("127.0.0.1", 10101, &addr);
+  uv_ip4_addr("143.198.60.35", 10101, &addr);
   ucp_send(&client, &sreq, (char *) &sbuf, 4, (const struct sockaddr *) &addr);
 
   ucp_stream_set_callback(&client_sock, UCP_ON_WRITE, on_write);

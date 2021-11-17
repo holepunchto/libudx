@@ -90,6 +90,12 @@ int
 ucp_set_callback(ucp_t *self, enum UCP_TYPE name, void *fn);
 
 int
+ucp_send_buffer_size(ucp_t *self, int *value);
+
+int
+ucp_recv_buffer_size(ucp_t *self, int *value);
+
+int
 ucp_bind (ucp_t *self, const struct sockaddr *addr);
 
 int
@@ -103,6 +109,9 @@ ucp_stream_set_callback(ucp_stream_t *stream, enum UCP_TYPE name, void *fn);
 
 void
 ucp_stream_connect (ucp_stream_t *stream, uint32_t remote_id, const struct sockaddr *remote_addr);
+
+int
+ucp_stream_resend (ucp_stream_t *stream);
 
 int
 ucp_stream_write (ucp_stream_t *stream, ucp_write_t *req, const char *buf, size_t buf_len);
