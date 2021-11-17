@@ -2,6 +2,7 @@
 #define UCP_FIFO
 
 #include <stdlib.h>
+#include <stdint.h>
 
 typedef struct {
   uint32_t btm;

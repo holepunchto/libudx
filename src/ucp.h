@@ -3,6 +3,8 @@
 
 #include "fifo.h"
 #include "cirbuf.h"
+#include <stdint.h>
+#include <string.h>
 #include <uv.h>
 
 #define UCP_HEADER_SIZE 16

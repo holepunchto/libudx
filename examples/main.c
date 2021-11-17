@@ -1,6 +1,7 @@
 #include <uv.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <stdint.h>
 #include <time.h>
 #include "../src/ucp.h"
 #include "../src/fifo.h"
