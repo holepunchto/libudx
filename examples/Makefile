@@ -1,5 +1,13 @@
+UNAME := $(shell uname)
 UV = $(PWD)/deps/libuv
 OPTS = -I$(UV)/include -O3
+LINK_UV = -L$(UV)/lib -luv
+
+ifeq ($(UNAME), Darwin)
+LINK = $(LINK_UV)
+else
+LINK = $(LINK_UV) -Wl,-rpath=$(UV)/lib
+endif
 
 debug: main
 	./main
@@ -21,12 +29,12 @@ build/ucp.o: ../src/ucp.c deps/libuv
 	$(CC) -o build/ucp.o ../src/ucp.c $(OPTS) -c
 
 main: main.c build/ucp.o build/fifo.o build/cirbuf.o deps/libuv
-	$(CC) -o main main.c build/ucp.o build/fifo.o build/cirbuf.o $(OPTS) -L$(UV)/lib -luv
+	$(CC) -o main main.c build/ucp.o build/fifo.o build/cirbuf.o $(OPTS) $(LINK)
 
 server: server.c build/ucp.o build/fifo.o build/cirbuf.o deps/libuv
-	$(CC) -o server server.c build/ucp.o build/fifo.o build/cirbuf.o $(OPTS) -L$(UV)/lib -luv
+	$(CC) -o server server.c build/ucp.o build/fifo.o build/cirbuf.o $(OPTS) $(LINK)
 
 client: client.c build/ucp.o build/fifo.o build/cirbuf.o deps/libuv
-	$(CC) -o client client.c build/ucp.o build/fifo.o build/cirbuf.o $(OPTS) -L$(UV)/lib -luv
+	$(CC) -o client client.c build/ucp.o build/fifo.o build/cirbuf.o $(OPTS) $(LINK)
 
 $(shell mkdir -p build deps)
