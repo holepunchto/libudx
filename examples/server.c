@@ -14,6 +14,7 @@ static uv_timer_t timer;
 static uint32_t sbuf;
 
 static size_t rcvd = 0;
+static size_t reads = 0;
 
 static void
 on_uv_interval (uv_timer_t *req) {
@@ -23,7 +24,7 @@ on_uv_interval (uv_timer_t *req) {
 static void
 on_read (ucp_stream_t *stream, char *buf, size_t read) {
   rcvd += read;
-  printf("on read %zu, total recv=%zu\n", read, rcvd);
+  printf("on read, data_size=%zu, total recv=%zu total reads=%zu\n", read, rcvd, ++reads);
 }
 
 static void
@@ -39,7 +40,7 @@ on_message (ucp_t *self, char *buf, ssize_t nread, const struct sockaddr_in *fro
 
   sbuf = server_sock.local_id;
   ucp_send(&server, &sreq, (char *) &sbuf, 4, (const struct sockaddr *) from);
-  uv_timer_start(&timer, on_uv_interval, 100, 100);
+  uv_timer_start(&timer, on_uv_interval, 20, 20);
 }
 
 int

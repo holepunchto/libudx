@@ -6,10 +6,11 @@
 #include "../src/ucp.h"
 #include "../src/fifo.h"
 #include "../src/cirbuf.h"
+#include "../src/utils.h"
 
 static char *buf;
 static size_t buf_len = 1300;
-static int rt = 1234560;
+static int rt = 100;
 static size_t rcvd = 0;
 static size_t sent = 0;
 
@@ -24,12 +25,10 @@ on_message (ucp_t *self, char *buf, ssize_t nread, const struct sockaddr_in *fro
 static void
 on_read (ucp_stream_t *stream, char *buf, size_t read) {
   rcvd += read;
-  // if (recv == sent) {
-    // printf("on read %zu, total recv=%zu total sent=%zu\n", read, rcvd, sent);
-  // }
+
+  printf("total recv=%zu, total sent=%zu, rt=%i\n", rcvd, sent, rt);
 
   if (rt == 0) {
-    printf("total recv=%zu total sent=%zu\n", rcvd, sent);
     exit(0);
   }
 
@@ -40,13 +39,11 @@ static void
 on_write (ucp_stream_t *stream, ucp_write_t *req, int status) {
   // printf("on write\n");
 
+  if (rt == 0) return;
+
   if (--rt > 0) {
     sent += buf_len;
     ucp_stream_write(stream, req, buf, buf_len);
-  }
-
-  if ((rt % 50000) == 0) {
-    printf("total recv=%zu total sent=%zu\n", rcvd, sent);
   }
 }
 
@@ -54,7 +51,11 @@ int
 main () {
   buf = calloc(buf_len, 1);
 
+  printf("microtime is %llu\n", ucp_get_microseconds());
+
   srand(time(0));
+
+  printf("microtime is %llu\n", ucp_get_microseconds());
 
   uv_loop_t* loop = malloc(sizeof(uv_loop_t));
   uv_loop_init(loop);

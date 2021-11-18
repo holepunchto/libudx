@@ -20,8 +20,8 @@ static char *send_buf;
 
 static void
 on_uv_interval (uv_timer_t *req) {
-  printf("rt is %i\n", rt);
-  ucp_stream_resend(&client_sock);
+  printf("rt is %i, cur window = %zu, max window = %zu rto=%u rtt=%u\n", rt, client_sock.cur_window_bytes, client_sock.max_window_bytes, client_sock.rto, client_sock.rtt);
+  ucp_stream_check_timeouts(&client_sock);
 }
 
 static void
@@ -37,13 +37,13 @@ on_message (ucp_t *self, char *buf, ssize_t nread, const struct sockaddr_in *fro
 
   ucp_stream_connect(&client_sock, id, (const struct sockaddr *) from);
 
-  for (int i = 0; i < 630; i++) {
+  for (int i = 0; i < 2000; i++) {
     ucp_write_t *req = (ucp_write_t *) malloc(sizeof(ucp_write_t));
     sent += send_buf_len;
     ucp_stream_write(&client_sock, req, send_buf, send_buf_len);
   }
 
-  uv_timer_start(&timer, on_uv_interval, 2000, 2000);
+  uv_timer_start(&timer, on_uv_interval, 1000, 1000);
 }
 
 static void
