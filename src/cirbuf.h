@@ -1,5 +1,5 @@
-#ifndef UCP_CIRBUF
-#define UCP_CIRBUF
+#ifndef UCP_CIRBUF_H
+#define UCP_CIRBUF_H
 
 #include <stdlib.h>
 #include <stdint.h>

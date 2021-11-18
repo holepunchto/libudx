@@ -7,7 +7,8 @@
 #include <string.h>
 #include <uv.h>
 
-#define UCP_PACKET_SIZE 1435
+// TODO: research the packets sizes a bit more
+#define UCP_PACKET_SIZE 1400
 #define UCP_HEADER_SIZE 16
 #define UCP_MAX_PACKET_DATA (UCP_PACKET_SIZE - UCP_HEADER_SIZE)
 

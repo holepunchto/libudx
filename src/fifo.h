@@ -1,5 +1,5 @@
-#ifndef UCP_FIFO
-#define UCP_FIFO
+#ifndef UCP_FIFO_H
+#define UCP_FIFO_H
 
 #include <stdlib.h>
 #include <stdint.h>
