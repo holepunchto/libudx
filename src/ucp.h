@@ -18,6 +18,7 @@ typedef struct ucp {
   uv_loop_t *loop;
   ucp_fifo_t send_queue;
 
+  int events;
   int bound;
   void *userdata;
 
@@ -32,6 +33,8 @@ typedef struct {
   uint32_t seq;
   uint8_t transmits;
   uint8_t queued;
+  uint16_t size;
+  uint64_t time_sent;
 
   struct msghdr h;
   struct ucp_write *write;
@@ -76,6 +79,16 @@ typedef struct ucp_stream {
   uint32_t ack;
   uint32_t remote_acked;
 
+  uint32_t rtt;
+  uint32_t rtt_var;
+  uint32_t rto;
+
+  uint32_t pending;
+  uint32_t inflight_packets;
+
+  size_t cur_window_bytes;
+  size_t max_window_bytes;
+
   ucp_cirbuf_t outgoing;
   ucp_cirbuf_t incoming;
 } ucp_stream_t;
@@ -112,6 +125,9 @@ ucp_stream_set_callback(ucp_stream_t *stream, enum UCP_TYPE name, void *fn);
 
 void
 ucp_stream_connect (ucp_stream_t *stream, uint32_t remote_id, const struct sockaddr *remote_addr);
+
+int
+ucp_stream_check_timeouts (ucp_stream_t *stream);
 
 int
 ucp_stream_resend (ucp_stream_t *stream);
