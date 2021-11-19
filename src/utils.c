@@ -1,4 +1,3 @@
-#include <assert.h>
 #include <time.h>
 
 #include "utils.h"
@@ -11,8 +10,7 @@ ucp_get_milliseconds() {
 uint64_t
 ucp_get_microseconds() {
   struct timespec now;
-  int err = clock_gettime(CLOCK_MONOTONIC, &now);
-  assert(err == 0);
+  timespec_get(&now, TIME_UTC);
   uint64_t us =
       ((uint64_t)now.tv_sec) * 1000000 + ((uint64_t)now.tv_nsec) / 1000;
   static uint64_t epoch = 0;
