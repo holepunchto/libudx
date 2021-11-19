@@ -4,6 +4,9 @@
 #include <stdint.h>
 
 uint64_t
-ucp_get_microseconds ();
+ucp_get_milliseconds();
+
+uint64_t
+ucp_get_microseconds();
 
 #endif

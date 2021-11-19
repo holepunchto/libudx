@@ -1,29 +1,21 @@
-// Modified from https://github.com/bittorrent/libutp/blob/master/utp_internal.cpp
+#include <time.h>
 
-#include <stdlib.h>
-#include <stdint.h>
 #include "utils.h"
 
-#if defined(__APPLE__)
-#include <mach/mach_time.h>
-
 uint64_t
-ucp_get_microseconds () {
-  // http://developer.apple.com/mac/library/qa/qa2004/qa1398.html
-  // http://www.macresearch.org/tutorial_performance_and_time
-  static mach_timebase_info_data_t sTimebaseInfo;
-  static uint64_t start_tick = 0;
-  uint64_t tick;
-  // Returns a counter in some fraction of a nanoseconds
-  tick = mach_absolute_time();
-  if (sTimebaseInfo.denom == 0) {
-    // Get the timer ratio to convert mach_absolute_time to nanoseconds
-    mach_timebase_info(&sTimebaseInfo);
-    start_tick = tick;
-  }
-  // Calculate the elapsed time, convert it to microseconds and return it.
-  return ((tick - start_tick) * sTimebaseInfo.numer) / (sTimebaseInfo.denom * 1000);
+ucp_get_milliseconds() {
+  return ucp_get_microseconds() / 1000;
 }
 
-#else // !__APPLE__
-#endif
+uint64_t
+ucp_get_microseconds() {
+  struct timespec now;
+  timespec_get(&now, TIME_UTC);
+  uint64_t us =
+      ((uint64_t)now.tv_sec) * 1000000 + ((uint64_t)now.tv_nsec) / 1000;
+  static uint64_t epoch = 0;
+  if (epoch == 0) {
+    epoch = us;
+  }
+  return us - epoch;
+}
