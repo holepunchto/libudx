@@ -46,7 +46,7 @@ ack_packet (ucp_stream_t *stream, uint32_t seq) {
   stream->max_window_bytes += UCP_MAX_CWND_INCREASE_BYTES_PER_RTT;
 
   if (pkt->transmits == 1) {
-    const uint32_t ertt = (uint32_t) (ucp_get_microseconds() / 1000 - pkt->time_sent);
+    const uint32_t ertt = (uint32_t) (ucp_get_milliseconds() - pkt->time_sent);
 
     if (stream->rtt == 0) {
       // First round trip time sample
@@ -164,7 +164,7 @@ on_uv_poll (uv_poll_t *handle, int status, int events) {
     pkt->queued = 0;
 
     do {
-      pkt->time_sent = ucp_get_microseconds() / 1000;
+      pkt->time_sent = ucp_get_milliseconds();
       size = sendmsg(handle->io_watcher.fd, h, 0);
     } while (size == -1 && errno == EINTR);
 
@@ -404,7 +404,7 @@ ucp_stream_resend (ucp_stream_t *stream) {
   if (stream->remote_acked == stream->seq) return 0;
 
   const uint32_t cur_range = stream->seq - stream->remote_acked;
-  const uint64_t ms = ucp_get_microseconds() / 1000;
+  const uint64_t ms = ucp_get_milliseconds();
 
   int err;
   ucp_fifo_t *queue = &(stream->ucp->send_queue);
