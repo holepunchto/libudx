@@ -10,7 +10,7 @@ ucp_get_milliseconds() {
 uint64_t
 ucp_get_microseconds() {
   struct timespec now;
-  timespec_get(&now, TIME_UTC);
+  clock_gettime(CLOCK_MONOTONIC, &now);
   uint64_t us =
       ((uint64_t)now.tv_sec) * 1000000 + ((uint64_t)now.tv_nsec) / 1000;
   static uint64_t epoch = 0;
