@@ -474,9 +474,6 @@ ucp_stream_send_state (ucp_stream_t *stream) {
       pkt = malloc(sizeof(ucp_outgoing_packet_t) + 1024);
       payload = (pkt + sizeof(ucp_outgoing_packet_t));
       sacks = (uint32_t *) payload;
-    }
-
-    if (start == -1) {
       start = seq;
       end = seq + 1;
     } else if (seq == end) {
