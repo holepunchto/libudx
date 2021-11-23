@@ -325,6 +325,10 @@ ucp_stream_init (ucp_t *self, ucp_stream_t *stream) {
   stream->ack = 0;
   stream->remote_acked = 0;
 
+  stream->rtt = 0;
+  stream->rtt_var = 0;
+  stream->rto = 1000;
+
   stream->pending = 0;
   stream->inflight_packets = 0;
 
