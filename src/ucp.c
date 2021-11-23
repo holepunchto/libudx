@@ -419,6 +419,7 @@ ucp_stream_resend (ucp_stream_t *stream) {
   ucp_fifo_t *queue = &(stream->ucp->send_queue);
 
   int congested = 0;
+  uint32_t queued = queue->len;
 
   for (uint32_t i = 0; i < cur_range; i++) {
     uint32_t seq = stream->remote_acked + i;
@@ -437,7 +438,7 @@ ucp_stream_resend (ucp_stream_t *stream) {
   }
 
   if (congested) {
-    printf("stream is congested, scaling back\n");
+    printf("stream is congested, scaling back (requeued %u)\n", queue->len - queued);
     stream->max_window_bytes = UCP_MAX(UCP_PACKET_SIZE, stream->max_window_bytes / 2);
   }
 // printf("in resend, send queue is now: %u\n", queue->len);
@@ -472,7 +473,7 @@ ucp_stream_send_state (ucp_stream_t *stream) {
 
     if (sacks == NULL) {
       pkt = malloc(sizeof(ucp_outgoing_packet_t) + 1024);
-      payload = (pkt + sizeof(ucp_outgoing_packet_t));
+      payload = (((void *) pkt) + sizeof(ucp_outgoing_packet_t));
       sacks = (uint32_t *) payload;
       start = seq;
       end = seq + 1;
