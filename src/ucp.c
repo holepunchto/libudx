@@ -34,12 +34,12 @@ update_poll (ucp_t *self) {
   return uv_poll_start(&(self->io_poll), events, on_uv_poll);
 }
 
-static void
+static int
 ack_packet (ucp_stream_t *stream, uint32_t seq) {
   ucp_cirbuf_t *out = &(stream->outgoing);
   ucp_outgoing_packet_t *pkt = (ucp_outgoing_packet_t *) ucp_cirbuf_remove(out, seq);
 
-  if (pkt == NULL) return;
+  if (pkt == NULL) return 0;
 
   stream->inflight_packets--;
   stream->cur_window_bytes -= pkt->size;
@@ -75,6 +75,8 @@ ack_packet (ucp_stream_t *stream, uint32_t seq) {
   if (--(w->packets) == 0 && stream->on_write != NULL) {
     stream->on_write(stream, w, 0);
   }
+
+  return 1;
 }
 
 static int
@@ -99,21 +101,44 @@ process_packet (ucp_t *self, char *buf, ssize_t buf_len) {
   ucp_cirbuf_t *inc = &(stream->incoming);
   ucp_cirbuf_t *out = &(stream->outgoing);
 
-  if (buf_len > 0) {
-    // copy over incoming buffer as we CURRENTLY do not own it (stack allocated upstream)
-    // also malloc the packet wrap which needs to be freed at some point obvs
-    char *ptr = malloc(sizeof(ucp_incoming_packet_t) + buf_len);
+  switch (h) {
+    case UCP_PACKET_DATA_ID: {
+      if (buf_len == 0) break;
+      // copy over incoming buffer as we CURRENTLY do not own it (stack allocated upstream)
+      // also malloc the packet wrap which needs to be freed at some point obvs
+      char *ptr = malloc(sizeof(ucp_incoming_packet_t) + buf_len);
 
-    ucp_incoming_packet_t *pkt = (ucp_incoming_packet_t *) ptr;
-    char *cpy = ptr + sizeof(ucp_incoming_packet_t);
+      ucp_incoming_packet_t *pkt = (ucp_incoming_packet_t *) ptr;
+      char *cpy = ptr + sizeof(ucp_incoming_packet_t);
 
-    memcpy(cpy, buf, buf_len);
+      memcpy(cpy, buf, buf_len);
 
-    pkt->seq = seq;
-    pkt->buf.iov_base = cpy;
-    pkt->buf.iov_len = buf_len;
+      pkt->seq = seq;
+      pkt->buf.iov_base = cpy;
+      pkt->buf.iov_len = buf_len;
 
-    ucp_cirbuf_set(inc, (ucp_cirbuf_val_t *) pkt);
+      ucp_cirbuf_set(inc, (ucp_cirbuf_val_t *) pkt);
+      break;
+    }
+
+    case UCP_PACKET_STATE_ID: {
+      if (buf_len == 0) break;
+
+      uint32_t n = 0;
+      uint32_t *sacks = (uint32_t *) buf;
+      for (int i = 0; i + 8 <= buf_len; i += 8) {
+        uint32_t start = *(sacks++);
+        uint32_t end = *(sacks++);
+        uint32_t len = end - start;
+
+        for (uint32_t j = 0; j < len; j++) {
+          if (ack_packet(stream, start + j)) n++;
+        }
+      }
+
+      if (n) printf("sacks %u\n", n);
+      break;
+    }
   }
 
   while (1) {
@@ -466,7 +491,7 @@ ucp_stream_send_state (ucp_stream_t *stream) {
   void *payload = NULL;
   size_t payload_len = 0;
 
-  int max = 32;
+  int max = 512;
   for (uint32_t i = 0; i < max && payload_len < 400; i++) {
     uint32_t seq = stream->ack + 1 + i;
     if (ucp_cirbuf_get(&(stream->incoming), seq) == NULL) continue;
@@ -487,7 +512,7 @@ ucp_stream_send_state (ucp_stream_t *stream) {
       payload_len += 8;
     }
 
-    max = i + 32;
+    max = i + 512;
   }
 
   if (start != -1) {
@@ -547,7 +572,7 @@ ucp_stream_write (ucp_stream_t *stream, ucp_write_t *req, const char *buf, size_
 
   uint32_t *p = (uint32_t *) &(pkt->header);
 
-  *(p++) = 0;
+  *(p++) = UCP_PACKET_DATA_ID;
   *(p++) = stream->remote_id;
   *(p++) = (pkt->seq = stream->seq++);
   *(p++) = stream->ack;

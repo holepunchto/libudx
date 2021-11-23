@@ -12,6 +12,9 @@
 #define UCP_HEADER_SIZE 16
 #define UCP_MAX_PACKET_DATA (UCP_PACKET_SIZE - UCP_HEADER_SIZE)
 
+#define UCP_PACKET_DATA_ID 0
+#define UCP_PACKET_STATE_ID 1
+
 typedef struct ucp {
   uv_udp_t handle;
   uv_poll_t io_poll;

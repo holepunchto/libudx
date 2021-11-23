@@ -21,13 +21,13 @@ static char *send_buf;
 
 static void
 on_uv_interval (uv_timer_t *req) {
-  int bw = sent / (ucp_get_microseconds() / 1000 / 1000) / 1000;
+  int bw = 8 * sent / (ucp_get_microseconds() / 1000 / 1000) / 1000;
   int top = bw / 100;
   int btm = top % 10;
 
   top /= 10;
 
-  printf("rt is %i, cur window = %zu, max window = %zu rto=%u rtt=%u mBs=%i,%i\n", rt, client_sock.cur_window_bytes, client_sock.max_window_bytes, client_sock.rto, client_sock.rtt, top, btm);
+  printf("rt is %i, cur window = %zu, max window = %zu rto=%u rtt=%u Mbps=%i,%i\n", rt, client_sock.cur_window_bytes, client_sock.max_window_bytes, client_sock.rto, client_sock.rtt, top, btm);
   ucp_stream_check_timeouts(&client_sock);
 }
 
