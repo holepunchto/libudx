@@ -2,6 +2,8 @@
 
 #include <stdlib.h>
 #include <stdint.h>
+#include <time.h>
+#include <sys/time.h>
 #include "utils.h"
 
 #if defined(__APPLE__)
@@ -26,4 +28,36 @@ ucp_get_microseconds () {
 }
 
 #else // !__APPLE__
+#if ! (defined(_POSIX_TIMERS) && _POSIX_TIMERS > 0 && defined(CLOCK_MONOTONIC))
+  #warning "Using non-monotonic function gettimeofday() in ucp_get_microseconds()"
+#endif
+
+/* Unfortunately, #ifdef CLOCK_MONOTONIC is not enough to make sure that
+   POSIX clocks work -- we could be running a recent libc with an ancient
+   kernel (think OpenWRT). -- jch */
+
+uint64_t
+ucp_get_microseconds () {
+  struct timeval tv;
+
+  #if defined(_POSIX_TIMERS) && _POSIX_TIMERS > 0 && defined(CLOCK_MONOTONIC)
+  static int have_posix_clocks = -1;
+  int rc;
+
+  if (have_posix_clocks < 0) {
+    struct timespec ts;
+    rc = clock_gettime(CLOCK_MONOTONIC, &ts);
+    have_posix_clocks = rc < 0 ? 0 : 1;
+  }
+
+  if (have_posix_clocks) {
+    struct timespec ts;
+    rc = clock_gettime(CLOCK_MONOTONIC, &ts);
+    return uint64(ts.tv_sec) * 1000000 + uint64(ts.tv_nsec) / 1000;
+  }
+  #endif
+
+  gettimeofday(&tv, NULL);
+  return uint64(tv.tv_sec) * 1000000 + tv.tv_usec;
+}
 #endif
