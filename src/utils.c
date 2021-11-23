@@ -28,6 +28,8 @@ ucp_get_microseconds () {
 }
 
 #else // !__APPLE__
+#include <unistd.h>
+
 #if ! (defined(_POSIX_TIMERS) && _POSIX_TIMERS > 0 && defined(CLOCK_MONOTONIC))
   #warning "Using non-monotonic function gettimeofday() in ucp_get_microseconds()"
 #endif
@@ -50,14 +52,14 @@ ucp_get_microseconds () {
     have_posix_clocks = rc < 0 ? 0 : 1;
   }
 
-  if (have_posix_clocks) {
-    struct timespec ts;
-    rc = clock_gettime(CLOCK_MONOTONIC, &ts);
-    return uint64(ts.tv_sec) * 1000000 + uint64(ts.tv_nsec) / 1000;
-  }
-  #endif
+   if (have_posix_clocks) {
+     struct timespec ts;
+     rc = clock_gettime(CLOCK_MONOTONIC, &ts);
+     return (uint64_t) (ts.tv_sec) * 1000000 + (uint64_t) (ts.tv_nsec) / 1000;
+   }
+   #endif
 
-  gettimeofday(&tv, NULL);
-  return uint64(tv.tv_sec) * 1000000 + tv.tv_usec;
+   gettimeofday(&tv, NULL);
+   return (uint64_t) (tv.tv_sec) * 1000000 + tv.tv_usec;
 }
 #endif
