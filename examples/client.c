@@ -6,6 +6,7 @@
 #include "../src/ucp.h"
 #include "../src/fifo.h"
 #include "../src/cirbuf.h"
+#include "../src/utils.h"
 
 static ucp_t client;
 static ucp_stream_t client_sock;
@@ -20,7 +21,13 @@ static char *send_buf;
 
 static void
 on_uv_interval (uv_timer_t *req) {
-  printf("rt is %i, cur window = %zu, max window = %zu rto=%u rtt=%u\n", rt, client_sock.cur_window_bytes, client_sock.max_window_bytes, client_sock.rto, client_sock.rtt);
+  int bw = sent / (ucp_get_microseconds() / 1000 / 1000) / 1000;
+  int top = bw / 100;
+  int btm = top % 10;
+
+  top /= 10;
+
+  printf("rt is %i, cur window = %zu, max window = %zu rto=%u rtt=%u mBs=%i,%i\n", rt, client_sock.cur_window_bytes, client_sock.max_window_bytes, client_sock.rto, client_sock.rtt, top, btm);
   ucp_stream_check_timeouts(&client_sock);
 }
 
@@ -64,7 +71,7 @@ on_write (ucp_stream_t *stream, ucp_write_t *req, int status) {
 }
 
 int
-main () {
+main (int argc, char **argv) {
   srand(time(0));
 
   uv_loop_t* loop = malloc(sizeof(uv_loop_t));
@@ -90,7 +97,7 @@ main () {
 
   sbuf = client_sock.local_id;
 
-  uv_ip4_addr("88.99.3.86", 10101, &addr);
+  uv_ip4_addr(argc == 1 ? "127.0.0.1" : argv[1], 10101, &addr);
   ucp_send(&client, &sreq, (char *) &sbuf, 4, (const struct sockaddr *) &addr);
 
   ucp_stream_set_callback(&client_sock, UCP_ON_WRITE, on_write);

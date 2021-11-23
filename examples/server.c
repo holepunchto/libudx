@@ -15,16 +15,37 @@ static uint32_t sbuf;
 
 static size_t rcvd = 0;
 static size_t reads = 0;
+static size_t ticks = 0;
 
 static void
 on_uv_interval (uv_timer_t *req) {
   ucp_stream_send_state(&server_sock);
+
+  if ((ticks++ & 63) == 0) {
+    printf("each second\n");
+    printf("on read, total recv=%zu total reads=%zu\n", rcvd, reads);
+
+    ucp_stream_t *sock = &server_sock;
+
+    int sacks = 0;
+    int max = 32;
+
+    for (uint32_t i = 0; i < max; i++) {
+      uint32_t seq = sock->ack + 1 + i;
+      if (ucp_cirbuf_get(&(sock->incoming), seq) != NULL) {
+        sacks++;
+        max += 32;
+      }
+    }
+
+    printf("sacks: %i\n", sacks);
+  }
 }
 
 static void
 on_read (ucp_stream_t *stream, char *buf, size_t read) {
   rcvd += read;
-  printf("on read, data_size=%zu, total recv=%zu total reads=%zu\n", read, rcvd, ++reads);
+  reads++;
 }
 
 static void
