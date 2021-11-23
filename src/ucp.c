@@ -169,9 +169,12 @@ on_uv_poll (uv_poll_t *handle, int status, int events) {
     } while (size == -1 && errno == EINTR);
 
     if (pkt->send != NULL) {
+      // TODO: needs free'ing also
       UCP_DEBUG("sent udp packet!\n");
-    } else {
+    } else if (pkt->write != NULL) {
       UCP_DEBUG("sent stream packet!\n");
+    } else { // an ack etc
+      free(pkt);
     }
 
     // queue another write, might be able to do this smarter...
@@ -401,6 +404,8 @@ ucp_stream_check_timeouts (ucp_stream_t *stream) {
       return -1;
     }
   }
+
+  return 0;
 }
 
 int
@@ -451,7 +456,49 @@ int
 ucp_stream_send_state (ucp_stream_t *stream) {
   UCP_DEBUG("writing ack\n");
 
-  ucp_outgoing_packet_t *pkt = malloc(sizeof(ucp_outgoing_packet_t));
+  uint32_t *sacks = NULL;
+  uint32_t start = -1;
+  uint32_t end = -1;
+
+  ucp_outgoing_packet_t *pkt = NULL;
+
+  void *payload = NULL;
+  size_t payload_len = 0;
+
+  int max = 32;
+  for (uint32_t i = 0; i < max && payload_len < 400; i++) {
+    uint32_t seq = stream->ack + 1 + i;
+    if (ucp_cirbuf_get(&(stream->incoming), seq) == NULL) continue;
+
+    if (sacks == NULL) {
+      pkt = malloc(sizeof(ucp_outgoing_packet_t) + 1024);
+      payload = (pkt + sizeof(ucp_outgoing_packet_t));
+      sacks = (uint32_t *) payload;
+    }
+
+    if (start == -1) {
+      start = seq;
+      end = seq + 1;
+    } else if (seq == end) {
+      end++;
+    } else {
+      *(sacks++) = start;
+      *(sacks++) = end;
+      start = seq;
+      end = seq + 1;
+      payload_len += 8;
+    }
+
+    max = i + 32;
+  }
+
+  if (start != -1) {
+    *(sacks++) = start;
+    *(sacks++) = end;
+    payload_len += 8;
+  }
+
+  if (pkt == NULL) pkt = malloc(sizeof(ucp_outgoing_packet_t));
 
   uint32_t *p = (uint32_t *) &(pkt->header);
 
@@ -471,10 +518,15 @@ ucp_stream_send_state (ucp_stream_t *stream) {
   pkt->h.msg_namelen = sizeof(struct sockaddr_in);
 
   pkt->h.msg_iov = (struct iovec *) &(pkt->buf);
-  pkt->h.msg_iovlen = 1;
+  pkt->h.msg_iovlen = payload_len == 0 ? 1 : 2;
 
   pkt->buf[0].iov_base = &(pkt->header);
   pkt->buf[0].iov_len = UCP_HEADER_SIZE;
+
+  if (payload_len > 0) {
+    pkt->buf[1].iov_base = payload;
+    pkt->buf[1].iov_len = payload_len;
+  }
 
   pkt->send = NULL;
   pkt->write = NULL;
