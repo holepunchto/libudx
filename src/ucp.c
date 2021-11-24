@@ -13,7 +13,7 @@
 #define UCP_MAX(x, y) (((x) > (y)) ? (x) : (y))
 
 #define UCP_MIN_WINDOW_SIZE 10
-#define UCP_MAX_CWND_INCREASE_BYTES_PER_RTT 50
+#define UCP_MAX_CWND_INCREASE_BYTES_PER_RTT 10
 
 static uint32_t
 random_id () {
@@ -35,15 +35,19 @@ update_poll (ucp_t *self) {
 }
 
 static int
-ack_packet (ucp_stream_t *stream, uint32_t seq) {
+ack_packet (ucp_stream_t *stream, uint32_t seq, int sack) {
   ucp_cirbuf_t *out = &(stream->outgoing);
   ucp_outgoing_packet_t *pkt = (ucp_outgoing_packet_t *) ucp_cirbuf_remove(out, seq);
 
   if (pkt == NULL) return 0;
 
-  stream->inflight_packets--;
-  stream->cur_window_bytes -= pkt->size;
-  stream->max_window_bytes += UCP_MAX_CWND_INCREASE_BYTES_PER_RTT;
+  if (pkt->status == UCP_PACKET_INFLIGHT) {
+    stream->pkts_inflight--;
+    stream->cur_window_bytes -= pkt->size;
+
+    // TODO: do some proper congestion control stuff...
+    stream->max_window_bytes += UCP_MAX_CWND_INCREASE_BYTES_PER_RTT;
+  }
 
   if (pkt->transmits == 1) {
     const uint32_t ertt = (uint32_t) (ucp_get_microseconds() / 1000 - pkt->time_sent);
@@ -65,18 +69,41 @@ ack_packet (ucp_stream_t *stream, uint32_t seq) {
 
   ucp_write_t *w = (ucp_write_t *) pkt->write;
 
-  // If this packet was queued we cannot free it now, mark it as unqueued and free it in the poll
-  if (pkt->queued) {
-    pkt->queued = 0;
+  // If this packet was queued for sending we cannot free it now,
+  // mark it as acked and free it in the poll / when it's next used
+  if (pkt->status == UCP_PACKET_SENDING) {
+    pkt->status = UCP_PACKET_ACKED;
   } else {
     free(pkt);
   }
 
   if (--(w->packets) == 0 && stream->on_write != NULL) {
-    stream->on_write(stream, w, 0);
+    stream->on_write(stream, w, 0, sack);
   }
 
   return 1;
+}
+
+static void
+process_sacks (ucp_stream_t *stream, char *buf, size_t buf_len) {
+  uint32_t n = 0;
+  uint32_t *sacks = (uint32_t *) buf;
+
+  for (int i = 0; i + 8 <= buf_len; i += 8) {
+    uint32_t start = *(sacks++);
+    uint32_t end = *(sacks++);
+    uint32_t len = end - start;
+
+    for (uint32_t j = 0; j < len; j++) {
+      if (ack_packet(stream, start + j, 1)) {
+        n++;
+      }
+    }
+  }
+
+  if (n) {
+    printf("sacks: %u\n", n);
+  }
 }
 
 static int
@@ -101,9 +128,11 @@ process_packet (ucp_t *self, char *buf, ssize_t buf_len) {
   ucp_cirbuf_t *inc = &(stream->incoming);
   ucp_cirbuf_t *out = &(stream->outgoing);
 
+  int send_state = 0;
+
   switch (h) {
     case UCP_PACKET_DATA_ID: {
-      if (buf_len == 0) break;
+      if (buf_len == 0 || ucp_cirbuf_get(inc, seq) != NULL) break;
       // copy over incoming buffer as we CURRENTLY do not own it (stack allocated upstream)
       // also malloc the packet wrap which needs to be freed at some point obvs
       char *ptr = malloc(sizeof(ucp_incoming_packet_t) + buf_len);
@@ -118,25 +147,13 @@ process_packet (ucp_t *self, char *buf, ssize_t buf_len) {
       pkt->buf.iov_len = buf_len;
 
       ucp_cirbuf_set(inc, (ucp_cirbuf_val_t *) pkt);
+      send_state = 1;
       break;
     }
 
     case UCP_PACKET_STATE_ID: {
       if (buf_len == 0) break;
-
-      uint32_t n = 0;
-      uint32_t *sacks = (uint32_t *) buf;
-      for (int i = 0; i + 8 <= buf_len; i += 8) {
-        uint32_t start = *(sacks++);
-        uint32_t end = *(sacks++);
-        uint32_t len = end - start;
-
-        for (uint32_t j = 0; j < len; j++) {
-          if (ack_packet(stream, start + j)) n++;
-        }
-      }
-
-      if (n) printf("sacks %u\n", n);
+      process_sacks(stream, buf, buf_len);
       break;
     }
   }
@@ -159,10 +176,11 @@ process_packet (ucp_t *self, char *buf, ssize_t buf_len) {
   }
 
   while (stream->remote_acked < ack) {
-    ack_packet(stream, stream->remote_acked++);
+    ack_packet(stream, stream->remote_acked++, 0);
   }
 
   ucp_stream_check_timeouts(stream);
+  if (send_state) ucp_stream_send_state(stream);
 
   return 1;
 }
@@ -180,13 +198,13 @@ on_uv_poll (uv_poll_t *handle, int status, int events) {
     const struct sockaddr_in *d = h->msg_name;
 
     // This was unqueued and therefore no longer valid, free it and restart.
-    if (!pkt->queued) {
+    if (pkt->status != UCP_PACKET_SENDING) {
       free(pkt);
       return;
     }
 
     pkt->transmits++;
-    pkt->queued = 0;
+    pkt->status = UCP_PACKET_INFLIGHT;
 
     do {
       pkt->time_sent = ucp_get_microseconds() / 1000;
@@ -311,7 +329,7 @@ ucp_send (ucp_t *self, ucp_send_t *req, const char *buf, size_t buf_len, const s
   req->dest = *dest;
 
   pkt->transmits = 0;
-  pkt->queued = 1;
+  pkt->status = UCP_PACKET_SENDING;
 
   memset(&(pkt->h), 0, sizeof(struct msghdr));
 
@@ -357,8 +375,8 @@ ucp_stream_init (ucp_t *self, ucp_stream_t *stream) {
   stream->rtt_var = 0;
   stream->rto = 1000;
 
-  stream->pending = 0;
-  stream->inflight_packets = 0;
+  stream->pkts_waiting = 0;
+  stream->pkts_inflight = 0;
 
   stream->cur_window_bytes = 0;
   stream->max_window_bytes = UCP_PACKET_SIZE;
@@ -397,13 +415,24 @@ ucp_stream_set_callback (ucp_stream_t *self, enum UCP_TYPE name, void *fn) {
 }
 
 static int
-send_packet (ucp_stream_t *stream, ucp_outgoing_packet_t *pkt) {
-  stream->inflight_packets++;
+send_data_packet (ucp_stream_t *stream, ucp_outgoing_packet_t *pkt) {
+  if (stream->cur_window_bytes + pkt->size > stream->max_window_bytes) {
+    return 0;
+  }
+
+  if (pkt->status != UCP_PACKET_WAITING) {
+    printf("assertion failure!\n");
+    exit(1);
+  }
+
+  pkt->status = UCP_PACKET_SENDING;
+
+  stream->pkts_waiting--;
+  stream->pkts_inflight++;
   stream->cur_window_bytes += pkt->size;
-  pkt->queued = 1;
 
   ucp_fifo_push(&(stream->ucp->send_queue), pkt);
-  return update_poll(stream->ucp);
+  return update_poll(stream->ucp) < 0 ? -1 : 1;
 }
 
 int
@@ -411,26 +440,20 @@ ucp_stream_check_timeouts (ucp_stream_t *stream) {
   const uint32_t cur_range = stream->seq - stream->remote_acked;
 
   ucp_stream_resend(stream);
+  int sent = 0;
 
-  for (uint32_t i = 0; i < cur_range; i++) {
+  for (uint32_t i = 0; i < cur_range && stream->pkts_waiting > 0; i++) {
     uint32_t seq = stream->remote_acked + i;
     ucp_outgoing_packet_t *pkt = (ucp_outgoing_packet_t *) ucp_cirbuf_get(&(stream->outgoing), seq);
 
     if (pkt == NULL) continue;
-    if (pkt->queued != 0 || pkt->transmits > 0) continue;
+    if (pkt->status != UCP_PACKET_WAITING || pkt->transmits > 0) continue;
 
-    if (stream->max_window_bytes < stream->cur_window_bytes || stream->max_window_bytes - stream->cur_window_bytes < pkt->size) {
-      break;
-    }
-
-    stream->pending--;
-
-    if (send_packet(stream, pkt) < 0) {
-      return -1;
-    }
+    sent = send_data_packet(stream, pkt);
+    if (sent <= 0) break;
   }
 
-  return 0;
+  return sent > 0 ? 0 : sent;
 }
 
 int
@@ -440,10 +463,11 @@ ucp_stream_resend (ucp_stream_t *stream) {
   const uint32_t cur_range = stream->seq - stream->remote_acked;
   const uint64_t ms = ucp_get_microseconds() / 1000;
 
-  int err;
   ucp_fifo_t *queue = &(stream->ucp->send_queue);
 
+  int sent = 0;
   int congested = 0;
+
   uint32_t queued = queue->len;
 
   for (uint32_t i = 0; i < cur_range; i++) {
@@ -451,25 +475,32 @@ ucp_stream_resend (ucp_stream_t *stream) {
     ucp_outgoing_packet_t *pkt = (ucp_outgoing_packet_t *) ucp_cirbuf_get(&(stream->outgoing), seq);
 
     if (pkt == NULL) continue;
-    if (pkt->queued != 0 || pkt->transmits == 0) continue;
+    if (pkt->status != UCP_PACKET_INFLIGHT) continue;
 
     const uint32_t delta = (uint32_t) (ms - pkt->time_sent);
-// printf("delta is %u\n", delta);
     if (delta < 3 * stream->rto) continue;
 
-    congested = 1;
-    pkt->queued = 1;
-    ucp_fifo_push(queue, pkt);
+    // Consider this packet lost
+
+    pkt->status = UCP_PACKET_WAITING;
+    stream->cur_window_bytes -= pkt->size;
+    stream->pkts_waiting++;
+    stream->pkts_inflight--;
+
+    if (congested == 0) {
+      congested = 1;
+      stream->max_window_bytes = UCP_MAX(UCP_PACKET_SIZE, stream->max_window_bytes / 2);
+    }
+
+    sent = send_data_packet(stream, pkt);
+    if (sent <= 0) break;
   }
 
   if (congested) {
     printf("stream is congested, scaling back (requeued %u)\n", queue->len - queued);
-    stream->max_window_bytes = UCP_MAX(UCP_PACKET_SIZE, stream->max_window_bytes / 2);
   }
-// printf("in resend, send queue is now: %u\n", queue->len);
-  err = update_poll(stream->ucp);
 
-  return err;
+  return sent < 0 ? -1 : 0;
 }
 
 void
@@ -535,7 +566,7 @@ ucp_stream_send_state (ucp_stream_t *stream) {
   memset(&(pkt->h), 0, sizeof(struct msghdr));
 
   pkt->transmits = 0;
-  pkt->queued = 1;
+  pkt->status = UCP_PACKET_SENDING;
 
   pkt->h.msg_name = &(stream->remote_addr);
   pkt->h.msg_namelen = sizeof(struct sockaddr_in);
@@ -553,8 +584,6 @@ ucp_stream_send_state (ucp_stream_t *stream) {
 
   pkt->send = NULL;
   pkt->write = NULL;
-
-  ucp_cirbuf_set(&(stream->outgoing), (ucp_cirbuf_val_t *) pkt);
 
   ucp_fifo_push(&(stream->ucp->send_queue), pkt);
   err = update_poll(stream->ucp);
@@ -581,6 +610,7 @@ ucp_stream_write (ucp_stream_t *stream, ucp_write_t *req, const char *buf, size_
 
   memset(&(pkt->h), 0, sizeof(struct msghdr));
 
+  pkt->status = UCP_PACKET_WAITING;
   pkt->transmits = 0;
   pkt->size = (uint16_t) (UCP_HEADER_SIZE + buf_len);
 
@@ -601,10 +631,7 @@ ucp_stream_write (ucp_stream_t *stream, ucp_write_t *req, const char *buf, size_
 
   ucp_cirbuf_set(&(stream->outgoing), (ucp_cirbuf_val_t *) pkt);
 
-  if (stream->pending > 0 || stream->max_window_bytes < stream->cur_window_bytes || stream->max_window_bytes - stream->cur_window_bytes < pkt->size) {
-    stream->pending++;
-    return 0;
-  }
-
-  return send_packet(stream, pkt);
+  // If we are not the first packet in the queue, wait to send us until the queue is flushed...
+  if (stream->pkts_waiting++ > 0) return 0;
+  return send_data_packet(stream, pkt);
 }

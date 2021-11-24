@@ -12,8 +12,16 @@
 #define UCP_HEADER_SIZE 16
 #define UCP_MAX_PACKET_DATA (UCP_PACKET_SIZE - UCP_HEADER_SIZE)
 
+// packet types
 #define UCP_PACKET_DATA_ID 0
 #define UCP_PACKET_STATE_ID 1
+
+// packet states
+#define UCP_PACKET_WAITING 0
+#define UCP_PACKET_SENDING 1
+#define UCP_PACKET_INFLIGHT 2
+#define UCP_PACKET_ACKED 3
+
 
 typedef struct ucp {
   uv_udp_t handle;
@@ -35,7 +43,7 @@ typedef struct ucp {
 typedef struct {
   uint32_t seq;
   uint8_t transmits;
-  uint8_t queued;
+  uint8_t status;
   uint16_t size;
   uint64_t time_sent;
 
@@ -76,7 +84,7 @@ typedef struct ucp_stream {
   void *userdata;
 
   void (*on_read)(struct ucp_stream *stream, const char *buf, size_t buf_len);
-  void (*on_write)(struct ucp_stream *stream, ucp_write_t *req, int status);
+  void (*on_write)(struct ucp_stream *stream, ucp_write_t *req, int status, int unordered);
 
   uint32_t seq;
   uint32_t ack;
@@ -86,8 +94,8 @@ typedef struct ucp_stream {
   uint32_t rtt_var;
   uint32_t rto;
 
-  uint32_t pending;
-  uint32_t inflight_packets;
+  uint32_t pkts_waiting;
+  uint32_t pkts_inflight;
 
   size_t cur_window_bytes;
   size_t max_window_bytes;
