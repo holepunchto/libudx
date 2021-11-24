@@ -20,12 +20,13 @@ static size_t sent = 0;
 static int rt = 10000000;
 static ucp_write_t * pending_reqs[PARALLEL_WRITES];
 static int pending_writes = 0;
+static uint64_t start_time = 0;
 static size_t send_buf_len = UCP_MAX_PACKET_DATA;
 static char *send_buf;
 
 static void
 on_uv_interval (uv_timer_t *req) {
-  int bw = 8 * sent / (ucp_get_microseconds() / 1000 / 1000) / 1000;
+  int bw = 8 * sent / ((ucp_get_microseconds() - start_time) / 1000 / 1000) / 1000;
   int top = bw / 100;
   int btm = top % 10;
 
@@ -103,6 +104,8 @@ on_write (ucp_stream_t *stream, ucp_write_t *req, int status, int unordered) {
 int
 main (int argc, char **argv) {
   srand(time(0));
+
+  start_time = ucp_get_microseconds();
 
   uv_loop_t* loop = malloc(sizeof(uv_loop_t));
   uv_loop_init(loop);
