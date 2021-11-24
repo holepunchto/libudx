@@ -217,7 +217,6 @@ on_uv_poll (uv_poll_t *handle, int status, int events) {
       UCP_DEBUG("sent udp packet!\n");
     } else if (pkt->write != NULL) {
       UCP_DEBUG("sent stream packet!\n");
-      pkt->write->stream->stats_pkts_sent++;
       pkt->write->stream->stats_last_seq = pkt->seq;
     } else { // an ack etc
       free(pkt);
@@ -438,6 +437,8 @@ send_data_packet (ucp_stream_t *stream, ucp_outgoing_packet_t *pkt) {
   stream->pkts_inflight++;
   stream->cur_window_bytes += pkt->size;
 
+  stream->stats_pkts_sent++;
+
   ucp_fifo_push(&(stream->ucp->send_queue), pkt);
   return update_poll(stream->ucp) < 0 ? -1 : 1;
 }
@@ -591,6 +592,8 @@ ucp_stream_send_state (ucp_stream_t *stream) {
 
   pkt->send = NULL;
   pkt->write = NULL;
+
+  stream->stats_pkts_sent++;
 
   ucp_fifo_push(&(stream->ucp->send_queue), pkt);
   err = update_poll(stream->ucp);
