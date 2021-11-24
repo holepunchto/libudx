@@ -8,6 +8,8 @@
 #include "../src/cirbuf.h"
 #include "../src/utils.h"
 
+#define PARALLEL_WRITES 2000
+
 static ucp_t client;
 static ucp_stream_t client_sock;
 static ucp_send_t sreq;
@@ -15,7 +17,9 @@ static uv_timer_t timer;
 static uint32_t sbuf;
 
 static size_t sent = 0;
-static int rt = 100000;
+static int rt = 10000000;
+static ucp_write_t * pending_reqs[PARALLEL_WRITES];
+static int pending_writes = 0;
 static size_t send_buf_len = UCP_MAX_PACKET_DATA;
 static char *send_buf;
 
@@ -27,7 +31,7 @@ on_uv_interval (uv_timer_t *req) {
 
   top /= 10;
 
-  printf("rt is %i, cur window = %zu, max window = %zu rto=%u rtt=%u Mbps=%i,%i\n", rt, client_sock.cur_window_bytes, client_sock.max_window_bytes, client_sock.rto, client_sock.rtt, top, btm);
+  printf("rt is %i, remote acked = %u, cur window = %zu, max window = %zu rto=%u rtt=%u Mbps=%i,%i\n", rt, client_sock.remote_acked, client_sock.cur_window_bytes, client_sock.max_window_bytes, client_sock.rto, client_sock.rtt, top, btm);
   ucp_stream_check_timeouts(&client_sock);
 }
 
@@ -44,7 +48,7 @@ on_message (ucp_t *self, char *buf, ssize_t nread, const struct sockaddr_in *fro
 
   ucp_stream_connect(&client_sock, id, (const struct sockaddr *) from);
 
-  for (int i = 0; i < 2000; i++) {
+  for (int i = 0; i < PARALLEL_WRITES; i++) {
     ucp_write_t *req = (ucp_write_t *) malloc(sizeof(ucp_write_t));
     sent += send_buf_len;
     ucp_stream_write(&client_sock, req, send_buf, send_buf_len);
@@ -54,12 +58,21 @@ on_message (ucp_t *self, char *buf, ssize_t nread, const struct sockaddr_in *fro
 }
 
 static void
-on_write (ucp_stream_t *stream, ucp_write_t *req, int status) {
+on_write (ucp_stream_t *stream, ucp_write_t *req, int status, int unordered) {
   // printf("on write\n");
 
+  if (unordered) {
+    pending_reqs[pending_writes++] = req;
+    return;
+  }
+
   if (--rt > 0) {
+    if (pending_writes) printf("ordered write... %i\n", pending_writes);
     sent += send_buf_len;
     ucp_stream_write(stream, req, send_buf, send_buf_len);
+    while (pending_writes > 0) {
+      ucp_stream_write(stream, pending_reqs[--pending_writes], send_buf, send_buf_len);
+    }
   }
 
   // printf("total sent=%zu, rt=%i\n", sent, rt);

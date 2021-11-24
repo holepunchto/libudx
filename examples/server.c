@@ -19,7 +19,8 @@ static size_t ticks = 0;
 
 static void
 on_uv_interval (uv_timer_t *req) {
-  ucp_stream_send_state(&server_sock);
+  // ucp_stream_send_state(&server_sock);
+  ucp_stream_check_timeouts(&server_sock);
 
   if ((ticks++ & 63) == 0) {
     printf("each second\n");
@@ -51,10 +52,11 @@ on_read (ucp_stream_t *stream, char *buf, size_t read) {
 static void
 on_message (ucp_t *self, char *buf, ssize_t nread, const struct sockaddr_in *from) {
   if (nread < 4) return;
+  uint32_t id = *((uint32_t *) buf);
+  if (id == 0) return;
 
   ucp_set_callback(&server, UCP_ON_MESSAGE, NULL);
 
-  uint32_t id = *((uint32_t *) buf);
   printf("remote socket id: %u\n", id);
 
   ucp_stream_connect(&server_sock, id, (const struct sockaddr *) from);
