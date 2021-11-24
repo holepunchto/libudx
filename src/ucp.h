@@ -64,6 +64,7 @@ typedef struct {
 
 typedef struct ucp_write {
   uint32_t packets;
+  struct ucp_stream *stream;
   void *userdata;
 } ucp_write_t;
 
@@ -99,6 +100,10 @@ typedef struct ucp_stream {
 
   size_t cur_window_bytes;
   size_t max_window_bytes;
+
+  size_t stats_sacks;
+  size_t stats_pkts_sent;
+  uint32_t stats_last_seq;
 
   ucp_cirbuf_t outgoing;
   ucp_cirbuf_t incoming;

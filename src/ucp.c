@@ -102,7 +102,7 @@ process_sacks (ucp_stream_t *stream, char *buf, size_t buf_len) {
   }
 
   if (n) {
-    printf("sacks: %u\n", n);
+    stream->stats_sacks += n;
   }
 }
 
@@ -128,8 +128,6 @@ process_packet (ucp_t *self, char *buf, ssize_t buf_len) {
   ucp_cirbuf_t *inc = &(stream->incoming);
   ucp_cirbuf_t *out = &(stream->outgoing);
 
-  int send_state = 0;
-
   switch (h) {
     case UCP_PACKET_DATA_ID: {
       if (buf_len == 0 || ucp_cirbuf_get(inc, seq) != NULL) break;
@@ -147,7 +145,6 @@ process_packet (ucp_t *self, char *buf, ssize_t buf_len) {
       pkt->buf.iov_len = buf_len;
 
       ucp_cirbuf_set(inc, (ucp_cirbuf_val_t *) pkt);
-      send_state = 1;
       break;
     }
 
@@ -180,7 +177,11 @@ process_packet (ucp_t *self, char *buf, ssize_t buf_len) {
   }
 
   ucp_stream_check_timeouts(stream);
-  if (send_state) ucp_stream_send_state(stream);
+
+  // if data pkt, send an ack - use deferred acks as well...
+  if (h == UCP_PACKET_DATA_ID) {
+    ucp_stream_send_state(stream);
+  }
 
   return 1;
 }
@@ -216,6 +217,8 @@ on_uv_poll (uv_poll_t *handle, int status, int events) {
       UCP_DEBUG("sent udp packet!\n");
     } else if (pkt->write != NULL) {
       UCP_DEBUG("sent stream packet!\n");
+      pkt->write->stream->stats_pkts_sent++;
+      pkt->write->stream->stats_last_seq = pkt->seq;
     } else { // an ack etc
       free(pkt);
     }
@@ -380,6 +383,10 @@ ucp_stream_init (ucp_t *self, ucp_stream_t *stream) {
 
   stream->cur_window_bytes = 0;
   stream->max_window_bytes = UCP_PACKET_SIZE;
+
+  stream->stats_sacks = 0;
+  stream->stats_pkts_sent = 0;
+  stream->stats_last_seq = 0;
 
   stream->on_read = NULL;
   stream->on_write = NULL;
@@ -598,6 +605,7 @@ ucp_stream_write (ucp_stream_t *stream, ucp_write_t *req, const char *buf, size_
   ucp_outgoing_packet_t *pkt = malloc(sizeof(ucp_outgoing_packet_t));
 
   req->packets = 1;
+  req->stream = stream;
 
   uint32_t *p = (uint32_t *) &(pkt->header);
 
