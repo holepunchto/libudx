@@ -23,8 +23,7 @@ on_uv_interval (uv_timer_t *req) {
   ucp_stream_check_timeouts(&server_sock);
 
   if ((ticks++ & 63) == 0) {
-    printf("each second\n");
-    printf("on read, total recv=%zu total reads=%zu\n", rcvd, reads);
+    printf("on read, total recv=%zu total reads=%zu ack=%u\n", rcvd, reads, server_sock.ack);
 
     ucp_stream_t *sock = &server_sock;
 

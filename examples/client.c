@@ -31,7 +31,22 @@ on_uv_interval (uv_timer_t *req) {
 
   top /= 10;
 
-  printf("rt is %i, remote acked = %u, cur window = %zu, max window = %zu rto=%u rtt=%u Mbps=%i,%i\n", rt, client_sock.remote_acked, client_sock.cur_window_bytes, client_sock.max_window_bytes, client_sock.rto, client_sock.rtt, top, btm);
+  printf("lseq=%u, rt is %i, racks=%u, sacks=%zu, pkts_sent=%zu, pkts_wait=%u, pkts_inflight=%u, cwin=%zu, mwin=%zu rto=%u rtt=%u Mbps=%i,%i\n",
+    client_sock.stats_last_seq,
+    rt,
+    client_sock.remote_acked,
+    client_sock.stats_sacks,
+    client_sock.stats_pkts_sent,
+    client_sock.pkts_waiting,
+    client_sock.pkts_inflight,
+    client_sock.cur_window_bytes,
+    client_sock.max_window_bytes,
+    client_sock.rto,
+    client_sock.rtt,
+    top,
+    btm
+  );
+
   ucp_stream_check_timeouts(&client_sock);
 }
 
