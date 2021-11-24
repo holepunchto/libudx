@@ -31,11 +31,12 @@ on_uv_interval (uv_timer_t *req) {
 
   top /= 10;
 
-  printf("lseq=%u, pen=%u, rt=%i, racks=%u, sacks=%zu, pkts_sent=%zu, pkts_wait=%u, pkts_inflight=%u, cwin=%zu, mwin=%zu rto=%u rtt=%u Mbps=%i,%i\n",
+  printf("lseq=%u, pen=%u, rt=%i, racks=%u (%u), sacks=%zu, pkts_sent=%zu, pkts_wait=%u, pkts_inflight=%u, cwin=%zu, mwin=%zu rto=%u rtt=%u Mbps=%i,%i\n",
     client_sock.stats_last_seq,
     pending_writes,
     rt,
     client_sock.remote_acked,
+    ucp_cirbuf_get(&(client_sock.outgoing), client_sock.remote_acked) == NULL ? 0 : 1,
     client_sock.stats_sacks,
     client_sock.stats_pkts_sent,
     client_sock.pkts_waiting,
