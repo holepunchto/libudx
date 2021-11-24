@@ -455,7 +455,7 @@ ucp_stream_check_timeouts (ucp_stream_t *stream) {
     ucp_outgoing_packet_t *pkt = (ucp_outgoing_packet_t *) ucp_cirbuf_get(&(stream->outgoing), seq);
 
     if (pkt == NULL) continue;
-    if (pkt->status != UCP_PACKET_WAITING || pkt->transmits > 0) continue;
+    if (pkt->status != UCP_PACKET_WAITING) continue;
 
     sent = send_data_packet(stream, pkt);
     if (sent <= 0) break;
