@@ -8,7 +8,7 @@
 #include "../src/cirbuf.h"
 #include "../src/utils.h"
 
-#define PARALLEL_WRITES 2000
+#define PARALLEL_WRITES 3000
 
 static ucp_t client;
 static ucp_stream_t client_sock;
@@ -17,6 +17,7 @@ static uv_timer_t timer;
 static uint32_t sbuf;
 
 static size_t sent = 0;
+static size_t sent_prev = 0;
 static int rt = 10000000;
 static ucp_write_t * pending_reqs[PARALLEL_WRITES];
 static int pending_writes = 0;
@@ -30,9 +31,16 @@ on_uv_interval (uv_timer_t *req) {
   int top = bw / 100;
   int btm = top % 10;
 
-  top /= 10;
+  int bw_d = 8 * (sent - sent_prev) / 1000;
+  int top_d = bw_d / 100;
+  int btm_d = top_d % 10;
 
-  printf("lseq=%u, pen=%u, rt=%i, racks=%u (%u), sacks=%zu, pkts_sent=%zu, pkts_wait=%u, pkts_inflight=%u, cwin=%zu, mwin=%zu rto=%u rtt=%u Mbps=%i,%i\n",
+  top /= 10;
+  top_d /= 10;
+
+  sent_prev = sent;
+
+  printf("lseq=%u, pen=%u, rt=%i, racks=%u (%u), sacks=%zu, pkts_sent=%zu, pkts_wait=%u, pkts_inflight=%u, cwin=%zu, mwin=%zu rto=%u rtt=%u Mbps=%i,%i (%i,%i)\n",
     client_sock.stats_last_seq,
     pending_writes,
     rt,
@@ -47,7 +55,9 @@ on_uv_interval (uv_timer_t *req) {
     client_sock.rto,
     client_sock.rtt,
     top,
-    btm
+    btm,
+    top_d,
+    btm_d
   );
 
   ucp_stream_check_timeouts(&client_sock);
