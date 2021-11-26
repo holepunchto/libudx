@@ -1,0 +1,1235 @@
+<!DOCTYPE html> 
+
+<!-- template: /a/www/ietf-datatracker/web/ietf/templates/doc/htmlized_base.html -->
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <title>
+  
+    rfc5681
+  
+</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+
+  @media only screen 
+    and (min-width: 992px)
+    and (max-width: 1199px) {
+      body { font-size: 14pt; }
+            div.content { width: 96ex; margin: 0 auto; }
+        }
+  @media only screen 
+    and (min-width: 768px)
+    and (max-width: 991px) {
+            body { font-size: 14pt; }
+            div.content { width: 96ex; margin: 0 auto; }
+        }
+  @media only screen 
+    and (min-width: 480px)
+    and (max-width: 767px) {
+            body { font-size: 11pt; }
+            div.content { width: 96ex; margin: 0 auto; }
+        }
+  @media only screen 
+    and (max-width: 479px) {
+            body { font-size: 8pt; }
+            div.content { width: 96ex; margin: 0 auto; }
+        }
+  @media only screen 
+    and (min-device-width : 375px) 
+    and (max-device-width : 667px) {
+            body { font-size: 9.5pt; }
+            div.content { width: 96ex; margin: 0; }
+        }
+  @media only screen 
+    and (min-device-width: 1200px) {
+            body { font-size: 10pt; margin: 0 4em; }
+            div.content { width: 96ex; margin: 0; }
+        }
+        h1, h2, h3, h4, h5, h6, .h1, .h2, .h3, .h4, .h5, .h6 {
+      font-weight: bold;
+            /* line-height: 0pt; */
+            display: inline;
+            white-space: pre;
+            font-family: monospace;
+            font-size: 1em;
+      font-weight: bold;
+        }
+        pre {
+            font-size: 1em;
+            margin-top: 0px;
+            margin-bottom: 0px;
+        }
+  .pre {
+      white-space: pre;
+      font-family: monospace;
+  }
+  .header{
+      font-weight: bold;
+  }
+        .newpage {
+            page-break-before: always;
+        }
+        .invisible {
+            text-decoration: none;
+            color: white;
+        }
+        @media print {
+            body {
+                margin-top: 5em;
+                font-family: monospace;
+                font-size: 10.5pt;
+            }
+            h1, h2, h3, h4, h5, h6 {
+                font-size: 1em;
+            }
+        
+            a:link, a:visited {
+                color: inherit;
+                text-decoration: none;
+            }
+            .noprint {
+                display: none;
+            }
+        }
+  @media screen {
+      .grey, .grey a:link, .grey a:visited {
+    color: #777;
+      }
+            .meta-info {
+                background-color: #EEE;
+            }
+            .top {
+                border-top: 7px solid #EEE;
+            }
+            .pad {
+                padding-top: 7px;
+                line-height: 24px;
+                padding-bottom: 4px;
+            }
+            .bgwhite  { background-color: white; }
+            .bgred    { background-color: #F44; }
+            .bggrey   { background-color: #666; }
+            .bgbrown  { background-color: #840; }            
+            .bgorange { background-color: #FA0; }
+            .bgyellow { background-color: #EE0; }
+            .bgmagenta{ background-color: #F4F; }
+            .bgblue   { background-color: #66F; }
+            .bgcyan   { background-color: #4DD; }
+            .bggreen  { background-color: #4F4; }
+
+            .legend   { font-size: 90%; }
+            .cplate   { font-size: 70%; border: solid grey 1px; }
+  }
+    
+     
+
+.bgwhite  { background-color: white; }
+.bgred    { background-color: #F44; }
+.bggrey   { background-color: #666; }
+.bgbrown  { background-color: #840; }            
+.bgorange { background-color: #FA0; }
+.bgyellow { background-color: #EE0; }
+.bgmagenta{ background-color: #F4F; }
+.bgblue   { background-color: #66F; }
+.bgcyan   { background-color: #4DD; }
+.bggreen  { background-color: #4F4; }
+
+.draftcontent { margin-top:0px !important;}
+
+
+    </style>
+
+    
+  <link rel="alternate" type="application/atom+xml" title="Document changes" href="/feed/document-changes/draft-ietf-tcpm-rfc2581bis/">
+  <meta name="description" content="TCP Congestion Control (RFC )">
+
+
+    
+    <link rel="shortcut icon" href="https://www.ietf.org/lib/dt/7.40.0/ietf/images/ietf-icon-blue3.png">
+    
+    <link rel="apple-touch-icon" href="https://www.ietf.org/lib/dt/7.40.0/ietf/images/apple-touch-icon.png">
+  </head>
+
+  <body style="padding-top: 0;">
+
+	  <div class="content" id="content">
+        
+  <!-- template: /a/www/ietf-datatracker/web/ietf/templates/doc/document_html.html -->
+ 
+  <div class="rfcmarkup">
+    <div class="noprint" style="height: 6px;">
+      <div onmouseover="this.style.cursor='pointer';"
+         onclick="showLegend();"
+         onmouseout="hideLegend()"
+         style="height: 6px; min-height: 6px; width: 96ex; position: absolute; margin-top:0; "
+         class="meta-info bgcyan"
+         title="Click for colour legend." >&nbsp;</div>
+      <div id="legend"
+           class="meta-info noprint pre legend"
+           style="position:absolute; top: 4px; left: 4ex; visibility:hidden; background-color: white; padding: 4px 9px 5px 7px; border: solid #345 1px; "
+           onmouseover="showLegend();"
+           onmouseout="hideLegend();">
+      </div>
+    </div>
+
+    
+      <div class="noprint">
+	 <pre class="pre meta-info">[<a href="https://datatracker.ietf.org" title="Document search and retrieval page">Search</a>] [<a href="https://www.rfc-editor.org/rfc/rfc5681.txt" title="Plaintext version of this document">txt</a>|<a href="https://www.rfc-editor.org/rfc/rfc5681.html" title="HTML version of this document, from XML2RFC">html</a>|<a href="https://www.rfc-editor.org/rfc/pdfrfc/rfc5681.txt.pdf" title="PDF version of this document">pdf</a>|<a href="https://www.rfc-editor.org/rfc/inline-errata/rfc5681.html">with errata</a>|<a href="/doc/rfc5681/bibtex" title="BibTex entry for this document">bibtex</a>] [<a href="/doc/rfc5681/" title="Datatracker information for this document">Tracker</a>] [<a href="/group/tcpm/" title="The working group handling this document">WG</a>] [<a href="mailto:draft-ietf-tcpm-rfc2581bis@ietf.org?subject=draft-ietf-tcpm-rfc2581bis" title="Send email to the document authors">Email</a>] [<a href="https://www.ietf.org/rfcdiff?difftype=--hwdiff&url2=draft-ietf-tcpm-rfc2581bis-07.txt" title="Inline diff (wdiff)">Diff1</a>] [<a href="https://www.ietf.org/rfcdiff?url2=draft-ietf-tcpm-rfc2581bis-07.txt" title="Side-by-side diff">Diff2</a>] [<a href="https://www.ietf.org/tools/idnits?url=https://www.ietf.org/archive/id/draft-ietf-tcpm-rfc2581bis-07.txt" title="Run an idnits check of this document">Nits</a>]
+
+From: <a href="/doc/html/draft-ietf-tcpm-rfc2581bis-07">draft-ietf-tcpm-rfc2581bis-07</a>                       Draft Standard
+                                                            <a class="text-warning" href="https://www.rfc-editor.org/errata_search.php?rfc=5681&amp;rec_status=0">Errata exist</a></pre>
+      </div>
+    
+
+    <div class="draftcontent">
+    <pre>Network Working Group                                          M. Allman
+Request for Comments: 5681                                     V. Paxson
+Obsoletes: <a href="/doc/html/rfc2581">2581</a>                                                     ICSI
+Category: Standards Track                                     E. Blanton
+                                                       Purdue University
+                                                          September 2009
+
+
+                         <span class="h1">TCP Congestion Control</span>
+
+Abstract
+
+   This document defines TCP&#x27;s four intertwined congestion control
+   algorithms: slow start, congestion avoidance, fast retransmit, and
+   fast recovery.  In addition, the document specifies how TCP should
+   begin transmission after a relatively long idle period, as well as
+   discussing various acknowledgment generation methods.  This document
+   obsoletes <a href="/doc/html/rfc2581">RFC 2581</a>.
+
+Status of This Memo
+
+   This document specifies an Internet standards track protocol for the
+   Internet community, and requests discussion and suggestions for
+   improvements.  Please refer to the current edition of the &quot;Internet
+   Official Protocol Standards&quot; (STD 1) for the standardization state
+   and status of this protocol.  Distribution of this memo is unlimited.
+
+Copyright Notice
+
+   Copyright (c) 2009 IETF Trust and the persons identified as the
+   document authors.  All rights reserved.
+
+   This document is subject to <a href="/doc/html/bcp78">BCP 78</a> and the IETF Trust&#x27;s Legal
+   Provisions Relating to IETF Documents in effect on the date of
+   publication of this document (<a href="http://trustee.ietf.org/license-info">http://trustee.ietf.org/license-info</a>).
+   Please review these documents carefully, as they describe your rights
+   and restrictions with respect to this document.
+
+   This document may contain material from IETF Documents or IETF
+   Contributions published or made publicly available before November
+   10, 2008.  The person(s) controlling the copyright in some of this
+   material may not have granted the IETF Trust the right to allow
+   modifications of such material outside the IETF Standards Process.
+   Without obtaining an adequate license from the person(s) controlling
+   the copyright in such materials, this document may not be modified
+   outside the IETF Standards Process, and derivative works of it may
+
+
+
+
+
+<span class="grey">Allman, et al.              Standards Track                     [Page 1]</span></pre>
+<hr class='noprint'/><!--NewPage--><pre class='newpage'><span id="page-2" ></span>
+<span class="grey"><a href="/doc/html/rfc5681">RFC 5681</a>                 TCP Congestion Control           September 2009</span>
+
+
+   not be created outside the IETF Standards Process, except to format
+   it for publication as an RFC or to translate it into languages other
+   than English.
+
+Table Of Contents
+
+   <a href="#section-1">1</a>. Introduction ....................................................<a href="#page-2">2</a>
+   <a href="#section-2">2</a>. Definitions .....................................................<a href="#page-3">3</a>
+   <a href="#section-3">3</a>. Congestion Control Algorithms ...................................<a href="#page-4">4</a>
+      <a href="#section-3.1">3.1</a>. Slow Start and Congestion Avoidance ........................<a href="#page-4">4</a>
+      <a href="#section-3.2">3.2</a>. Fast Retransmit/Fast Recovery ..............................<a href="#page-8">8</a>
+   <a href="#section-4">4</a>. Additional Considerations ......................................<a href="#page-10">10</a>
+      <a href="#section-4.1">4.1</a>. Restarting Idle Connections ...............................<a href="#page-10">10</a>
+      <a href="#section-4.2">4.2</a>. Generating Acknowledgments ................................<a href="#page-11">11</a>
+      <a href="#section-4.3">4.3</a>. Loss Recovery Mechanisms ..................................<a href="#page-12">12</a>
+   <a href="#section-5">5</a>. Security Considerations ........................................<a href="#page-13">13</a>
+   <a href="#section-6">6</a>. Changes between <a href="/doc/html/rfc2001">RFC 2001</a> and <a href="/doc/html/rfc2581">RFC 2581</a> ..........................<a href="#page-13">13</a>
+   <a href="#section-7">7</a>. Changes Relative to <a href="/doc/html/rfc2581">RFC 2581</a> ...................................<a href="#page-14">14</a>
+   <a href="#section-8">8</a>. Acknowledgments ................................................<a href="#page-15">15</a>
+   <a href="#section-9">9</a>. References .....................................................<a href="#page-15">15</a>
+      <a href="#section-9.1">9.1</a>. Normative References ......................................<a href="#page-15">15</a>
+      <a href="#section-9.2">9.2</a>. Informative References ....................................<a href="#page-16">16</a>
+
+<span class="h2"><a class="selflink" id="section-1" href="#section-1">1</a>.  Introduction</span>
+
+   This document specifies four TCP [<a href="/doc/html/rfc793" title="&quot;Transmission Control Protocol&quot;">RFC793</a>] congestion control
+   algorithms: slow start, congestion avoidance, fast retransmit and
+   fast recovery.  These algorithms were devised in [<a href="#ref-Jac88" title="&quot;Congestion Avoidance and Control&quot;">Jac88</a>] and [<a href="#ref-Jac90" title="&quot;Modified TCP Congestion Avoidance Algorithm&quot;">Jac90</a>].
+   Their use with TCP is standardized in [<a href="/doc/html/rfc1122" title="&quot;Requirements for Internet Hosts - Communication Layers&quot;">RFC1122</a>].  Additional early
+   work in additive-increase, multiplicative-decrease congestion control
+   is given in [<a href="#ref-CJ89" title="&quot;Analysis of the Increase/Decrease Algorithms for Congestion Avoidance in Computer Networks&quot;">CJ89</a>].
+
+   Note that [<a href="#ref-Ste94" title="&quot;TCP/IP Illustrated, Volume 1: The Protocols&quot;">Ste94</a>] provides examples of these algorithms in action and
+   [<a href="#ref-WS95" title="&quot;TCP/IP Illustrated, Volume 2: The Implementation&quot;">WS95</a>] provides an explanation of the source code for the BSD
+   implementation of these algorithms.
+
+   In addition to specifying these congestion control algorithms, this
+   document specifies what TCP connections should do after a relatively
+   long idle period, as well as specifying and clarifying some of the
+   issues pertaining to TCP ACK generation.
+
+   This document obsoletes [<a href="/doc/html/rfc2581" title="&quot;TCP Congestion Control&quot;">RFC2581</a>], which in turn obsoleted [<a href="/doc/html/rfc2001" title="&quot;TCP Slow Start, Congestion Avoidance, Fast Retransmit, and Fast Recovery Algorithms&quot;">RFC2001</a>].
+
+   This document is organized as follows.  <a href="#section-2">Section 2</a> provides various
+   definitions that will be used throughout the document.  <a href="#section-3">Section 3</a>
+   provides a specification of the congestion control algorithms.
+   <a href="#section-4">Section 4</a> outlines concerns related to the congestion control
+   algorithms and finally, <a href="#section-5">section 5</a> outlines security considerations.
+
+
+
+<span class="grey">Allman, et al.              Standards Track                     [Page 2]</span></pre>
+<hr class='noprint'/><!--NewPage--><pre class='newpage'><span id="page-3" ></span>
+<span class="grey"><a href="/doc/html/rfc5681">RFC 5681</a>                 TCP Congestion Control           September 2009</span>
+
+
+   The key words &quot;MUST&quot;, &quot;MUST NOT&quot;, &quot;REQUIRED&quot;, &quot;SHALL&quot;, &quot;SHALL NOT&quot;,
+   &quot;SHOULD&quot;, &quot;SHOULD NOT&quot;, &quot;RECOMMENDED&quot;, &quot;MAY&quot;, and &quot;OPTIONAL&quot; in this
+   document are to be interpreted as described in [<a href="/doc/html/rfc2119" title="&quot;Key words for use in RFCs to Indicate Requirement Levels&quot;">RFC2119</a>].
+
+<span class="h2"><a class="selflink" id="section-2" href="#section-2">2</a>.  Definitions</span>
+
+   This section provides the definition of several terms that will be
+   used throughout the remainder of this document.
+
+   SEGMENT: A segment is ANY TCP/IP data or acknowledgment packet (or
+      both).
+
+   SENDER MAXIMUM SEGMENT SIZE (SMSS): The SMSS is the size of the
+      largest segment that the sender can transmit.  This value can be
+      based on the maximum transmission unit of the network, the path
+      MTU discovery [RFC1191, <a href="/doc/html/rfc4821">RFC4821</a>] algorithm, RMSS (see next item),
+      or other factors.  The size does not include the TCP/IP headers
+      and options.
+
+   RECEIVER MAXIMUM SEGMENT SIZE (RMSS): The RMSS is the size of the
+      largest segment the receiver is willing to accept.  This is the
+      value specified in the MSS option sent by the receiver during
+      connection startup.  Or, if the MSS option is not used, it is 536
+      bytes [<a href="/doc/html/rfc1122" title="&quot;Requirements for Internet Hosts - Communication Layers&quot;">RFC1122</a>].  The size does not include the TCP/IP headers and
+      options.
+
+   FULL-SIZED SEGMENT: A segment that contains the maximum number of
+      data bytes permitted (i.e., a segment containing SMSS bytes of
+      data).
+
+   RECEIVER WINDOW (rwnd): The most recently advertised receiver window.
+
+   CONGESTION WINDOW (cwnd): A TCP state variable that limits the amount
+      of data a TCP can send.  At any given time, a TCP MUST NOT send
+      data with a sequence number higher than the sum of the highest
+      acknowledged sequence number and the minimum of cwnd and rwnd.
+
+   INITIAL WINDOW (IW): The initial window is the size of the sender&#x27;s
+      congestion window after the three-way handshake is completed.
+
+   LOSS WINDOW (LW): The loss window is the size of the congestion
+      window after a TCP sender detects loss using its retransmission
+      timer.
+
+   RESTART WINDOW (RW): The restart window is the size of the congestion
+      window after a TCP restarts transmission after an idle period (if
+      the slow start algorithm is used; see <a href="#section-4.1">section 4.1</a> for more
+      discussion).
+
+
+
+<span class="grey">Allman, et al.              Standards Track                     [Page 3]</span></pre>
+<hr class='noprint'/><!--NewPage--><pre class='newpage'><span id="page-4" ></span>
+<span class="grey"><a href="/doc/html/rfc5681">RFC 5681</a>                 TCP Congestion Control           September 2009</span>
+
+
+   FLIGHT SIZE: The amount of data that has been sent but not yet
+      cumulatively acknowledged.
+
+   DUPLICATE ACKNOWLEDGMENT: An acknowledgment is considered a
+      &quot;duplicate&quot; in the following algorithms when (a) the receiver of
+      the ACK has outstanding data, (b) the incoming acknowledgment
+      carries no data, (c) the SYN and FIN bits are both off, (d) the
+      acknowledgment number is equal to the greatest acknowledgment
+      received on the given connection (TCP.UNA from [<a href="/doc/html/rfc793" title="&quot;Transmission Control Protocol&quot;">RFC793</a>]) and (e)
+      the advertised window in the incoming acknowledgment equals the
+      advertised window in the last incoming acknowledgment.
+
+      Alternatively, a TCP that utilizes selective acknowledgments
+      (SACKs) [RFC2018, <a href="/doc/html/rfc2883">RFC2883</a>] can leverage the SACK information to
+      determine when an incoming ACK is a &quot;duplicate&quot; (e.g., if the ACK
+      contains previously unknown SACK information).
+
+<span class="h2"><a class="selflink" id="section-3" href="#section-3">3</a>.  Congestion Control Algorithms</span>
+
+   This section defines the four congestion control algorithms: slow
+   start, congestion avoidance, fast retransmit, and fast recovery,
+   developed in [<a href="#ref-Jac88" title="&quot;Congestion Avoidance and Control&quot;">Jac88</a>] and [<a href="#ref-Jac90" title="&quot;Modified TCP Congestion Avoidance Algorithm&quot;">Jac90</a>].  In some situations, it may be
+   beneficial for a TCP sender to be more conservative than the
+   algorithms allow; however, a TCP MUST NOT be more aggressive than the
+   following algorithms allow (that is, MUST NOT send data when the
+   value of cwnd computed by the following algorithms would not allow
+   the data to be sent).
+
+   Also, note that the algorithms specified in this document work in
+   terms of using loss as the signal of congestion.  Explicit Congestion
+   Notification (ECN) could also be used as specified in [<a href="/doc/html/rfc3168" title="&quot;The Addition of Explicit Congestion Notification (ECN) to IP&quot;">RFC3168</a>].
+
+<span class="h3"><a class="selflink" id="section-3.1" href="#section-3.1">3.1</a>.  Slow Start and Congestion Avoidance</span>
+
+   The slow start and congestion avoidance algorithms MUST be used by a
+   TCP sender to control the amount of outstanding data being injected
+   into the network.  To implement these algorithms, two variables are
+   added to the TCP per-connection state.  The congestion window (cwnd)
+   is a sender-side limit on the amount of data the sender can transmit
+   into the network before receiving an acknowledgment (ACK), while the
+   receiver&#x27;s advertised window (rwnd) is a receiver-side limit on the
+   amount of outstanding data.  The minimum of cwnd and rwnd governs
+   data transmission.
+
+   Another state variable, the slow start threshold (ssthresh), is used
+   to determine whether the slow start or congestion avoidance algorithm
+   is used to control data transmission, as discussed below.
+
+
+
+
+<span class="grey">Allman, et al.              Standards Track                     [Page 4]</span></pre>
+<hr class='noprint'/><!--NewPage--><pre class='newpage'><span id="page-5" ></span>
+<span class="grey"><a href="/doc/html/rfc5681">RFC 5681</a>                 TCP Congestion Control           September 2009</span>
+
+
+   Beginning transmission into a network with unknown conditions
+   requires TCP to slowly probe the network to determine the available
+   capacity, in order to avoid congesting the network with an
+   inappropriately large burst of data.  The slow start algorithm is
+   used for this purpose at the beginning of a transfer, or after
+   repairing loss detected by the retransmission timer.  Slow start
+   additionally serves to start the &quot;ACK clock&quot; used by the TCP sender
+   to release data into the network in the slow start, congestion
+   avoidance, and loss recovery algorithms.
+
+   IW, the initial value of cwnd, MUST be set using the following
+   guidelines as an upper bound.
+
+   If SMSS &gt; 2190 bytes:
+       IW = 2 * SMSS bytes and MUST NOT be more than 2 segments
+   If (SMSS &gt; 1095 bytes) and (SMSS &lt;= 2190 bytes):
+       IW = 3 * SMSS bytes and MUST NOT be more than 3 segments
+   if SMSS &lt;= 1095 bytes:
+       IW = 4 * SMSS bytes and MUST NOT be more than 4 segments
+
+   As specified in [<a href="/doc/html/rfc3390" title="&quot;Increasing TCP&#x27;s Initial Window&quot;">RFC3390</a>], the SYN/ACK and the acknowledgment of the
+   SYN/ACK MUST NOT increase the size of the congestion window.
+   Further, if the SYN or SYN/ACK is lost, the initial window used by a
+   sender after a correctly transmitted SYN MUST be one segment
+   consisting of at most SMSS bytes.
+
+   A detailed rationale and discussion of the IW setting is provided in
+   [<a href="/doc/html/rfc3390" title="&quot;Increasing TCP&#x27;s Initial Window&quot;">RFC3390</a>].
+
+   When initial congestion windows of more than one segment are
+   implemented along with Path MTU Discovery [<a href="/doc/html/rfc1191" title="&quot;Path MTU discovery&quot;">RFC1191</a>], and the MSS
+   being used is found to be too large, the congestion window cwnd
+   SHOULD be reduced to prevent large bursts of smaller segments.
+   Specifically, cwnd SHOULD be reduced by the ratio of the old segment
+   size to the new segment size.
+
+   The initial value of ssthresh SHOULD be set arbitrarily high (e.g.,
+   to the size of the largest possible advertised window), but ssthresh
+   MUST be reduced in response to congestion.  Setting ssthresh as high
+   as possible allows the network conditions, rather than some arbitrary
+   host limit, to dictate the sending rate.  In cases where the end
+   systems have a solid understanding of the network path, more
+   carefully setting the initial ssthresh value may have merit (e.g.,
+   such that the end host does not create congestion along the path).
+
+
+
+
+
+
+
+<span class="grey">Allman, et al.              Standards Track                     [Page 5]</span></pre>
+<hr class='noprint'/><!--NewPage--><pre class='newpage'><span id="page-6" ></span>
+<span class="grey"><a href="/doc/html/rfc5681">RFC 5681</a>                 TCP Congestion Control           September 2009</span>
+
+
+   The slow start algorithm is used when cwnd &lt; ssthresh, while the
+   congestion avoidance algorithm is used when cwnd &gt; ssthresh.  When
+   cwnd and ssthresh are equal, the sender may use either slow start or
+   congestion avoidance.
+
+   During slow start, a TCP increments cwnd by at most SMSS bytes for
+   each ACK received that cumulatively acknowledges new data.  Slow
+   start ends when cwnd exceeds ssthresh (or, optionally, when it
+   reaches it, as noted above) or when congestion is observed.  While
+   traditionally TCP implementations have increased cwnd by precisely
+   SMSS bytes upon receipt of an ACK covering new data, we RECOMMEND
+   that TCP implementations increase cwnd, per:
+
+      cwnd += min (N, SMSS)                      (2)
+
+   where N is the number of previously unacknowledged bytes acknowledged
+   in the incoming ACK.  This adjustment is part of Appropriate Byte
+   Counting [<a href="/doc/html/rfc3465" title="&quot;TCP Congestion Control with Appropriate Byte Counting (ABC)&quot;">RFC3465</a>] and provides robustness against misbehaving
+   receivers that may attempt to induce a sender to artificially inflate
+   cwnd using a mechanism known as &quot;ACK Division&quot; [<a href="#ref-SCWA99" title="&quot;TCP Congestion Control With a Misbehaving Receiver&quot;">SCWA99</a>].  ACK
+   Division consists of a receiver sending multiple ACKs for a single
+   TCP data segment, each acknowledging only a portion of its data.  A
+   TCP that increments cwnd by SMSS for each such ACK will
+   inappropriately inflate the amount of data injected into the network.
+
+   During congestion avoidance, cwnd is incremented by roughly 1 full-
+   sized segment per round-trip time (RTT).  Congestion avoidance
+   continues until congestion is detected.  The basic guidelines for
+   incrementing cwnd during congestion avoidance are:
+
+      * MAY increment cwnd by SMSS bytes
+
+      * SHOULD increment cwnd per equation (2) once per RTT
+
+      * MUST NOT increment cwnd by more than SMSS bytes
+
+   We note that [<a href="/doc/html/rfc3465" title="&quot;TCP Congestion Control with Appropriate Byte Counting (ABC)&quot;">RFC3465</a>] allows for cwnd increases of more than SMSS
+   bytes for incoming acknowledgments during slow start on an
+   experimental basis; however, such behavior is not allowed as part of
+   the standard.
+
+   The RECOMMENDED way to increase cwnd during congestion avoidance is
+   to count the number of bytes that have been acknowledged by ACKs for
+   new data.  (A drawback of this implementation is that it requires
+   maintaining an additional state variable.)  When the number of bytes
+   acknowledged reaches cwnd, then cwnd can be incremented by up to SMSS
+   bytes.  Note that during congestion avoidance, cwnd MUST NOT be
+
+
+
+
+<span class="grey">Allman, et al.              Standards Track                     [Page 6]</span></pre>
+<hr class='noprint'/><!--NewPage--><pre class='newpage'><span id="page-7" ></span>
+<span class="grey"><a href="/doc/html/rfc5681">RFC 5681</a>                 TCP Congestion Control           September 2009</span>
+
+
+   increased by more than SMSS bytes per RTT.  This method both allows
+   TCPs to increase cwnd by one segment per RTT in the face of delayed
+   ACKs and provides robustness against ACK Division attacks.
+
+   Another common formula that a TCP MAY use to update cwnd during
+   congestion avoidance is given in equation (3):
+
+      cwnd += SMSS*SMSS/cwnd                     (3)
+
+   This adjustment is executed on every incoming ACK that acknowledges
+   new data.  Equation (3) provides an acceptable approximation to the
+   underlying principle of increasing cwnd by 1 full-sized segment per
+   RTT.  (Note that for a connection in which the receiver is
+   acknowledging every-other packet, (3) is less aggressive than allowed
+   -- roughly increasing cwnd every second RTT.)
+
+   Implementation Note: Since integer arithmetic is usually used in TCP
+   implementations, the formula given in equation (3) can fail to
+   increase cwnd when the congestion window is larger than SMSS*SMSS.
+   If the above formula yields 0, the result SHOULD be rounded up to 1
+   byte.
+
+   Implementation Note: Older implementations have an additional
+   additive constant on the right-hand side of equation (3).  This is
+   incorrect and can actually lead to diminished performance [<a href="/doc/html/rfc2525" title="&quot;Known TCP Implementation Problems&quot;">RFC2525</a>].
+
+   Implementation Note: Some implementations maintain cwnd in units of
+   bytes, while others in units of full-sized segments.  The latter will
+   find equation (3) difficult to use, and may prefer to use the
+   counting approach discussed in the previous paragraph.
+
+   When a TCP sender detects segment loss using the retransmission timer
+   and the given segment has not yet been resent by way of the
+   retransmission timer, the value of ssthresh MUST be set to no more
+   than the value given in equation (4):
+
+      ssthresh = max (FlightSize / 2, 2*SMSS)            (4)
+
+   where, as discussed above, FlightSize is the amount of outstanding
+   data in the network.
+
+   On the other hand, when a TCP sender detects segment loss using the
+   retransmission timer and the given segment has already been
+   retransmitted by way of the retransmission timer at least once, the
+   value of ssthresh is held constant.
+
+
+
+
+
+
+<span class="grey">Allman, et al.              Standards Track                     [Page 7]</span></pre>
+<hr class='noprint'/><!--NewPage--><pre class='newpage'><span id="page-8" ></span>
+<span class="grey"><a href="/doc/html/rfc5681">RFC 5681</a>                 TCP Congestion Control           September 2009</span>
+
+
+   Implementation Note: An easy mistake to make is to simply use cwnd,
+   rather than FlightSize, which in some implementations may
+   incidentally increase well beyond rwnd.
+
+   Furthermore, upon a timeout (as specified in [<a href="/doc/html/rfc2988" title="&quot;Computing TCP&#x27;s Retransmission Timer&quot;">RFC2988</a>]) cwnd MUST be
+   set to no more than the loss window, LW, which equals 1 full-sized
+   segment (regardless of the value of IW).  Therefore, after
+   retransmitting the dropped segment the TCP sender uses the slow start
+   algorithm to increase the window from 1 full-sized segment to the new
+   value of ssthresh, at which point congestion avoidance again takes
+   over.
+
+   As shown in [<a href="#ref-FF96" title="&quot;Simulation-based Comparisons of Tahoe, Reno and SACK TCP&quot;">FF96</a>] and [<a href="/doc/html/rfc3782" title="&quot;The NewReno Modification to TCP&#x27;s Fast Recovery Algorithm&quot;">RFC3782</a>], slow-start-based loss recovery
+   after a timeout can cause spurious retransmissions that trigger
+   duplicate acknowledgments.  The reaction to the arrival of these
+   duplicate ACKs in TCP implementations varies widely.  This document
+   does not specify how to treat such acknowledgments, but does note
+   this as an area that may benefit from additional attention,
+   experimentation and specification.
+
+<span class="h3"><a class="selflink" id="section-3.2" href="#section-3.2">3.2</a>.  Fast Retransmit/Fast Recovery</span>
+
+   A TCP receiver SHOULD send an immediate duplicate ACK when an out-
+   of-order segment arrives.  The purpose of this ACK is to inform the
+   sender that a segment was received out-of-order and which sequence
+   number is expected.  From the sender&#x27;s perspective, duplicate ACKs
+   can be caused by a number of network problems.  First, they can be
+   caused by dropped segments.  In this case, all segments after the
+   dropped segment will trigger duplicate ACKs until the loss is
+   repaired.  Second, duplicate ACKs can be caused by the re-ordering of
+   data segments by the network (not a rare event along some network
+   paths [<a href="#ref-Pax97" title="&quot;End-to-End Internet Packet Dynamics&quot;">Pax97</a>]).  Finally, duplicate ACKs can be caused by replication
+   of ACK or data segments by the network.  In addition, a TCP receiver
+   SHOULD send an immediate ACK when the incoming segment fills in all
+   or part of a gap in the sequence space.  This will generate more
+   timely information for a sender recovering from a loss through a
+   retransmission timeout, a fast retransmit, or an advanced loss
+   recovery algorithm, as outlined in <a href="#section-4.3">section 4.3</a>.
+
+   The TCP sender SHOULD use the &quot;fast retransmit&quot; algorithm to detect
+   and repair loss, based on incoming duplicate ACKs.  The fast
+   retransmit algorithm uses the arrival of 3 duplicate ACKs (as defined
+   in <a href="#section-2">section 2</a>, without any intervening ACKs which move SND.UNA) as an
+   indication that a segment has been lost.  After receiving 3 duplicate
+   ACKs, TCP performs a retransmission of what appears to be the missing
+   segment, without waiting for the retransmission timer to expire.
+
+
+
+
+
+<span class="grey">Allman, et al.              Standards Track                     [Page 8]</span></pre>
+<hr class='noprint'/><!--NewPage--><pre class='newpage'><span id="page-9" ></span>
+<span class="grey"><a href="/doc/html/rfc5681">RFC 5681</a>                 TCP Congestion Control           September 2009</span>
+
+
+   After the fast retransmit algorithm sends what appears to be the
+   missing segment, the &quot;fast recovery&quot; algorithm governs the
+   transmission of new data until a non-duplicate ACK arrives.  The
+   reason for not performing slow start is that the receipt of the
+   duplicate ACKs not only indicates that a segment has been lost, but
+   also that segments are most likely leaving the network (although a
+   massive segment duplication by the network can invalidate this
+   conclusion).  In other words, since the receiver can only generate a
+   duplicate ACK when a segment has arrived, that segment has left the
+   network and is in the receiver&#x27;s buffer, so we know it is no longer
+   consuming network resources.  Furthermore, since the ACK &quot;clock&quot;
+   [<a href="#ref-Jac88" title="&quot;Congestion Avoidance and Control&quot;">Jac88</a>] is preserved, the TCP sender can continue to transmit new
+   segments (although transmission must continue using a reduced cwnd,
+   since loss is an indication of congestion).
+
+   The fast retransmit and fast recovery algorithms are implemented
+   together as follows.
+
+   1.  On the first and second duplicate ACKs received at a sender, a
+       TCP SHOULD send a segment of previously unsent data per [<a href="/doc/html/rfc3042" title="&quot;Enhancing TCP&#x27;s Loss Recovery Using Limited Transmit&quot;">RFC3042</a>]
+       provided that the receiver&#x27;s advertised window allows, the total
+       FlightSize would remain less than or equal to cwnd plus 2*SMSS,
+       and that new data is available for transmission.  Further, the
+       TCP sender MUST NOT change cwnd to reflect these two segments
+       [<a href="/doc/html/rfc3042" title="&quot;Enhancing TCP&#x27;s Loss Recovery Using Limited Transmit&quot;">RFC3042</a>].  Note that a sender using SACK [<a href="/doc/html/rfc2018" title="&quot;TCP Selective Acknowledgment Options&quot;">RFC2018</a>] MUST NOT send
+       new data unless the incoming duplicate acknowledgment contains
+       new SACK information.
+
+   2.  When the third duplicate ACK is received, a TCP MUST set ssthresh
+       to no more than the value given in equation (4).  When [<a href="/doc/html/rfc3042" title="&quot;Enhancing TCP&#x27;s Loss Recovery Using Limited Transmit&quot;">RFC3042</a>]
+       is in use, additional data sent in limited transmit MUST NOT be
+       included in this calculation.
+
+   3.  The lost segment starting at SND.UNA MUST be retransmitted and
+       cwnd set to ssthresh plus 3*SMSS.  This artificially &quot;inflates&quot;
+       the congestion window by the number of segments (three) that have
+       left the network and which the receiver has buffered.
+
+   4.  For each additional duplicate ACK received (after the third),
+       cwnd MUST be incremented by SMSS.  This artificially inflates the
+       congestion window in order to reflect the additional segment that
+       has left the network.
+
+       Note: [<a href="#ref-SCWA99" title="&quot;TCP Congestion Control With a Misbehaving Receiver&quot;">SCWA99</a>] discusses a receiver-based attack whereby many
+       bogus duplicate ACKs are sent to the data sender in order to
+       artificially inflate cwnd and cause a higher than appropriate
+
+
+
+
+
+<span class="grey">Allman, et al.              Standards Track                     [Page 9]</span></pre>
+<hr class='noprint'/><!--NewPage--><pre class='newpage'><span id="page-10" ></span>
+<span class="grey"><a href="/doc/html/rfc5681">RFC 5681</a>                 TCP Congestion Control           September 2009</span>
+
+
+       sending rate to be used.  A TCP MAY therefore limit the number of
+       times cwnd is artificially inflated during loss recovery to the
+       number of outstanding segments (or, an approximation thereof).
+
+       Note: When an advanced loss recovery mechanism (such as outlined
+       in <a href="#section-4.3">section 4.3</a>) is not in use, this increase in FlightSize can
+       cause equation (4) to slightly inflate cwnd and ssthresh, as some
+       of the segments between SND.UNA and SND.NXT are assumed to have
+       left the network but are still reflected in FlightSize.
+
+   5.  When previously unsent data is available and the new value of
+       cwnd and the receiver&#x27;s advertised window allow, a TCP SHOULD
+       send 1*SMSS bytes of previously unsent data.
+
+   6.  When the next ACK arrives that acknowledges previously
+       unacknowledged data, a TCP MUST set cwnd to ssthresh (the value
+       set in step 2).  This is termed &quot;deflating&quot; the window.
+
+       This ACK should be the acknowledgment elicited by the
+       retransmission from step 3, one RTT after the retransmission
+       (though it may arrive sooner in the presence of significant out-
+       of-order delivery of data segments at the receiver).
+       Additionally, this ACK should acknowledge all the intermediate
+       segments sent between the lost segment and the receipt of the
+       third duplicate ACK, if none of these were lost.
+
+   Note: This algorithm is known to generally not recover efficiently
+   from multiple losses in a single flight of packets [<a href="#ref-FF96" title="&quot;Simulation-based Comparisons of Tahoe, Reno and SACK TCP&quot;">FF96</a>].  <a href="#section-4.3">Section</a>
+   <a href="#section-4.3">4.3</a> below addresses such cases.
+
+<span class="h2"><a class="selflink" id="section-4" href="#section-4">4</a>.  Additional Considerations</span>
+
+<span class="h3"><a class="selflink" id="section-4.1" href="#section-4.1">4.1</a>.  Restarting Idle Connections</span>
+
+   A known problem with the TCP congestion control algorithms described
+   above is that they allow a potentially inappropriate burst of traffic
+   to be transmitted after TCP has been idle for a relatively long
+   period of time.  After an idle period, TCP cannot use the ACK clock
+   to strobe new segments into the network, as all the ACKs have drained
+   from the network.  Therefore, as specified above, TCP can potentially
+   send a cwnd-size line-rate burst into the network after an idle
+   period.  In addition, changing network conditions may have rendered
+   TCP&#x27;s notion of the available end-to-end network capacity between two
+   endpoints, as estimated by cwnd, inaccurate during the course of a
+   long idle period.
+
+
+
+
+
+
+<span class="grey">Allman, et al.              Standards Track                    [Page 10]</span></pre>
+<hr class='noprint'/><!--NewPage--><pre class='newpage'><span id="page-11" ></span>
+<span class="grey"><a href="/doc/html/rfc5681">RFC 5681</a>                 TCP Congestion Control           September 2009</span>
+
+
+   [<a id="ref-Jac88">Jac88</a>] recommends that a TCP use slow start to restart transmission
+   after a relatively long idle period.  Slow start serves to restart
+   the ACK clock, just as it does at the beginning of a transfer.  This
+   mechanism has been widely deployed in the following manner.  When TCP
+   has not received a segment for more than one retransmission timeout,
+   cwnd is reduced to the value of the restart window (RW) before
+   transmission begins.
+
+   For the purposes of this standard, we define RW = min(IW,cwnd).
+
+   Using the last time a segment was received to determine whether or
+   not to decrease cwnd can fail to deflate cwnd in the common case of
+   persistent HTTP connections [<a href="#ref-HTH98" title="&quot;Issues in TCP Slow-Start Restart After Idle&quot;">HTH98</a>].  In this case, a Web server
+   receives a request before transmitting data to the Web client.  The
+   reception of the request makes the test for an idle connection fail,
+   and allows the TCP to begin transmission with a possibly
+   inappropriately large cwnd.
+
+   Therefore, a TCP SHOULD set cwnd to no more than RW before beginning
+   transmission if the TCP has not sent data in an interval exceeding
+   the retransmission timeout.
+
+<span class="h3"><a class="selflink" id="section-4.2" href="#section-4.2">4.2</a>.  Generating Acknowledgments</span>
+
+   The delayed ACK algorithm specified in [<a href="/doc/html/rfc1122" title="&quot;Requirements for Internet Hosts - Communication Layers&quot;">RFC1122</a>] SHOULD be used by a
+   TCP receiver.  When using delayed ACKs, a TCP receiver MUST NOT
+   excessively delay acknowledgments.  Specifically, an ACK SHOULD be
+   generated for at least every second full-sized segment, and MUST be
+   generated within 500 ms of the arrival of the first unacknowledged
+   packet.
+
+   The requirement that an ACK &quot;SHOULD&quot; be generated for at least every
+   second full-sized segment is listed in [<a href="/doc/html/rfc1122" title="&quot;Requirements for Internet Hosts - Communication Layers&quot;">RFC1122</a>] in one place as a
+   SHOULD and another as a MUST.  Here we unambiguously state it is a
+   SHOULD.  We also emphasize that this is a SHOULD, meaning that an
+   implementor should indeed only deviate from this requirement after
+   careful consideration of the implications.  See the discussion of
+   &quot;Stretch ACK violation&quot; in [<a href="/doc/html/rfc2525" title="&quot;Known TCP Implementation Problems&quot;">RFC2525</a>] and the references therein for a
+   discussion of the possible performance problems with generating ACKs
+   less frequently than every second full-sized segment.
+
+   In some cases, the sender and receiver may not agree on what
+   constitutes a full-sized segment.  An implementation is deemed to
+   comply with this requirement if it sends at least one acknowledgment
+   every time it receives 2*RMSS bytes of new data from the sender,
+   where RMSS is the Maximum Segment Size specified by the receiver to
+   the sender (or the default value of 536 bytes, per [<a href="/doc/html/rfc1122" title="&quot;Requirements for Internet Hosts - Communication Layers&quot;">RFC1122</a>], if the
+   receiver does not specify an MSS option during connection
+
+
+
+<span class="grey">Allman, et al.              Standards Track                    [Page 11]</span></pre>
+<hr class='noprint'/><!--NewPage--><pre class='newpage'><span id="page-12" ></span>
+<span class="grey"><a href="/doc/html/rfc5681">RFC 5681</a>                 TCP Congestion Control           September 2009</span>
+
+
+   establishment).  The sender may be forced to use a segment size less
+   than RMSS due to the maximum transmission unit (MTU), the path MTU
+   discovery algorithm or other factors.  For instance, consider the
+   case when the receiver announces an RMSS of X bytes but the sender
+   ends up using a segment size of Y bytes (Y &lt; X) due to path MTU
+   discovery (or the sender&#x27;s MTU size).  The receiver will generate
+   stretch ACKs if it waits for 2*X bytes to arrive before an ACK is
+   sent.  Clearly this will take more than 2 segments of size Y bytes.
+   Therefore, while a specific algorithm is not defined, it is desirable
+   for receivers to attempt to prevent this situation, for example, by
+   acknowledging at least every second segment, regardless of size.
+   Finally, we repeat that an ACK MUST NOT be delayed for more than 500
+   ms waiting on a second full-sized segment to arrive.
+
+   Out-of-order data segments SHOULD be acknowledged immediately, in
+   order to accelerate loss recovery.  To trigger the fast retransmit
+   algorithm, the receiver SHOULD send an immediate duplicate ACK when
+   it receives a data segment above a gap in the sequence space.  To
+   provide feedback to senders recovering from losses, the receiver
+   SHOULD send an immediate ACK when it receives a data segment that
+   fills in all or part of a gap in the sequence space.
+
+   A TCP receiver MUST NOT generate more than one ACK for every incoming
+   segment, other than to update the offered window as the receiving
+   application consumes new data (see [<a href="/doc/html/rfc813" title="&quot;Window and Acknowledgement Strategy in TCP&quot;">RFC813</a>] and page 42 of [<a href="/doc/html/rfc793" title="&quot;Transmission Control Protocol&quot;">RFC793</a>]).
+
+<span class="h3"><a class="selflink" id="section-4.3" href="#section-4.3">4.3</a>.  Loss Recovery Mechanisms</span>
+
+   A number of loss recovery algorithms that augment fast retransmit and
+   fast recovery have been suggested by TCP researchers and specified in
+   the RFC series.  While some of these algorithms are based on the TCP
+   selective acknowledgment (SACK) option [<a href="/doc/html/rfc2018" title="&quot;TCP Selective Acknowledgment Options&quot;">RFC2018</a>], such as [<a href="#ref-FF96" title="&quot;Simulation-based Comparisons of Tahoe, Reno and SACK TCP&quot;">FF96</a>],
+   [<a href="#ref-MM96a" title="&quot;Forward Acknowledgment: Refining TCP Congestion Control&quot;">MM96a</a>], [<a href="#ref-MM96b" title="&quot;TCP Rate-Halving with Bounding Parameters&quot;">MM96b</a>], and [<a href="/doc/html/rfc3517" title="&quot;A Conservative Selective Acknowledgment (SACK)-based Loss Recovery Algorithm for TCP&quot;">RFC3517</a>], others do not require SACKs, such as
+   [<a href="#ref-Hoe96" title="&quot;Improving the Start-up Behavior of a Congestion Control Scheme for TCP&quot;">Hoe96</a>], [<a href="#ref-FF96" title="&quot;Simulation-based Comparisons of Tahoe, Reno and SACK TCP&quot;">FF96</a>], and [<a href="/doc/html/rfc3782" title="&quot;The NewReno Modification to TCP&#x27;s Fast Recovery Algorithm&quot;">RFC3782</a>].  The non-SACK algorithms use &quot;partial
+   acknowledgments&quot; (ACKs that cover previously unacknowledged data, but
+   not all the data outstanding when loss was detected) to trigger
+   retransmissions.  While this document does not standardize any of the
+   specific algorithms that may improve fast retransmit/fast recovery,
+   these enhanced algorithms are implicitly allowed, as long as they
+   follow the general principles of the basic four algorithms outlined
+   above.
+
+   That is, when the first loss in a window of data is detected,
+   ssthresh MUST be set to no more than the value given by equation (4).
+   Second, until all lost segments in the window of data in question are
+   repaired, the number of segments transmitted in each RTT MUST be no
+   more than half the number of outstanding segments when the loss was
+   detected.  Finally, after all loss in the given window of segments
+
+
+
+<span class="grey">Allman, et al.              Standards Track                    [Page 12]</span></pre>
+<hr class='noprint'/><!--NewPage--><pre class='newpage'><span id="page-13" ></span>
+<span class="grey"><a href="/doc/html/rfc5681">RFC 5681</a>                 TCP Congestion Control           September 2009</span>
+
+
+   has been successfully retransmitted, cwnd MUST be set to no more than
+   ssthresh and congestion avoidance MUST be used to further increase
+   cwnd.  Loss in two successive windows of data, or the loss of a
+   retransmission, should be taken as two indications of congestion and,
+   therefore, cwnd (and ssthresh) MUST be lowered twice in this case.
+
+   We RECOMMEND that TCP implementors employ some form of advanced loss
+   recovery that can cope with multiple losses in a window of data.  The
+   algorithms detailed in [<a href="/doc/html/rfc3782" title="&quot;The NewReno Modification to TCP&#x27;s Fast Recovery Algorithm&quot;">RFC3782</a>] and [<a href="/doc/html/rfc3517" title="&quot;A Conservative Selective Acknowledgment (SACK)-based Loss Recovery Algorithm for TCP&quot;">RFC3517</a>] conform to the general
+   principles outlined above.  We note that while these are not the only
+   two algorithms that conform to the above general principles these two
+   algorithms have been vetted by the community and are currently on the
+   Standards Track.
+
+<span class="h2"><a class="selflink" id="section-5" href="#section-5">5</a>.  Security Considerations</span>
+
+   This document requires a TCP to diminish its sending rate in the
+   presence of retransmission timeouts and the arrival of duplicate
+   acknowledgments.  An attacker can therefore impair the performance of
+   a TCP connection by either causing data packets or their
+   acknowledgments to be lost, or by forging excessive duplicate
+   acknowledgments.
+
+   In response to the ACK division attack outlined in [<a href="#ref-SCWA99" title="&quot;TCP Congestion Control With a Misbehaving Receiver&quot;">SCWA99</a>], this
+   document RECOMMENDS increasing the congestion window based on the
+   number of bytes newly acknowledged in each arriving ACK rather than
+   by a particular constant on each arriving ACK (as outlined in <a href="#section-3.1">section</a>
+   <a href="#section-3.1">3.1</a>).
+
+   The Internet, to a considerable degree, relies on the correct
+   implementation of these algorithms in order to preserve network
+   stability and avoid congestion collapse.  An attacker could cause TCP
+   endpoints to respond more aggressively in the face of congestion by
+   forging excessive duplicate acknowledgments or excessive
+   acknowledgments for new data.  Conceivably, such an attack could
+   drive a portion of the network into congestion collapse.
+
+<span class="h2"><a class="selflink" id="section-6" href="#section-6">6</a>.  Changes between <a href="/doc/html/rfc2001">RFC 2001</a> and <a href="/doc/html/rfc2581">RFC 2581</a></span>
+
+   [<a id="ref-RFC2001">RFC2001</a>] was extensively rewritten editorially and it is not
+   feasible to itemize the list of changes between [<a href="/doc/html/rfc2001" title="&quot;TCP Slow Start, Congestion Avoidance, Fast Retransmit, and Fast Recovery Algorithms&quot;">RFC2001</a>] and
+   [<a href="/doc/html/rfc2581" title="&quot;TCP Congestion Control&quot;">RFC2581</a>].  The intention of [<a href="/doc/html/rfc2581" title="&quot;TCP Congestion Control&quot;">RFC2581</a>] was to not change any of the
+   recommendations given in [<a href="/doc/html/rfc2001" title="&quot;TCP Slow Start, Congestion Avoidance, Fast Retransmit, and Fast Recovery Algorithms&quot;">RFC2001</a>], but to further clarify cases that
+   were not discussed in detail in [<a href="/doc/html/rfc2001" title="&quot;TCP Slow Start, Congestion Avoidance, Fast Retransmit, and Fast Recovery Algorithms&quot;">RFC2001</a>].  Specifically, [<a href="/doc/html/rfc2581" title="&quot;TCP Congestion Control&quot;">RFC2581</a>]
+   suggested what TCP connections should do after a relatively long idle
+   period, as well as specified and clarified some of the issues
+
+
+
+
+
+<span class="grey">Allman, et al.              Standards Track                    [Page 13]</span></pre>
+<hr class='noprint'/><!--NewPage--><pre class='newpage'><span id="page-14" ></span>
+<span class="grey"><a href="/doc/html/rfc5681">RFC 5681</a>                 TCP Congestion Control           September 2009</span>
+
+
+   pertaining to TCP ACK generation.  Finally, the allowable upper bound
+   for the initial congestion window was raised from one to two
+   segments.
+
+<span class="h2"><a class="selflink" id="section-7" href="#section-7">7</a>.  Changes Relative to <a href="/doc/html/rfc2581">RFC 2581</a></span>
+
+   A specific definition for &quot;duplicate acknowledgment&quot; has been added,
+   based on the definition used by BSD TCP.
+
+   The document now notes that what to do with duplicate ACKs after the
+   retransmission timer has fired is future work and explicitly
+   unspecified in this document.
+
+   The initial window requirements were changed to allow Larger Initial
+   Windows as standardized in [<a href="/doc/html/rfc3390" title="&quot;Increasing TCP&#x27;s Initial Window&quot;">RFC3390</a>].  Additionally, the steps to
+   take when an initial window is discovered to be too large due to Path
+   MTU Discovery [<a href="/doc/html/rfc1191" title="&quot;Path MTU discovery&quot;">RFC1191</a>] are detailed.
+
+   The recommended initial value for ssthresh has been changed to say
+   that it SHOULD be arbitrarily high, where it was previously MAY.
+   This is to provide additional guidance to implementors on the matter.
+
+   During slow start, the usage of Appropriate Byte Counting [<a href="/doc/html/rfc3465" title="&quot;TCP Congestion Control with Appropriate Byte Counting (ABC)&quot;">RFC3465</a>]
+   with L=1*SMSS is explicitly recommended.  The method of increasing
+   cwnd given in [<a href="/doc/html/rfc2581" title="&quot;TCP Congestion Control&quot;">RFC2581</a>] is still explicitly allowed.  Byte counting
+   during congestion avoidance is also recommended, while the method
+   from [<a href="/doc/html/rfc2581" title="&quot;TCP Congestion Control&quot;">RFC2581</a>] and other safe methods are still allowed.
+
+   The treatment of ssthresh on retransmission timeout was clarified.
+   In particular, ssthresh must be set to half the FlightSize on the
+   first retransmission of a given segment and then is held constant on
+   subsequent retransmissions of the same segment.
+
+   The description of fast retransmit and fast recovery has been
+   clarified, and the use of Limited Transmit [<a href="/doc/html/rfc3042" title="&quot;Enhancing TCP&#x27;s Loss Recovery Using Limited Transmit&quot;">RFC3042</a>] is now
+   recommended.
+
+   TCPs now MAY limit the number of duplicate ACKs that artificially
+   inflate cwnd during loss recovery to the number of segments
+   outstanding to avoid the duplicate ACK spoofing attack described in
+   [<a href="#ref-SCWA99" title="&quot;TCP Congestion Control With a Misbehaving Receiver&quot;">SCWA99</a>].
+
+   The restart window has been changed to min(IW,cwnd) from IW.  This
+   behavior was described as &quot;experimental&quot; in [<a href="/doc/html/rfc2581" title="&quot;TCP Congestion Control&quot;">RFC2581</a>].
+
+   It is now recommended that TCP implementors implement an advanced
+   loss recovery algorithm conforming to the principles outlined in this
+   document.
+
+
+
+<span class="grey">Allman, et al.              Standards Track                    [Page 14]</span></pre>
+<hr class='noprint'/><!--NewPage--><pre class='newpage'><span id="page-15" ></span>
+<span class="grey"><a href="/doc/html/rfc5681">RFC 5681</a>                 TCP Congestion Control           September 2009</span>
+
+
+   The security considerations have been updated to discuss ACK division
+   and recommend byte counting as a counter to this attack.
+
+<span class="h2"><a class="selflink" id="section-8" href="#section-8">8</a>.  Acknowledgments</span>
+
+   The core algorithms we describe were developed by Van Jacobson
+   [<a href="#ref-Jac88" title="&quot;Congestion Avoidance and Control&quot;">Jac88</a>, <a href="#ref-Jac90" title="&quot;Modified TCP Congestion Avoidance Algorithm&quot;">Jac90</a>].  In addition, Limited Transmit [<a href="/doc/html/rfc3042" title="&quot;Enhancing TCP&#x27;s Loss Recovery Using Limited Transmit&quot;">RFC3042</a>] was
+   developed in conjunction with Hari Balakrishnan and Sally Floyd.  The
+   initial congestion window size specified in this document is a result
+   of work with Sally Floyd and Craig Partridge [RFC2414, <a href="/doc/html/rfc3390">RFC3390</a>].
+
+   W. Richard (&quot;Rich&quot;) Stevens wrote the first version of this document
+   [<a href="/doc/html/rfc2001" title="&quot;TCP Slow Start, Congestion Avoidance, Fast Retransmit, and Fast Recovery Algorithms&quot;">RFC2001</a>] and co-authored the second version [<a href="/doc/html/rfc2581" title="&quot;TCP Congestion Control&quot;">RFC2581</a>].  This present
+   version much benefits from his clarity and thoughtfulness of
+   description, and we are grateful for Rich&#x27;s contributions in
+   elucidating TCP congestion control, as well as in more broadly
+   helping us understand numerous issues relating to networking.
+
+   We wish to emphasize that the shortcomings and mistakes of this
+   document are solely the responsibility of the current authors.
+
+   Some of the text from this document is taken from &quot;TCP/IP
+   Illustrated, Volume 1: The Protocols&quot; by W. Richard Stevens
+   (Addison-Wesley, 1994) and &quot;TCP/IP Illustrated, Volume 2: The
+   Implementation&quot; by Gary R. Wright and W. Richard Stevens (Addison-
+   Wesley, 1995).  This material is used with the permission of
+   Addison-Wesley.
+
+   Anil Agarwal, Steve Arden, Neal Cardwell, Noritoshi Demizu, Gorry
+   Fairhurst, Kevin Fall, John Heffner, Alfred Hoenes, Sally Floyd,
+   Reiner Ludwig, Matt Mathis, Craig Partridge, and Joe Touch
+   contributed a number of helpful suggestions.
+
+<span class="h2"><a class="selflink" id="section-9" href="#section-9">9</a>.  References</span>
+
+<span class="h3"><a class="selflink" id="section-9.1" href="#section-9.1">9.1</a>.  Normative References</span>
+
+   [<a id="ref-RFC793">RFC793</a>]  Postel, J., &quot;Transmission Control Protocol&quot;, STD 7, <a href="/doc/html/rfc793">RFC</a>
+             <a href="/doc/html/rfc793">793</a>, September 1981.
+
+   [<a id="ref-RFC1122">RFC1122</a>] Braden, R., Ed., &quot;Requirements for Internet Hosts -
+             Communication Layers&quot;, STD 3, <a href="/doc/html/rfc1122">RFC 1122</a>, October 1989.
+
+   [<a id="ref-RFC1191">RFC1191</a>] Mogul, J. and S. Deering, &quot;Path MTU discovery&quot;, <a href="/doc/html/rfc1191">RFC 1191</a>,
+             November 1990.
+
+   [<a id="ref-RFC2119">RFC2119</a>] Bradner, S., &quot;Key words for use in RFCs to Indicate
+             Requirement Levels&quot;, <a href="/doc/html/bcp14">BCP 14</a>, <a href="/doc/html/rfc2119">RFC 2119</a>, March 1997.
+
+
+
+<span class="grey">Allman, et al.              Standards Track                    [Page 15]</span></pre>
+<hr class='noprint'/><!--NewPage--><pre class='newpage'><span id="page-16" ></span>
+<span class="grey"><a href="/doc/html/rfc5681">RFC 5681</a>                 TCP Congestion Control           September 2009</span>
+
+
+<span class="h3"><a class="selflink" id="section-9.2" href="#section-9.2">9.2</a>.  Informative References</span>
+
+   [<a id="ref-CJ89">CJ89</a>]    Chiu, D. and R. Jain, &quot;Analysis of the Increase/Decrease
+             Algorithms for Congestion Avoidance in Computer Networks&quot;,
+             Journal of Computer Networks and ISDN Systems, vol. 17, no.
+             1, pp. 1-14, June 1989.
+
+   [<a id="ref-FF96">FF96</a>]    Fall, K. and S. Floyd, &quot;Simulation-based Comparisons of
+             Tahoe, Reno and SACK TCP&quot;, Computer Communication Review,
+             July 1996, <a href="ftp://ftp.ee.lbl.gov/papers/sacks.ps.Z">ftp://ftp.ee.lbl.gov/papers/sacks.ps.Z</a>.
+
+   [<a id="ref-Hoe96">Hoe96</a>]   Hoe, J., &quot;Improving the Start-up Behavior of a Congestion
+             Control Scheme for TCP&quot;, In ACM SIGCOMM, August 1996.
+
+   [<a id="ref-HTH98">HTH98</a>]   Hughes, A., Touch, J., and J. Heidemann, &quot;Issues in TCP
+             Slow-Start Restart After Idle&quot;, Work in Progress, March
+             1998.
+
+   [<a id="ref-Jac88">Jac88</a>]   Jacobson, V., &quot;Congestion Avoidance and Control&quot;, Computer
+             Communication Review, vol. 18, no. 4, pp. 314-329, Aug.
+             1988.  <a href="ftp://ftp.ee.lbl.gov/papers/congavoid.ps.Z">ftp://ftp.ee.lbl.gov/papers/congavoid.ps.Z</a>.
+
+   [<a id="ref-Jac90">Jac90</a>]   Jacobson, V., &quot;Modified TCP Congestion Avoidance
+             Algorithm&quot;, end2end-interest mailing list, April 30, 1990.
+             <a href="ftp://ftp.isi.edu/end2end/end2end-interest-1990.mail">ftp://ftp.isi.edu/end2end/end2end-interest-1990.mail</a>.
+
+   [<a id="ref-MM96a">MM96a</a>]   Mathis, M. and J. Mahdavi, &quot;Forward Acknowledgment:
+             Refining TCP Congestion Control&quot;, Proceedings of
+             SIGCOMM&#x27;96, August, 1996, Stanford, CA.  Available from
+             <a href="http://www.psc.edu/networking/papers/papers.html">http://www.psc.edu/networking/papers/papers.html</a>
+
+   [<a id="ref-MM96b">MM96b</a>]   Mathis, M. and J. Mahdavi, &quot;TCP Rate-Halving with Bounding
+             Parameters&quot;, Technical report.  Available from
+             <a href="http://www.psc.edu/networking/papers/FACKnotes/current">http://www.psc.edu/networking/papers/FACKnotes/current</a>.
+
+   [<a id="ref-Pax97">Pax97</a>]   Paxson, V., &quot;End-to-End Internet Packet Dynamics&quot;,
+             Proceedings of SIGCOMM &#x27;97, Cannes, France, Sep. 1997.
+
+   [<a id="ref-RFC813">RFC813</a>]  Clark, D., &quot;Window and Acknowledgement Strategy in TCP&quot;,
+             <a href="/doc/html/rfc813">RFC 813</a>, July 1982.
+
+   [<a id="ref-RFC2001">RFC2001</a>] Stevens, W., &quot;TCP Slow Start, Congestion Avoidance, Fast
+             Retransmit, and Fast Recovery Algorithms&quot;, <a href="/doc/html/rfc2001">RFC 2001</a>,
+             January 1997.
+
+   [<a id="ref-RFC2018">RFC2018</a>] Mathis, M., Mahdavi, J., Floyd, S., and A. Romanow, &quot;TCP
+             Selective Acknowledgment Options&quot;, <a href="/doc/html/rfc2018">RFC 2018</a>, October 1996.
+
+
+
+
+<span class="grey">Allman, et al.              Standards Track                    [Page 16]</span></pre>
+<hr class='noprint'/><!--NewPage--><pre class='newpage'><span id="page-17" ></span>
+<span class="grey"><a href="/doc/html/rfc5681">RFC 5681</a>                 TCP Congestion Control           September 2009</span>
+
+
+   [<a id="ref-RFC2414">RFC2414</a>] Allman, M., Floyd, S., and C. Partridge, &quot;Increasing TCP&#x27;s
+             Initial Window&quot;, <a href="/doc/html/rfc2414">RFC 2414</a>, September 1998.
+
+   [<a id="ref-RFC2525">RFC2525</a>] Paxson, V., Allman, M., Dawson, S., Fenner, W., Griner, J.,
+             Heavens, I., Lahey, K., Semke, J., and B. Volz, &quot;Known TCP
+             Implementation Problems&quot;, <a href="/doc/html/rfc2525">RFC 2525</a>, March 1999.
+
+   [<a id="ref-RFC2581">RFC2581</a>] Allman, M., Paxson, V., and W. Stevens, &quot;TCP Congestion
+             Control&quot;, <a href="/doc/html/rfc2581">RFC 2581</a>, April 1999.
+
+   [<a id="ref-RFC2883">RFC2883</a>] Floyd, S., Mahdavi, J., Mathis, M., and M. Podolsky, &quot;An
+             Extension to the Selective Acknowledgement (SACK) Option
+             for TCP&quot;, <a href="/doc/html/rfc2883">RFC 2883</a>, July 2000.
+
+   [<a id="ref-RFC2988">RFC2988</a>] Paxson, V. and M. Allman, &quot;Computing TCP&#x27;s Retransmission
+             Timer&quot;, <a href="/doc/html/rfc2988">RFC 2988</a>, November 2000.
+
+   [<a id="ref-RFC3042">RFC3042</a>] Allman, M., Balakrishnan, H., and S. Floyd, &quot;Enhancing
+             TCP&#x27;s Loss Recovery Using Limited Transmit&quot;, <a href="/doc/html/rfc3042">RFC 3042</a>,
+             January 2001.
+
+   [<a id="ref-RFC3168">RFC3168</a>] Ramakrishnan, K., Floyd, S., and D. Black, &quot;The Addition of
+             Explicit Congestion Notification (ECN) to IP&quot;, <a href="/doc/html/rfc3168">RFC 3168</a>,
+             September 2001.
+
+   [<a id="ref-RFC3390">RFC3390</a>] Allman, M., Floyd, S., and C. Partridge, &quot;Increasing TCP&#x27;s
+             Initial Window&quot;, <a href="/doc/html/rfc3390">RFC 3390</a>, October 2002.
+
+   [<a id="ref-RFC3465">RFC3465</a>] Allman, M., &quot;TCP Congestion Control with Appropriate Byte
+             Counting (ABC)&quot;, <a href="/doc/html/rfc3465">RFC 3465</a>, February 2003.
+
+   [<a id="ref-RFC3517">RFC3517</a>] Blanton, E., Allman, M., Fall, K., and L. Wang, &quot;A
+             Conservative Selective Acknowledgment (SACK)-based Loss
+             Recovery Algorithm for TCP&quot;, <a href="/doc/html/rfc3517">RFC 3517</a>, April 2003.
+
+   [<a id="ref-RFC3782">RFC3782</a>] Floyd, S., Henderson, T., and A. Gurtov, &quot;The NewReno
+             Modification to TCP&#x27;s Fast Recovery Algorithm&quot;, <a href="/doc/html/rfc3782">RFC 3782</a>,
+             April 2004.
+
+   [<a id="ref-RFC4821">RFC4821</a>] Mathis, M. and J. Heffner, &quot;Packetization Layer Path MTU
+             Discovery&quot;, <a href="/doc/html/rfc4821">RFC 4821</a>, March 2007.
+
+   [<a id="ref-SCWA99">SCWA99</a>]  Savage, S., Cardwell, N., Wetherall, D., and T. Anderson,
+             &quot;TCP Congestion Control With a Misbehaving Receiver&quot;, ACM
+             Computer Communication Review, 29(5), October 1999.
+
+   [<a id="ref-Ste94">Ste94</a>]   Stevens, W., &quot;TCP/IP Illustrated, Volume 1: The Protocols&quot;,
+             Addison-Wesley, 1994.
+
+
+
+<span class="grey">Allman, et al.              Standards Track                    [Page 17]</span></pre>
+<hr class='noprint'/><!--NewPage--><pre class='newpage'><span id="page-18" ></span>
+<span class="grey"><a href="/doc/html/rfc5681">RFC 5681</a>                 TCP Congestion Control           September 2009</span>
+
+
+   [<a id="ref-WS95">WS95</a>]    Wright, G. and W. Stevens, &quot;TCP/IP Illustrated, Volume 2:
+             The Implementation&quot;, Addison-Wesley, 1995.
+
+Authors&#x27; Addresses
+
+   Mark Allman
+   International Computer Science Institute (ICSI)
+   1947 Center Street
+   Suite 600
+   Berkeley, CA 94704-1198
+   Phone: +1 440 235 1792
+   EMail: mallman@icir.org
+   <a href="http://www.icir.org/mallman/">http://www.icir.org/mallman/</a>
+
+
+   Vern Paxson
+   International Computer Science Institute (ICSI)
+   1947 Center Street
+   Suite 600
+   Berkeley, CA 94704-1198
+   Phone: +1 510/642-4274 x302
+   EMail: vern@icir.org
+   <a href="http://www.icir.org/vern/">http://www.icir.org/vern/</a>
+
+
+   Ethan Blanton
+   Purdue University Computer Sciences
+   305 North University Street
+   West Lafayette, IN  47907
+   EMail: eblanton@cs.purdue.edu
+   <a href="http://www.cs.purdue.edu/homes/eblanton/">http://www.cs.purdue.edu/homes/eblanton/</a>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Allman, et al.              Standards Track                    [Page 18]
+</pre>
+    </div>
+
+  </div>
+
+
+        
+	  </div>
+
+	
+
+	
+
+    </div>
+
+      
+    <script type="text/javascript"><!--
+    var legend_html = "Colour legend:<br /> \
+     <table> \
+        <tr><td>Unknown:</td>                   <td><span class='cplate bgwhite'>&nbsp;&nbsp;&nbsp;&nbsp;</span></td></tr> \
+        <tr><td>Draft:</td>                     <td><span class='cplate bgred'>&nbsp;&nbsp;&nbsp;&nbsp;</span></td></tr> \
+        <tr><td>Informational:</td>             <td><span class='cplate bgorange'>&nbsp;&nbsp;&nbsp;&nbsp;</span></td></tr> \
+        <tr><td>Experimental:</td>              <td><span class='cplate bgyellow'>&nbsp;&nbsp;&nbsp;&nbsp;</span></td></tr> \
+        <tr><td>Best Common Practice:</td>      <td><span class='cplate bgmagenta'>&nbsp;&nbsp;&nbsp;&nbsp;</span></td></tr> \
+        <tr><td>Proposed Standard:</td>         <td><span class='cplate bgblue'>&nbsp;&nbsp;&nbsp;&nbsp;</span></td></tr> \
+        <tr><td>Draft Standard (old designation):</td> <td><span class='cplate bgcyan'>&nbsp;&nbsp;&nbsp;&nbsp;</span></td></tr> \
+        <tr><td>Internet Standard:</td>         <td><span class='cplate bggreen'>&nbsp;&nbsp;&nbsp;&nbsp;</span></td></tr> \
+        <tr><td>Historic:</td>                  <td><span class='cplate bggrey'>&nbsp;&nbsp;&nbsp;&nbsp;</span></td></tr> \
+        <tr><td>Obsolete:</td>                  <td><span class='cplate bgbrown'>&nbsp;&nbsp;&nbsp;&nbsp;</span></td></tr> \
+    </table>";
+    function showLegend() {
+        var elem = document.getElementById('legend');
+        elem.innerHTML = legend_html
+        elem.style.visibility='visible';
+    }
+    function hideLegend() {
+        var elem = document.getElementById('legend');
+        elem.style.visibility='hidden';
+        elem.innerHTML = "";
+    }
+    // -->
+    </script>
+
+  </body>
+</html>

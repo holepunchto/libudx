@@ -1,0 +1,675 @@
+<!DOCTYPE html> 
+
+<!-- template: /a/www/ietf-datatracker/web/ietf/templates/doc/htmlized_base.html -->
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <title>
+  
+    rfc2988
+  
+</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+
+  @media only screen 
+    and (min-width: 992px)
+    and (max-width: 1199px) {
+      body { font-size: 14pt; }
+            div.content { width: 96ex; margin: 0 auto; }
+        }
+  @media only screen 
+    and (min-width: 768px)
+    and (max-width: 991px) {
+            body { font-size: 14pt; }
+            div.content { width: 96ex; margin: 0 auto; }
+        }
+  @media only screen 
+    and (min-width: 480px)
+    and (max-width: 767px) {
+            body { font-size: 11pt; }
+            div.content { width: 96ex; margin: 0 auto; }
+        }
+  @media only screen 
+    and (max-width: 479px) {
+            body { font-size: 8pt; }
+            div.content { width: 96ex; margin: 0 auto; }
+        }
+  @media only screen 
+    and (min-device-width : 375px) 
+    and (max-device-width : 667px) {
+            body { font-size: 9.5pt; }
+            div.content { width: 96ex; margin: 0; }
+        }
+  @media only screen 
+    and (min-device-width: 1200px) {
+            body { font-size: 10pt; margin: 0 4em; }
+            div.content { width: 96ex; margin: 0; }
+        }
+        h1, h2, h3, h4, h5, h6, .h1, .h2, .h3, .h4, .h5, .h6 {
+      font-weight: bold;
+            /* line-height: 0pt; */
+            display: inline;
+            white-space: pre;
+            font-family: monospace;
+            font-size: 1em;
+      font-weight: bold;
+        }
+        pre {
+            font-size: 1em;
+            margin-top: 0px;
+            margin-bottom: 0px;
+        }
+  .pre {
+      white-space: pre;
+      font-family: monospace;
+  }
+  .header{
+      font-weight: bold;
+  }
+        .newpage {
+            page-break-before: always;
+        }
+        .invisible {
+            text-decoration: none;
+            color: white;
+        }
+        @media print {
+            body {
+                margin-top: 5em;
+                font-family: monospace;
+                font-size: 10.5pt;
+            }
+            h1, h2, h3, h4, h5, h6 {
+                font-size: 1em;
+            }
+        
+            a:link, a:visited {
+                color: inherit;
+                text-decoration: none;
+            }
+            .noprint {
+                display: none;
+            }
+        }
+  @media screen {
+      .grey, .grey a:link, .grey a:visited {
+    color: #777;
+      }
+            .meta-info {
+                background-color: #EEE;
+            }
+            .top {
+                border-top: 7px solid #EEE;
+            }
+            .pad {
+                padding-top: 7px;
+                line-height: 24px;
+                padding-bottom: 4px;
+            }
+            .bgwhite  { background-color: white; }
+            .bgred    { background-color: #F44; }
+            .bggrey   { background-color: #666; }
+            .bgbrown  { background-color: #840; }            
+            .bgorange { background-color: #FA0; }
+            .bgyellow { background-color: #EE0; }
+            .bgmagenta{ background-color: #F4F; }
+            .bgblue   { background-color: #66F; }
+            .bgcyan   { background-color: #4DD; }
+            .bggreen  { background-color: #4F4; }
+
+            .legend   { font-size: 90%; }
+            .cplate   { font-size: 70%; border: solid grey 1px; }
+  }
+    
+     
+
+.bgwhite  { background-color: white; }
+.bgred    { background-color: #F44; }
+.bggrey   { background-color: #666; }
+.bgbrown  { background-color: #840; }            
+.bgorange { background-color: #FA0; }
+.bgyellow { background-color: #EE0; }
+.bgmagenta{ background-color: #F4F; }
+.bgblue   { background-color: #66F; }
+.bgcyan   { background-color: #4DD; }
+.bggreen  { background-color: #4F4; }
+
+.draftcontent { margin-top:0px !important;}
+
+
+    </style>
+
+    
+  <link rel="alternate" type="application/atom+xml" title="Document changes" href="/feed/document-changes/draft-paxson-tcp-rto/">
+  <meta name="description" content="Computing TCP&#39;s Retransmission Timer (RFC )">
+
+
+    
+    <link rel="shortcut icon" href="https://www.ietf.org/lib/dt/7.40.0/ietf/images/ietf-icon-blue3.png">
+    
+    <link rel="apple-touch-icon" href="https://www.ietf.org/lib/dt/7.40.0/ietf/images/apple-touch-icon.png">
+  </head>
+
+  <body style="padding-top: 0;">
+
+	  <div class="content" id="content">
+        
+  <!-- template: /a/www/ietf-datatracker/web/ietf/templates/doc/document_html.html -->
+ 
+  <div class="rfcmarkup">
+    <div class="noprint" style="height: 6px;">
+      <div onmouseover="this.style.cursor='pointer';"
+         onclick="showLegend();"
+         onmouseout="hideLegend()"
+         style="height: 6px; min-height: 6px; width: 96ex; position: absolute; margin-top:0; "
+         class="meta-info bgbrown"
+         title="Click for colour legend." >&nbsp;</div>
+      <div id="legend"
+           class="meta-info noprint pre legend"
+           style="position:absolute; top: 4px; left: 4ex; visibility:hidden; background-color: white; padding: 4px 9px 5px 7px; border: solid #345 1px; "
+           onmouseover="showLegend();"
+           onmouseout="hideLegend();">
+      </div>
+    </div>
+
+    
+      <div class="noprint">
+	 <pre class="pre meta-info">[<a href="https://datatracker.ietf.org" title="Document search and retrieval page">Search</a>] [<a href="https://www.rfc-editor.org/rfc/rfc2988.txt" title="Plaintext version of this document">txt</a>|<a href="https://www.rfc-editor.org/rfc/rfc2988.html" title="HTML version of this document, from XML2RFC">html</a>|<a href="https://www.rfc-editor.org/rfc/pdfrfc/rfc2988.txt.pdf" title="PDF version of this document">pdf</a>|<a href="https://www.rfc-editor.org/rfc/inline-errata/rfc2988.html">with errata</a>|<a href="/doc/rfc2988/bibtex" title="BibTex entry for this document">bibtex</a>] [<a href="/doc/rfc2988/" title="Datatracker information for this document">Tracker</a>] [<a href="/group/tsvwg/" title="The working group handling this document">WG</a>] [<a href="mailto:draft-paxson-tcp-rto@ietf.org?subject=draft-paxson-tcp-rto" title="Send email to the document authors">Email</a>] [<a href="https://www.ietf.org/rfcdiff?difftype=--hwdiff&url2=draft-paxson-tcp-rto-01.txt" title="Inline diff (wdiff)">Diff1</a>] [<a href="https://www.ietf.org/rfcdiff?url2=draft-paxson-tcp-rto-01.txt" title="Side-by-side diff">Diff2</a>] [<a href="https://www.ietf.org/tools/idnits?url=https://www.ietf.org/archive/id/draft-paxson-tcp-rto-01.txt" title="Run an idnits check of this document">Nits</a>]
+
+From: <a href="/doc/html/draft-paxson-tcp-rto-01">draft-paxson-tcp-rto-01</a>                          Proposed Standard
+Obsoleted by: <a href="/doc/html/rfc6298">6298</a>                                          <a class="text-warning" href="https://www.rfc-editor.org/errata_search.php?rfc=2988&amp;rec_status=0">Errata exist</a></pre>
+      </div>
+    
+
+    <div class="draftcontent">
+    <pre>Network Working Group                                          V. Paxson
+Request for Comments: 2988                                         ACIRI
+Category: Standards Track                                      M. Allman
+                                                            NASA GRC/BBN
+                                                           November 2000
+
+
+                  <span class="h1">Computing TCP&#x27;s Retransmission Timer</span>
+
+Status of this Memo
+
+   This document specifies an Internet standards track protocol for the
+   Internet community, and requests discussion and suggestions for
+   improvements.  Please refer to the current edition of the &quot;Internet
+   Official Protocol Standards&quot; (STD 1) for the standardization state
+   and status of this protocol.  Distribution of this memo is unlimited.
+
+Copyright Notice
+
+   Copyright (C) The Internet Society (2000).  All Rights Reserved.
+
+Abstract
+
+   This document defines the standard algorithm that Transmission
+   Control Protocol (TCP) senders are required to use to compute and
+   manage their retransmission timer.  It expands on the discussion in
+   <a href="/doc/html/rfc1122#section-4.2.3.1">section&nbsp;4.2.3.1 of RFC 1122</a> and upgrades the requirement of
+   supporting the algorithm from a SHOULD to a MUST.
+
+<span class="h2"><a class="selflink" id="section-1" href="#section-1">1</a>   Introduction</span>
+
+   The Transmission Control Protocol (TCP) [<a href="#ref-Pos81" title="&quot;Transmission Control Protocol&quot;">Pos81</a>] uses a retransmission
+   timer to ensure data delivery in the absence of any feedback from the
+   remote data receiver.  The duration of this timer is referred to as
+   RTO (retransmission timeout).  <a href="/doc/html/rfc1122">RFC 1122</a> [<a href="#ref-Bra89" title="&quot;Requirements for Internet Hosts -- Communication Layers&quot;">Bra89</a>] specifies that the
+   RTO should be calculated as outlined in [<a href="#ref-Jac88" title="&quot;Congestion Avoidance and Control&quot;">Jac88</a>].
+
+   This document codifies the algorithm for setting the RTO.  In
+   addition, this document expands on the discussion in <a href="/doc/html/rfc1122#section-4.2.3.1">section&nbsp;4.2.3.1
+   of RFC 1122</a> and upgrades the requirement of supporting the algorithm
+   from a SHOULD to a MUST.  <a href="/doc/html/rfc2581">RFC 2581</a> [<a href="#ref-APS99" title="&quot;TCP Congestion Control&quot;">APS99</a>] outlines the algorithm TCP
+   uses to begin sending after the RTO expires and a retransmission is
+   sent.  This document does not alter the behavior outlined in <a href="/doc/html/rfc2581">RFC 2581</a>
+   [<a href="#ref-APS99" title="&quot;TCP Congestion Control&quot;">APS99</a>].
+
+
+
+
+
+
+
+<span class="grey">Paxson &amp; Allman             Standards Track                     [Page 1]</span></pre>
+<hr class='noprint'/><!--NewPage--><pre class='newpage'><span id="page-2" ></span>
+<span class="grey"><a href="/doc/html/rfc2988">RFC 2988</a>          Computing TCP&#x27;s Retransmission Timer     November 2000</span>
+
+
+   In some situations it may be beneficial for a TCP sender to be more
+   conservative than the algorithms detailed in this document allow.
+   However, a TCP MUST NOT be more aggressive than the following
+   algorithms allow.
+
+   The key words &quot;MUST&quot;, &quot;MUST NOT&quot;, &quot;REQUIRED&quot;, &quot;SHALL&quot;, &quot;SHALL NOT&quot;,
+   &quot;SHOULD&quot;, &quot;SHOULD NOT&quot;, &quot;RECOMMENDED&quot;, &quot;MAY&quot;, and &quot;OPTIONAL&quot; in this
+   document are to be interpreted as described in [<a href="#ref-Bra97" title="&quot;Key words for use in RFCs to Indicate Requirement Levels&quot;">Bra97</a>].
+
+<span class="h2"><a class="selflink" id="section-2" href="#section-2">2</a>   The Basic Algorithm</span>
+
+   To compute the current RTO, a TCP sender maintains two state
+   variables, SRTT (smoothed round-trip time) and RTTVAR (round-trip
+   time variation).  In addition, we assume a clock granularity of G
+   seconds.
+
+   The rules governing the computation of SRTT, RTTVAR, and RTO are as
+   follows:
+
+   (2.1) Until a round-trip time (RTT) measurement has been made for a
+         segment sent between the sender and receiver, the sender SHOULD
+         set RTO &lt;- 3 seconds (per <a href="/doc/html/rfc1122">RFC 1122</a> [<a href="#ref-Bra89" title="&quot;Requirements for Internet Hosts -- Communication Layers&quot;">Bra89</a>]), though the
+         &quot;backing off&quot; on repeated retransmission discussed in (5.5)
+         still applies.
+
+            Note that some implementations may use a &quot;heartbeat&quot; timer
+            that in fact yield a value between 2.5 seconds and 3
+            seconds.  Accordingly, a lower bound of 2.5 seconds is also
+            acceptable, providing that the timer will never expire
+            faster than 2.5 seconds.  Implementations using a heartbeat
+            timer with a granularity of G SHOULD not set the timer below
+            2.5 + G seconds.
+
+   (2.2) When the first RTT measurement R is made, the host MUST set
+
+            SRTT &lt;- R
+            RTTVAR &lt;- R/2
+            RTO &lt;- SRTT + max (G, K*RTTVAR)
+
+         where K = 4.
+
+   (2.3) When a subsequent RTT measurement R&#x27; is made, a host MUST set
+
+            RTTVAR &lt;- (1 - beta) * RTTVAR + beta * |SRTT - R&#x27;|
+            SRTT &lt;- (1 - alpha) * SRTT + alpha * R&#x27;
+
+
+
+
+
+
+<span class="grey">Paxson &amp; Allman             Standards Track                     [Page 2]</span></pre>
+<hr class='noprint'/><!--NewPage--><pre class='newpage'><span id="page-3" ></span>
+<span class="grey"><a href="/doc/html/rfc2988">RFC 2988</a>          Computing TCP&#x27;s Retransmission Timer     November 2000</span>
+
+
+         The value of SRTT used in the update to RTTVAR is its value
+         before updating SRTT itself using the second assignment.  That
+         is, updating RTTVAR and SRTT MUST be computed in the above
+         order.
+
+         The above SHOULD be computed using alpha=1/8 and beta=1/4 (as
+         suggested in [<a href="#ref-JK88" title="&quot;Congestion Avoidance and Control&quot;">JK88</a>]).
+
+         After the computation, a host MUST update
+         RTO &lt;- SRTT + max (G, K*RTTVAR)
+
+   (2.4) Whenever RTO is computed, if it is less than 1 second then the
+         RTO SHOULD be rounded up to 1 second.
+
+         Traditionally, TCP implementations use coarse grain clocks to
+         measure the RTT and trigger the RTO, which imposes a large
+         minimum value on the RTO.  Research suggests that a large
+         minimum RTO is needed to keep TCP conservative and avoid
+         spurious retransmissions [<a href="#ref-AP99" title="&quot;On Estimating End-to-End Network Path Properties&quot;">AP99</a>].  Therefore, this
+         specification requires a large minimum RTO as a conservative
+         approach, while at the same time acknowledging that at some
+         future point, research may show that a smaller minimum RTO is
+         acceptable or superior.
+
+   (2.5) A maximum value MAY be placed on RTO provided it is at least 60
+         seconds.
+
+<span class="h2"><a class="selflink" id="section-3" href="#section-3">3</a>   Taking RTT Samples</span>
+
+   TCP MUST use Karn&#x27;s algorithm [<a href="#ref-KP87" title="&quot;Improving Round-Trip Time Estimates in Reliable Transport Protocols&quot;">KP87</a>] for taking RTT samples.  That
+   is, RTT samples MUST NOT be made using segments that were
+   retransmitted (and thus for which it is ambiguous whether the reply
+   was for the first instance of the packet or a later instance).  The
+   only case when TCP can safely take RTT samples from retransmitted
+   segments is when the TCP timestamp option [JBB92] is employed, since
+   the timestamp option removes the ambiguity regarding which instance
+   of the data segment triggered the acknowledgment.
+
+   Traditionally, TCP implementations have taken one RTT measurement at
+   a time (typically once per RTT).  However, when using the timestamp
+   option, each ACK can be used as an RTT sample.  <a href="/doc/html/rfc1323">RFC 1323</a> [JBB92]
+   suggests that TCP connections utilizing large congestion windows
+   should take many RTT samples per window of data to avoid aliasing
+   effects in the estimated RTT.  A TCP implementation MUST take at
+   least one RTT measurement per RTT (unless that is not possible per
+   Karn&#x27;s algorithm).
+
+
+
+
+
+<span class="grey">Paxson &amp; Allman             Standards Track                     [Page 3]</span></pre>
+<hr class='noprint'/><!--NewPage--><pre class='newpage'><span id="page-4" ></span>
+<span class="grey"><a href="/doc/html/rfc2988">RFC 2988</a>          Computing TCP&#x27;s Retransmission Timer     November 2000</span>
+
+
+   For fairly modest congestion window sizes research suggests that
+   timing each segment does not lead to a better RTT estimator [<a href="#ref-AP99" title="&quot;On Estimating End-to-End Network Path Properties&quot;">AP99</a>].
+   Additionally, when multiple samples are taken per RTT the alpha and
+   beta defined in <a href="#section-2">section 2</a> may keep an inadequate RTT history.  A
+   method for changing these constants is currently an open research
+   question.
+
+<span class="h2"><a class="selflink" id="section-4" href="#section-4">4</a>   Clock Granularity</span>
+
+   There is no requirement for the clock granularity G used for
+   computing RTT measurements and the different state variables.
+   However, if the K*RTTVAR term in the RTO calculation equals zero,
+   the variance term MUST be rounded to G seconds (i.e., use the
+   equation given in step 2.3).
+
+       RTO &lt;- SRTT + max (G, K*RTTVAR)
+
+   Experience has shown that finer clock granularities (&lt;= 100 msec)
+   perform somewhat better than more coarse granularities.
+
+   Note that [<a href="#ref-Jac88" title="&quot;Congestion Avoidance and Control&quot;">Jac88</a>] outlines several clever tricks that can be used to
+   obtain better precision from coarse granularity timers.  These
+   changes are widely implemented in current TCP implementations.
+
+<span class="h2"><a class="selflink" id="section-5" href="#section-5">5</a>   Managing the RTO Timer</span>
+
+   An implementation MUST manage the retransmission timer(s) in such a
+   way that a segment is never retransmitted too early, i.e. less than
+   one RTO after the previous transmission of that segment.
+
+   The following is the RECOMMENDED algorithm for managing the
+   retransmission timer:
+
+   (5.1) Every time a packet containing data is sent (including a
+         retransmission), if the timer is not running, start it running
+         so that it will expire after RTO seconds (for the current value
+         of RTO).
+
+   (5.2) When all outstanding data has been acknowledged, turn off the
+         retransmission timer.
+
+   (5.3) When an ACK is received that acknowledges new data, restart the
+         retransmission timer so that it will expire after RTO seconds
+         (for the current value of RTO).
+
+
+
+
+
+
+
+<span class="grey">Paxson &amp; Allman             Standards Track                     [Page 4]</span></pre>
+<hr class='noprint'/><!--NewPage--><pre class='newpage'><span id="page-5" ></span>
+<span class="grey"><a href="/doc/html/rfc2988">RFC 2988</a>          Computing TCP&#x27;s Retransmission Timer     November 2000</span>
+
+
+   When the retransmission timer expires, do the following:
+
+   (5.4) Retransmit the earliest segment that has not been acknowledged
+         by the TCP receiver.
+
+   (5.5) The host MUST set RTO &lt;- RTO * 2 (&quot;back off the timer&quot;).  The
+         maximum value discussed in (2.5) above may be used to provide an
+         upper bound to this doubling operation.
+
+   (5.6) Start the retransmission timer, such that it expires after RTO
+         seconds (for the value of RTO after the doubling operation
+         outlined in 5.5).
+
+   Note that after retransmitting, once a new RTT measurement is
+   obtained (which can only happen when new data has been sent and
+   acknowledged), the computations outlined in <a href="#section-2">section 2</a> are performed,
+   including the computation of RTO, which may result in &quot;collapsing&quot;
+   RTO back down after it has been subject to exponential backoff
+   (rule 5.5).
+
+   Note that a TCP implementation MAY clear SRTT and RTTVAR after
+   backing off the timer multiple times as it is likely that the
+   current SRTT and RTTVAR are bogus in this situation.  Once SRTT and
+   RTTVAR are cleared they should be initialized with the next RTT
+   sample taken per (2.2) rather than using (2.3).
+
+<span class="h2"><a class="selflink" id="section-6" href="#section-6">6</a>   Security Considerations</span>
+
+   This document requires a TCP to wait for a given interval before
+   retransmitting an unacknowledged segment.  An attacker could cause a
+   TCP sender to compute a large value of RTO by adding delay to a
+   timed packet&#x27;s latency, or that of its acknowledgment.  However,
+   the ability to add delay to a packet&#x27;s latency often coincides with
+   the ability to cause the packet to be lost, so it is difficult to
+   see what an attacker might gain from such an attack that could cause
+   more damage than simply discarding some of the TCP connection&#x27;s
+   packets.
+
+   The Internet to a considerable degree relies on the correct
+   implementation of the RTO algorithm (as well as those described in
+   <a href="/doc/html/rfc2581">RFC 2581</a>) in order to preserve network stability and avoid
+   congestion collapse.  An attacker could cause TCP endpoints to
+   respond more aggressively in the face of congestion by forging
+   acknowledgments for segments before the receiver has actually
+   received the data, thus lowering RTO to an unsafe value.  But to do
+   so requires spoofing the acknowledgments correctly, which is
+   difficult unless the attacker can monitor traffic along the path
+   between the sender and the receiver.  In addition, even if the
+
+
+
+<span class="grey">Paxson &amp; Allman             Standards Track                     [Page 5]</span></pre>
+<hr class='noprint'/><!--NewPage--><pre class='newpage'><span id="page-6" ></span>
+<span class="grey"><a href="/doc/html/rfc2988">RFC 2988</a>          Computing TCP&#x27;s Retransmission Timer     November 2000</span>
+
+
+   attacker can cause the sender&#x27;s RTO to reach too small a value, it
+   appears the attacker cannot leverage this into much of an attack
+   (compared to the other damage they can do if they can spoof packets
+   belonging to the connection), since the sending TCP will still back
+   off its timer in the face of an incorrectly transmitted packet&#x27;s
+   loss due to actual congestion.
+
+Acknowledgments
+
+   The RTO algorithm described in this memo was originated by Van
+   Jacobson in [<a href="#ref-Jac88" title="&quot;Congestion Avoidance and Control&quot;">Jac88</a>].
+
+References
+
+   [<a id="ref-AP99">AP99</a>]  Allman, M. and V. Paxson, &quot;On Estimating End-to-End Network
+           Path Properties&quot;, SIGCOMM 99.
+
+   [<a id="ref-APS99">APS99</a>] Allman, M., Paxson V. and W. Stevens, &quot;TCP Congestion
+           Control&quot;, <a href="/doc/html/rfc2581">RFC 2581</a>, April 1999.
+
+   [<a id="ref-Bra89">Bra89</a>] Braden, R., &quot;Requirements for Internet Hosts --
+           Communication Layers&quot;, STD 3, <a href="/doc/html/rfc1122">RFC 1122</a>, October 1989.
+
+   [<a id="ref-Bra97">Bra97</a>] Bradner, S., &quot;Key words for use in RFCs to Indicate
+           Requirement Levels&quot;, <a href="/doc/html/bcp14">BCP 14</a>, <a href="/doc/html/rfc2119">RFC 2119</a>, March 1997.
+
+   [<a id="ref-Jac88">Jac88</a>] Jacobson, V., &quot;Congestion Avoidance and Control&quot;, Computer
+           Communication Review, vol. 18, no. 4, pp. 314-329, Aug.  1988.
+
+   [<a id="ref-JK88">JK88</a>]  Jacobson, V. and M. Karels, &quot;Congestion Avoidance and
+           Control&quot;, <a href="ftp://ftp.ee.lbl.gov/papers/congavoid.ps.Z">ftp://ftp.ee.lbl.gov/papers/congavoid.ps.Z</a>.
+
+   [<a id="ref-KP87">KP87</a>]  Karn, P. and C. Partridge, &quot;Improving Round-Trip Time
+           Estimates in Reliable Transport Protocols&quot;, SIGCOMM 87.
+
+   [<a id="ref-Pos81">Pos81</a>] Postel, J., &quot;Transmission Control Protocol&quot;, STD 7, <a href="/doc/html/rfc793">RFC 793</a>,
+           September 1981.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<span class="grey">Paxson &amp; Allman             Standards Track                     [Page 6]</span></pre>
+<hr class='noprint'/><!--NewPage--><pre class='newpage'><span id="page-7" ></span>
+<span class="grey"><a href="/doc/html/rfc2988">RFC 2988</a>          Computing TCP&#x27;s Retransmission Timer     November 2000</span>
+
+
+Author&#x27;s Addresses
+
+   Vern Paxson
+   ACIRI / ICSI
+   1947 Center Street
+   Suite 600
+   Berkeley, CA 94704-1198
+
+   Phone: 510-666-2882
+   Fax:   510-643-7684
+   EMail: vern@aciri.org
+   <a href="http://www.aciri.org/vern/">http://www.aciri.org/vern/</a>
+
+
+   Mark Allman
+   NASA Glenn Research Center/BBN Technologies
+   Lewis Field
+   21000 Brookpark Rd.  MS 54-2
+   Cleveland, OH  44135
+
+   Phone: 216-433-6586
+   Fax:   216-433-8705
+   EMail: mallman@grc.nasa.gov
+   <a href="http://roland.grc.nasa.gov/~mallman">http://roland.grc.nasa.gov/~mallman</a>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<span class="grey">Paxson &amp; Allman             Standards Track                     [Page 7]</span></pre>
+<hr class='noprint'/><!--NewPage--><pre class='newpage'><span id="page-8" ></span>
+<span class="grey"><a href="/doc/html/rfc2988">RFC 2988</a>          Computing TCP&#x27;s Retransmission Timer     November 2000</span>
+
+
+Full Copyright Statement
+
+   Copyright (C) The Internet Society (2000).  All Rights Reserved.
+
+   This document and translations of it may be copied and furnished to
+   others, and derivative works that comment on or otherwise explain it
+   or assist in its implementation may be prepared, copied, published
+   and distributed, in whole or in part, without restriction of any
+   kind, provided that the above copyright notice and this paragraph are
+   included on all such copies and derivative works.  However, this
+   document itself may not be modified in any way, such as by removing
+   the copyright notice or references to the Internet Society or other
+   Internet organizations, except as needed for the purpose of
+   developing Internet standards in which case the procedures for
+   copyrights defined in the Internet Standards process must be
+   followed, or as required to translate it into languages other than
+   English.
+
+   The limited permissions granted above are perpetual and will not be
+   revoked by the Internet Society or its successors or assigns.
+
+   This document and the information contained herein is provided on an
+   &quot;AS IS&quot; basis and THE INTERNET SOCIETY AND THE INTERNET ENGINEERING
+   TASK FORCE DISCLAIMS ALL WARRANTIES, EXPRESS OR IMPLIED, INCLUDING
+   BUT NOT LIMITED TO ANY WARRANTY THAT THE USE OF THE INFORMATION
+   HEREIN WILL NOT INFRINGE ANY RIGHTS OR ANY IMPLIED WARRANTIES OF
+   MERCHANTABILITY OR FITNESS FOR A PARTICULAR PURPOSE.
+
+Acknowledgement
+
+   Funding for the RFC Editor function is currently provided by the
+   Internet Society.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Paxson &amp; Allman             Standards Track                     [Page 8]
+</pre>
+    </div>
+
+  </div>
+
+
+        
+	  </div>
+
+	
+
+	
+
+    </div>
+
+      
+    <script type="text/javascript"><!--
+    var legend_html = "Colour legend:<br /> \
+     <table> \
+        <tr><td>Unknown:</td>                   <td><span class='cplate bgwhite'>&nbsp;&nbsp;&nbsp;&nbsp;</span></td></tr> \
+        <tr><td>Draft:</td>                     <td><span class='cplate bgred'>&nbsp;&nbsp;&nbsp;&nbsp;</span></td></tr> \
+        <tr><td>Informational:</td>             <td><span class='cplate bgorange'>&nbsp;&nbsp;&nbsp;&nbsp;</span></td></tr> \
+        <tr><td>Experimental:</td>              <td><span class='cplate bgyellow'>&nbsp;&nbsp;&nbsp;&nbsp;</span></td></tr> \
+        <tr><td>Best Common Practice:</td>      <td><span class='cplate bgmagenta'>&nbsp;&nbsp;&nbsp;&nbsp;</span></td></tr> \
+        <tr><td>Proposed Standard:</td>         <td><span class='cplate bgblue'>&nbsp;&nbsp;&nbsp;&nbsp;</span></td></tr> \
+        <tr><td>Draft Standard (old designation):</td> <td><span class='cplate bgcyan'>&nbsp;&nbsp;&nbsp;&nbsp;</span></td></tr> \
+        <tr><td>Internet Standard:</td>         <td><span class='cplate bggreen'>&nbsp;&nbsp;&nbsp;&nbsp;</span></td></tr> \
+        <tr><td>Historic:</td>                  <td><span class='cplate bggrey'>&nbsp;&nbsp;&nbsp;&nbsp;</span></td></tr> \
+        <tr><td>Obsolete:</td>                  <td><span class='cplate bgbrown'>&nbsp;&nbsp;&nbsp;&nbsp;</span></td></tr> \
+    </table>";
+    function showLegend() {
+        var elem = document.getElementById('legend');
+        elem.innerHTML = legend_html
+        elem.style.visibility='visible';
+    }
+    function hideLegend() {
+        var elem = document.getElementById('legend');
+        elem.style.visibility='hidden';
+        elem.innerHTML = "";
+    }
+    // -->
+    </script>
+
+  </body>
+</html>

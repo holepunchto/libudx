@@ -1,0 +1,1122 @@
+<!DOCTYPE html> 
+
+<!-- template: /a/www/ietf-datatracker/web/ietf/templates/doc/htmlized_base.html -->
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <title>
+  
+    rfc6582
+  
+</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+
+  @media only screen 
+    and (min-width: 992px)
+    and (max-width: 1199px) {
+      body { font-size: 14pt; }
+            div.content { width: 96ex; margin: 0 auto; }
+        }
+  @media only screen 
+    and (min-width: 768px)
+    and (max-width: 991px) {
+            body { font-size: 14pt; }
+            div.content { width: 96ex; margin: 0 auto; }
+        }
+  @media only screen 
+    and (min-width: 480px)
+    and (max-width: 767px) {
+            body { font-size: 11pt; }
+            div.content { width: 96ex; margin: 0 auto; }
+        }
+  @media only screen 
+    and (max-width: 479px) {
+            body { font-size: 8pt; }
+            div.content { width: 96ex; margin: 0 auto; }
+        }
+  @media only screen 
+    and (min-device-width : 375px) 
+    and (max-device-width : 667px) {
+            body { font-size: 9.5pt; }
+            div.content { width: 96ex; margin: 0; }
+        }
+  @media only screen 
+    and (min-device-width: 1200px) {
+            body { font-size: 10pt; margin: 0 4em; }
+            div.content { width: 96ex; margin: 0; }
+        }
+        h1, h2, h3, h4, h5, h6, .h1, .h2, .h3, .h4, .h5, .h6 {
+      font-weight: bold;
+            /* line-height: 0pt; */
+            display: inline;
+            white-space: pre;
+            font-family: monospace;
+            font-size: 1em;
+      font-weight: bold;
+        }
+        pre {
+            font-size: 1em;
+            margin-top: 0px;
+            margin-bottom: 0px;
+        }
+  .pre {
+      white-space: pre;
+      font-family: monospace;
+  }
+  .header{
+      font-weight: bold;
+  }
+        .newpage {
+            page-break-before: always;
+        }
+        .invisible {
+            text-decoration: none;
+            color: white;
+        }
+        @media print {
+            body {
+                margin-top: 5em;
+                font-family: monospace;
+                font-size: 10.5pt;
+            }
+            h1, h2, h3, h4, h5, h6 {
+                font-size: 1em;
+            }
+        
+            a:link, a:visited {
+                color: inherit;
+                text-decoration: none;
+            }
+            .noprint {
+                display: none;
+            }
+        }
+  @media screen {
+      .grey, .grey a:link, .grey a:visited {
+    color: #777;
+      }
+            .meta-info {
+                background-color: #EEE;
+            }
+            .top {
+                border-top: 7px solid #EEE;
+            }
+            .pad {
+                padding-top: 7px;
+                line-height: 24px;
+                padding-bottom: 4px;
+            }
+            .bgwhite  { background-color: white; }
+            .bgred    { background-color: #F44; }
+            .bggrey   { background-color: #666; }
+            .bgbrown  { background-color: #840; }            
+            .bgorange { background-color: #FA0; }
+            .bgyellow { background-color: #EE0; }
+            .bgmagenta{ background-color: #F4F; }
+            .bgblue   { background-color: #66F; }
+            .bgcyan   { background-color: #4DD; }
+            .bggreen  { background-color: #4F4; }
+
+            .legend   { font-size: 90%; }
+            .cplate   { font-size: 70%; border: solid grey 1px; }
+  }
+    
+     
+
+.bgwhite  { background-color: white; }
+.bgred    { background-color: #F44; }
+.bggrey   { background-color: #666; }
+.bgbrown  { background-color: #840; }            
+.bgorange { background-color: #FA0; }
+.bgyellow { background-color: #EE0; }
+.bgmagenta{ background-color: #F4F; }
+.bgblue   { background-color: #66F; }
+.bgcyan   { background-color: #4DD; }
+.bggreen  { background-color: #4F4; }
+
+.draftcontent { margin-top:0px !important;}
+
+
+    </style>
+
+    
+  <link rel="alternate" type="application/atom+xml" title="Document changes" href="/feed/document-changes/draft-ietf-tcpm-rfc3782-bis/">
+  <meta name="description" content="The NewReno Modification to TCP&#39;s Fast Recovery Algorithm (RFC )">
+
+
+    
+    <link rel="shortcut icon" href="https://www.ietf.org/lib/dt/7.40.0/ietf/images/ietf-icon-blue3.png">
+    
+    <link rel="apple-touch-icon" href="https://www.ietf.org/lib/dt/7.40.0/ietf/images/apple-touch-icon.png">
+  </head>
+
+  <body style="padding-top: 0;">
+
+	  <div class="content" id="content">
+        
+  <!-- template: /a/www/ietf-datatracker/web/ietf/templates/doc/document_html.html -->
+ 
+  <div class="rfcmarkup">
+    <div class="noprint" style="height: 6px;">
+      <div onmouseover="this.style.cursor='pointer';"
+         onclick="showLegend();"
+         onmouseout="hideLegend()"
+         style="height: 6px; min-height: 6px; width: 96ex; position: absolute; margin-top:0; "
+         class="meta-info bgblue"
+         title="Click for colour legend." >&nbsp;</div>
+      <div id="legend"
+           class="meta-info noprint pre legend"
+           style="position:absolute; top: 4px; left: 4ex; visibility:hidden; background-color: white; padding: 4px 9px 5px 7px; border: solid #345 1px; "
+           onmouseover="showLegend();"
+           onmouseout="hideLegend();">
+      </div>
+    </div>
+
+    
+      <div class="noprint">
+	 <pre class="pre meta-info">[<a href="https://datatracker.ietf.org" title="Document search and retrieval page">Search</a>] [<a href="https://www.rfc-editor.org/rfc/rfc6582.txt" title="Plaintext version of this document">txt</a>|<a href="https://www.rfc-editor.org/rfc/rfc6582.html" title="HTML version of this document, from XML2RFC">html</a>|<a href="https://www.rfc-editor.org/rfc/pdfrfc/rfc6582.txt.pdf" title="PDF version of this document">pdf</a>|<a href="/doc/rfc6582/bibtex" title="BibTex entry for this document">bibtex</a>] [<a href="/doc/rfc6582/" title="Datatracker information for this document">Tracker</a>] [<a href="/group/tcpm/" title="The working group handling this document">WG</a>] [<a href="mailto:draft-ietf-tcpm-rfc3782-bis@ietf.org?subject=draft-ietf-tcpm-rfc3782-bis" title="Send email to the document authors">Email</a>] [<a href="https://www.ietf.org/rfcdiff?difftype=--hwdiff&url2=draft-ietf-tcpm-rfc3782-bis-05.txt" title="Inline diff (wdiff)">Diff1</a>] [<a href="https://www.ietf.org/rfcdiff?url2=draft-ietf-tcpm-rfc3782-bis-05.txt" title="Side-by-side diff">Diff2</a>] [<a href="https://www.ietf.org/tools/idnits?url=https://www.ietf.org/archive/id/draft-ietf-tcpm-rfc3782-bis-05.txt" title="Run an idnits check of this document">Nits</a>]
+
+From: <a href="/doc/html/draft-ietf-tcpm-rfc3782-bis-05">draft-ietf-tcpm-rfc3782-bis-05</a>                   Proposed Standard</pre>
+      </div>
+    
+
+    <div class="draftcontent">
+    <pre>Internet Engineering Task Force (IETF)                      T. Henderson
+Request for Comments: 6582                                        Boeing
+Obsoletes: <a href="/doc/html/rfc3782">3782</a>                                                 S. Floyd
+Category: Standards Track                                           ICSI
+ISSN: 2070-1721                                                A. Gurtov
+                                                      University of Oulu
+                                                              Y. Nishida
+                                                            WIDE Project
+                                                              April 2012
+
+
+       <span class="h1">The NewReno Modification to TCP&#x27;s Fast Recovery Algorithm</span>
+
+Abstract
+
+   <a href="/doc/html/rfc5681">RFC 5681</a> documents the following four intertwined TCP congestion
+   control algorithms: slow start, congestion avoidance, fast
+   retransmit, and fast recovery.  <a href="/doc/html/rfc5681">RFC 5681</a> explicitly allows certain
+   modifications of these algorithms, including modifications that use
+   the TCP Selective Acknowledgment (SACK) option (<a href="/doc/html/rfc2883">RFC 2883</a>), and
+   modifications that respond to &quot;partial acknowledgments&quot; (ACKs that
+   cover new data, but not all the data outstanding when loss was
+   detected) in the absence of SACK.  This document describes a specific
+   algorithm for responding to partial acknowledgments, referred to as
+   &quot;NewReno&quot;.  This response to partial acknowledgments was first
+   proposed by Janey Hoe.  This document obsoletes <a href="/doc/html/rfc3782">RFC 3782</a>.
+
+Status of This Memo
+
+   This is an Internet Standards Track document.
+
+   This document is a product of the Internet Engineering Task Force
+   (IETF).  It represents the consensus of the IETF community.  It has
+   received public review and has been approved for publication by the
+   Internet Engineering Steering Group (IESG).  Further information on
+   Internet Standards is available in <a href="/doc/html/rfc5741#section-2">Section&nbsp;2 of RFC 5741</a>.
+
+   Information about the current status of this document, any errata,
+   and how to provide feedback on it may be obtained at
+   <a href="http://www.rfc-editor.org/info/rfc6582">http://www.rfc-editor.org/info/rfc6582</a>.
+
+
+
+
+
+
+
+
+
+
+
+<span class="grey">Henderson, et al.            Standards Track                    [Page 1]</span></pre>
+<hr class='noprint'/><!--NewPage--><pre class='newpage'><span id="page-2" ></span>
+<span class="grey"><a href="/doc/html/rfc6582">RFC 6582</a>                      TCP NewReno                     April 2012</span>
+
+
+Copyright Notice
+
+   Copyright (c) 2012 IETF Trust and the persons identified as the
+   document authors.  All rights reserved.
+
+   This document is subject to <a href="/doc/html/bcp78">BCP 78</a> and the IETF Trust&#x27;s Legal
+   Provisions Relating to IETF Documents
+   (<a href="http://trustee.ietf.org/license-info">http://trustee.ietf.org/license-info</a>) in effect on the date of
+   publication of this document.  Please review these documents
+   carefully, as they describe your rights and restrictions with respect
+   to this document.  Code Components extracted from this document must
+   include Simplified BSD License text as described in Section 4.e of
+   the Trust Legal Provisions and are provided without warranty as
+   described in the Simplified BSD License.
+
+   This document may contain material from IETF Documents or IETF
+   Contributions published or made publicly available before November
+   10, 2008.  The person(s) controlling the copyright in some of this
+   material may not have granted the IETF Trust the right to allow
+   modifications of such material outside the IETF Standards Process.
+   Without obtaining an adequate license from the person(s) controlling
+   the copyright in such materials, this document may not be modified
+   outside the IETF Standards Process, and derivative works of it may
+   not be created outside the IETF Standards Process, except to format
+   it for publication as an RFC or to translate it into languages other
+   than English.
+
+<span class="h2"><a class="selflink" id="section-1" href="#section-1">1</a>.  Introduction</span>
+
+   For the typical implementation of the TCP fast recovery algorithm
+   described in [<a href="/doc/html/rfc5681" title="&quot;TCP Congestion Control&quot;">RFC5681</a>] (first implemented in the 1990 BSD Reno
+   release, and referred to as the &quot;Reno algorithm&quot; in [<a href="#ref-FF96" title="&quot;Simulation-based Comparisons of Tahoe, Reno and SACK TCP&quot;">FF96</a>]), the TCP
+   data sender only retransmits a packet after a retransmit timeout has
+   occurred, or after three duplicate acknowledgments have arrived
+   triggering the fast retransmit algorithm.  A single retransmit
+   timeout might result in the retransmission of several data packets,
+   but each invocation of the fast retransmit algorithm in <a href="/doc/html/rfc5681">RFC 5681</a>
+   leads to the retransmission of only a single data packet.
+
+   Two problems arise with Reno TCP when multiple packet losses occur in
+   a single window.  First, Reno will often take a timeout, as has been
+   documented in [<a href="#ref-Hoe95" title="&quot;Startup Dynamics of TCP&#x27;s Congestion Control and Avoidance Schemes&quot;">Hoe95</a>].  Second, even if a retransmission timeout is
+   avoided, multiple fast retransmits and window reductions can occur,
+   as documented in [<a href="#ref-F94" title="&quot;TCP and Successive Fast Retransmits&quot;">F94</a>].  When multiple packet losses occur, if the
+   SACK option [<a href="/doc/html/rfc2883" title="&quot;An Extension to the Selective Acknowledgement (SACK) Option for TCP&quot;">RFC2883</a>] is available, the TCP sender has the
+   information to make intelligent decisions about which packets to
+   retransmit and which packets not to retransmit during fast recovery.
+
+
+
+
+<span class="grey">Henderson, et al.            Standards Track                    [Page 2]</span></pre>
+<hr class='noprint'/><!--NewPage--><pre class='newpage'><span id="page-3" ></span>
+<span class="grey"><a href="/doc/html/rfc6582">RFC 6582</a>                      TCP NewReno                     April 2012</span>
+
+
+   This document applies to TCP connections that are unable to use the
+   TCP Selective Acknowledgment (SACK) option, either because the option
+   is not locally supported or because the TCP peer did not indicate a
+   willingness to use SACK.
+
+   In the absence of SACK, there is little information available to the
+   TCP sender in making retransmission decisions during fast recovery.
+   From the three duplicate acknowledgments, the sender infers a packet
+   loss, and retransmits the indicated packet.  After this, the data
+   sender could receive additional duplicate acknowledgments, as the
+   data receiver acknowledges additional data packets that were already
+   in flight when the sender entered fast retransmit.
+
+   In the case of multiple packets dropped from a single window of data,
+   the first new information available to the sender comes when the
+   sender receives an acknowledgment for the retransmitted packet (that
+   is, the packet retransmitted when fast retransmit was first entered).
+   If there is a single packet drop and no reordering, then the
+   acknowledgment for this packet will acknowledge all of the packets
+   transmitted before fast retransmit was entered.  However, if there
+   are multiple packet drops, then the acknowledgment for the
+   retransmitted packet will acknowledge some but not all of the packets
+   transmitted before the fast retransmit.  We call this acknowledgment
+   a partial acknowledgment.
+
+   Along with several other suggestions, [<a href="#ref-Hoe95" title="&quot;Startup Dynamics of TCP&#x27;s Congestion Control and Avoidance Schemes&quot;">Hoe95</a>] suggested that during
+   fast recovery the TCP data sender respond to a partial acknowledgment
+   by inferring that the next in-sequence packet has been lost and
+   retransmitting that packet.  This document describes a modification
+   to the fast recovery algorithm in <a href="/doc/html/rfc5681">RFC 5681</a> that incorporates a
+   response to partial acknowledgments received during fast recovery.
+   We call this modified fast recovery algorithm NewReno, because it is
+   a slight but significant variation of the behavior that has been
+   historically referred to as Reno.  This document does not discuss the
+   other suggestions in [<a href="#ref-Hoe95" title="&quot;Startup Dynamics of TCP&#x27;s Congestion Control and Avoidance Schemes&quot;">Hoe95</a>] and [<a href="#ref-Hoe96" title="&quot;Improving the Start-up Behavior of a Congestion Control Scheme for TCP&quot;">Hoe96</a>], such as a change to the
+   ssthresh parameter during slow start, or the proposal to send a new
+   packet for every two duplicate acknowledgments during fast recovery.
+   The version of NewReno in this document also draws on other
+   discussions of NewReno in the literature [<a href="#ref-LM97" title="&quot;Dynamics of Random Early Detection&quot;">LM97</a>] [<a href="#ref-Hen98" title="&quot;Re: NewReno and the 2001 Revision&quot;">Hen98</a>].
+
+   We do not claim that the NewReno version of fast recovery described
+   here is an optimal modification of fast recovery for responding to
+   partial acknowledgments, for TCP connections that are unable to use
+   SACK.  Based on our experiences with the NewReno modification in the
+   network simulator known as ns-2 [<a href="#ref-NS" title="&quot;The Network Simulator version 2 (ns-2)&quot;">NS</a>] and with numerous
+   implementations of NewReno, we believe that this modification
+   improves the performance of the fast retransmit and fast recovery
+
+
+
+
+<span class="grey">Henderson, et al.            Standards Track                    [Page 3]</span></pre>
+<hr class='noprint'/><!--NewPage--><pre class='newpage'><span id="page-4" ></span>
+<span class="grey"><a href="/doc/html/rfc6582">RFC 6582</a>                      TCP NewReno                     April 2012</span>
+
+
+   algorithms in a wide variety of scenarios.  Previous versions of this
+   RFC [<a href="/doc/html/rfc2582" title="&quot;The NewReno Modification to TCP&#x27;s Fast Recovery Algorithm&quot;">RFC2582</a>] [<a href="/doc/html/rfc3782" title="&quot;The NewReno Modification to TCP&#x27;s Fast Recovery Algorithm&quot;">RFC3782</a>] provide simulation-based evidence of the
+   possible performance gains.
+
+<span class="h2"><a class="selflink" id="section-2" href="#section-2">2</a>.  Terminology and Definitions</span>
+
+   This document assumes that the reader is familiar with the terms
+   SENDER MAXIMUM SEGMENT SIZE (SMSS), CONGESTION WINDOW (cwnd), and
+   FLIGHT SIZE (FlightSize) defined in [<a href="/doc/html/rfc5681" title="&quot;TCP Congestion Control&quot;">RFC5681</a>].
+
+   This document defines an additional sender-side state variable called
+   &quot;recover&quot;:
+
+      recover:
+         When in fast recovery, this variable records the send sequence
+         number that must be acknowledged before the fast recovery
+         procedure is declared to be over.
+
+<span class="h2"><a class="selflink" id="section-3" href="#section-3">3</a>.  The Fast Retransmit and Fast Recovery Algorithms in NewReno</span>
+
+<span class="h3"><a class="selflink" id="section-3.1" href="#section-3.1">3.1</a>.  Protocol Overview</span>
+
+   The basic idea of these extensions to the fast retransmit and fast
+   recovery algorithms described in <a href="/doc/html/rfc5681#section-3.2">Section&nbsp;3.2 of [RFC5681]</a> is as
+   follows.  The TCP sender can infer, from the arrival of duplicate
+   acknowledgments, whether multiple losses in the same window of data
+   have most likely occurred, and avoid taking a retransmit timeout or
+   making multiple congestion window reductions due to such an event.
+
+   The NewReno modification applies to the fast recovery procedure that
+   begins when three duplicate ACKs are received and ends when either a
+   retransmission timeout occurs or an ACK arrives that acknowledges all
+   of the data up to and including the data that was outstanding when
+   the fast recovery procedure began.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<span class="grey">Henderson, et al.            Standards Track                    [Page 4]</span></pre>
+<hr class='noprint'/><!--NewPage--><pre class='newpage'><span id="page-5" ></span>
+<span class="grey"><a href="/doc/html/rfc6582">RFC 6582</a>                      TCP NewReno                     April 2012</span>
+
+
+<span class="h3"><a class="selflink" id="section-3.2" href="#section-3.2">3.2</a>.  Specification</span>
+
+   The procedures specified in <a href="/doc/html/rfc5681#section-3.2">Section&nbsp;3.2 of [RFC5681]</a> are followed,
+   with the modifications listed below.  Note that this specification
+   avoids the use of the key words defined in <a href="/doc/html/rfc2119">RFC 2119</a> [<a href="/doc/html/rfc2119" title="&quot;Key words for use in RFCs to Indicate Requirement Levels&quot;">RFC2119</a>], since
+   it mainly provides sender-side implementation guidance for
+   performance improvement, and does not affect interoperability.
+
+   1)  Initialization of TCP protocol control block:
+       When the TCP protocol control block is initialized, recover is
+       set to the initial send sequence number.
+
+   2)  Three duplicate ACKs:
+       When the third duplicate ACK is received, the TCP sender first
+       checks the value of recover to see if the Cumulative
+       Acknowledgment field covers more than recover.  If so, the value
+       of recover is incremented to the value of the highest sequence
+       number transmitted by the TCP so far.  The TCP then enters fast
+       retransmit (step 2 of <a href="/doc/html/rfc5681#section-3.2">Section&nbsp;3.2 of [RFC5681]</a>).  If not, the TCP
+       does not enter fast retransmit and does not reset ssthresh.
+
+   3)  Response to newly acknowledged data:
+       Step 6 of [<a href="/doc/html/rfc5681" title="&quot;TCP Congestion Control&quot;">RFC5681</a>] specifies the response to the next ACK that
+       acknowledges previously unacknowledged data.  When an ACK arrives
+       that acknowledges new data, this ACK could be the acknowledgment
+       elicited by the initial retransmission from fast retransmit, or
+       elicited by a later retransmission.  There are two cases:
+
+       Full acknowledgments:
+       If this ACK acknowledges all of the data up to and including
+       recover, then the ACK acknowledges all the intermediate segments
+       sent between the original transmission of the lost segment and
+       the receipt of the third duplicate ACK.  Set cwnd to either (1)
+       min (ssthresh, max(FlightSize, SMSS) + SMSS) or (2) ssthresh,
+       where ssthresh is the value set when fast retransmit was entered,
+       and where FlightSize in (1) is the amount of data presently
+       outstanding.  This is termed &quot;deflating&quot; the window.  If the
+       second option is selected, the implementation is encouraged to
+       take measures to avoid a possible burst of data, in case the
+       amount of data outstanding in the network is much less than the
+       new congestion window allows.  A simple mechanism is to limit the
+       number of data packets that can be sent in response to a single
+       acknowledgment.  Exit the fast recovery procedure.
+
+
+
+
+
+
+
+
+<span class="grey">Henderson, et al.            Standards Track                    [Page 5]</span></pre>
+<hr class='noprint'/><!--NewPage--><pre class='newpage'><span id="page-6" ></span>
+<span class="grey"><a href="/doc/html/rfc6582">RFC 6582</a>                      TCP NewReno                     April 2012</span>
+
+
+       Partial acknowledgments:
+       If this ACK does *not* acknowledge all of the data up to and
+       including recover, then this is a partial ACK.  In this case,
+       retransmit the first unacknowledged segment.  Deflate the
+       congestion window by the amount of new data acknowledged by the
+       Cumulative Acknowledgment field.  If the partial ACK acknowledges
+       at least one SMSS of new data, then add back SMSS bytes to the
+       congestion window.  This artificially inflates the congestion
+       window in order to reflect the additional segment that has left
+       the network.  Send a new segment if permitted by the new value of
+       cwnd.  This &quot;partial window deflation&quot; attempts to ensure that,
+       when fast recovery eventually ends, approximately ssthresh amount
+       of data will be outstanding in the network.  Do not exit the fast
+       recovery procedure (i.e., if any duplicate ACKs subsequently
+       arrive, execute step 4 of <a href="/doc/html/rfc5681#section-3.2">Section&nbsp;3.2 of [RFC5681]</a>).
+
+       For the first partial ACK that arrives during fast recovery, also
+       reset the retransmit timer.  Timer management is discussed in
+       more detail in <a href="#section-4">Section 4</a>.
+
+   4)  Retransmit timeouts:
+       After a retransmit timeout, record the highest sequence number
+       transmitted in the variable recover, and exit the fast recovery
+       procedure if applicable.
+
+   Step 2 above specifies a check that the Cumulative Acknowledgment
+   field covers more than recover.  Because the acknowledgment field
+   contains the sequence number that the sender next expects to receive,
+   the acknowledgment &quot;ack_number&quot; covers more than recover when
+
+      ack_number - 1 &gt; recover;
+
+   i.e., at least one byte more of data is acknowledged beyond the
+   highest byte that was outstanding when fast retransmit was last
+   entered.
+
+   Note that in step 3 above, the congestion window is deflated after a
+   partial acknowledgment is received.  The congestion window was likely
+   to have been inflated considerably when the partial acknowledgment
+   was received.  In addition, depending on the original pattern of
+   packet losses, the partial acknowledgment might acknowledge nearly a
+   window of data.  In this case, if the congestion window was not
+   deflated, the data sender might be able to send nearly a window of
+   data back-to-back.
+
+
+
+
+
+
+
+<span class="grey">Henderson, et al.            Standards Track                    [Page 6]</span></pre>
+<hr class='noprint'/><!--NewPage--><pre class='newpage'><span id="page-7" ></span>
+<span class="grey"><a href="/doc/html/rfc6582">RFC 6582</a>                      TCP NewReno                     April 2012</span>
+
+
+   This document does not specify the sender&#x27;s response to duplicate
+   ACKs when the fast retransmit/fast recovery algorithm is not invoked.
+   This is addressed in other documents, such as those describing the
+   Limited Transmit procedure [<a href="/doc/html/rfc3042" title="&quot;Enhancing TCP&#x27;s Loss Recovery Using Limited Transmit&quot;">RFC3042</a>].  This document also does not
+   address issues of adjusting the duplicate acknowledgment threshold,
+   but assumes the threshold specified in the IETF standards; the
+   current standard is [<a href="/doc/html/rfc5681" title="&quot;TCP Congestion Control&quot;">RFC5681</a>], which specifies a threshold of three
+   duplicate acknowledgments.
+
+   As a final note, we would observe that in the absence of the SACK
+   option, the data sender is working from limited information.  When
+   the issue of recovery from multiple dropped packets from a single
+   window of data is of particular importance, the best alternative
+   would be to use the SACK option.
+
+<span class="h2"><a class="selflink" id="section-4" href="#section-4">4</a>.  Handling Duplicate Acknowledgments after a Timeout</span>
+
+   After each retransmit timeout, the highest sequence number
+   transmitted so far is recorded in the variable recover.  If, after a
+   retransmit timeout, the TCP data sender retransmits three consecutive
+   packets that have already been received by the data receiver, then
+   the TCP data sender will receive three duplicate acknowledgments that
+   do not cover more than recover.  In this case, the duplicate
+   acknowledgments are not an indication of a new instance of
+   congestion.  They are simply an indication that the sender has
+   unnecessarily retransmitted at least three packets.
+
+   However, when a retransmitted packet is itself dropped, the sender
+   can also receive three duplicate acknowledgments that do not cover
+   more than recover.  In this case, the sender would have been better
+   off if it had initiated fast retransmit.  For a TCP sender that
+   implements the algorithm specified in <a href="#section-3.2">Section 3.2</a> of this document,
+   the sender does not infer a packet drop from duplicate
+   acknowledgments in this scenario.  As always, the retransmit timer is
+   the backup mechanism for inferring packet loss in this case.
+
+   There are several heuristics, based on timestamps or on the amount of
+   advancement of the Cumulative Acknowledgment field, that allow the
+   sender to distinguish, in some cases, between three duplicate
+   acknowledgments following a retransmitted packet that was dropped,
+   and three duplicate acknowledgments from the unnecessary
+   retransmission of three packets [<a href="#ref-Gur03" title="&quot;[Tsvwg] resolving the problem of unnecessary fast retransmits in go-back-N&quot;">Gur03</a>] [<a href="#ref-GF04" title="&quot;Resolving Acknowledgment Ambiguity in non-SACK TCP&quot;">GF04</a>].  The TCP sender may
+   use such a heuristic to decide to invoke a fast retransmit in some
+   cases, even when the three duplicate acknowledgments do not cover
+   more than recover.
+
+
+
+
+
+
+<span class="grey">Henderson, et al.            Standards Track                    [Page 7]</span></pre>
+<hr class='noprint'/><!--NewPage--><pre class='newpage'><span id="page-8" ></span>
+<span class="grey"><a href="/doc/html/rfc6582">RFC 6582</a>                      TCP NewReno                     April 2012</span>
+
+
+   For example, when three duplicate acknowledgments are caused by the
+   unnecessary retransmission of three packets, this is likely to be
+   accompanied by the Cumulative Acknowledgment field advancing by at
+   least four segments.  Similarly, a heuristic based on timestamps uses
+   the fact that when there is a hole in the sequence space, the
+   timestamp echoed in the duplicate acknowledgment is the timestamp of
+   the most recent data packet that advanced the Cumulative
+   Acknowledgment field [<a href="/doc/html/rfc1323" title="&quot;TCP Extensions for High Performance&quot;">RFC1323</a>].  If timestamps are used, and the
+   sender stores the timestamp of the last acknowledged segment, then
+   the timestamp echoed by duplicate acknowledgments can be used to
+   distinguish between a retransmitted packet that was dropped and three
+   duplicate acknowledgments from the unnecessary retransmission of
+   three packets.
+
+<span class="h3"><a class="selflink" id="section-4.1" href="#section-4.1">4.1</a>.  ACK Heuristic</span>
+
+   If the ACK-based heuristic is used, then following the advancement of
+   the Cumulative Acknowledgment field, the sender stores the value of
+   the previous cumulative acknowledgment as prev_highest_ack, and
+   stores the latest cumulative ACK as highest_ack.  In addition, the
+   following check is performed if, in step 2 of <a href="#section-3.2">Section 3.2</a>, the
+   Cumulative Acknowledgment field does not cover more than recover.
+
+   2*)  If the Cumulative Acknowledgment field didn&#x27;t cover more than
+        recover, check to see if the congestion window is greater than
+        SMSS bytes and the difference between highest_ack and
+        prev_highest_ack is at most 4*SMSS bytes.  If true, duplicate
+        ACKs indicate a lost segment (enter fast retransmit).
+        Otherwise, duplicate ACKs likely result from unnecessary
+        retransmissions (do not enter fast retransmit).
+
+   The congestion window check serves to protect against fast retransmit
+   immediately after a retransmit timeout.
+
+   If several ACKs are lost, the sender can see a jump in the cumulative
+   ACK of more than three segments, and the heuristic can fail.
+   [<a href="/doc/html/rfc5681" title="&quot;TCP Congestion Control&quot;">RFC5681</a>] recommends that a receiver should send duplicate ACKs for
+   every out-of-order data packet, such as a data packet received during
+   fast recovery.  The ACK heuristic is more likely to fail if the
+   receiver does not follow this advice, because then a smaller number
+   of ACK losses are needed to produce a sufficient jump in the
+   cumulative ACK.
+
+
+
+
+
+
+
+
+
+<span class="grey">Henderson, et al.            Standards Track                    [Page 8]</span></pre>
+<hr class='noprint'/><!--NewPage--><pre class='newpage'><span id="page-9" ></span>
+<span class="grey"><a href="/doc/html/rfc6582">RFC 6582</a>                      TCP NewReno                     April 2012</span>
+
+
+<span class="h3"><a class="selflink" id="section-4.2" href="#section-4.2">4.2</a>.  Timestamp Heuristic</span>
+
+   If this heuristic is used, the sender stores the timestamp of the
+   last acknowledged segment.  In addition, the last sentence of step 2
+   in <a href="#section-3.2">Section 3.2</a> of this document is replaced as follows:
+
+   2**) If the Cumulative Acknowledgment field didn&#x27;t cover more than
+        recover, check to see if the echoed timestamp in the last
+        non-duplicate acknowledgment equals the stored timestamp.  If
+        true, duplicate ACKs indicate a lost segment (enter fast
+        retransmit).  Otherwise, duplicate ACKs likely result from
+        unnecessary retransmissions (do not enter fast retransmit).
+
+   The timestamp heuristic works correctly, both when the receiver
+   echoes timestamps, as specified by [<a href="/doc/html/rfc1323" title="&quot;TCP Extensions for High Performance&quot;">RFC1323</a>], and by its revision
+   attempts.  However, if the receiver arbitrarily echoes timestamps,
+   the heuristic can fail.  The heuristic can also fail if a timeout was
+   spurious and returning ACKs are not from retransmitted segments.
+   This can be prevented by detection algorithms such as the Eifel
+   detection algorithm [<a href="/doc/html/rfc3522" title="&quot;The Eifel Detection Algorithm for TCP&quot;">RFC3522</a>].
+
+<span class="h2"><a class="selflink" id="section-5" href="#section-5">5</a>.  Implementation Issues for the Data Receiver</span>
+
+   [<a id="ref-RFC5681">RFC5681</a>] specifies that &quot;Out-of-order data segments SHOULD be
+   acknowledged immediately, in order to accelerate loss recovery&quot;.
+   Neal Cardwell has noted that some data receivers do not send an
+   immediate acknowledgment when they send a partial acknowledgment, but
+   instead wait first for their delayed acknowledgment timer to expire
+   [<a href="#ref-C98" title="&quot;delayed ACKs for retransmitted packets: ouch!&quot;">C98</a>].  As [<a href="#ref-C98" title="&quot;delayed ACKs for retransmitted packets: ouch!&quot;">C98</a>] notes, this severely limits the potential benefit of
+   NewReno by delaying the receipt of the partial acknowledgment at the
+   data sender.  Echoing [<a href="/doc/html/rfc5681" title="&quot;TCP Congestion Control&quot;">RFC5681</a>], our recommendation is that the data
+   receiver send an immediate acknowledgment for an out-of-order
+   segment, even when that out-of-order segment fills a hole in the
+   buffer.
+
+<span class="h2"><a class="selflink" id="section-6" href="#section-6">6</a>.  Implementation Issues for the Data Sender</span>
+
+   In <a href="#section-3.2">Section 3.2</a>, step 3 above, it is noted that implementations should
+   take measures to avoid a possible burst of data when leaving fast
+   recovery, in case the amount of new data that the sender is eligible
+   to send due to the new value of the congestion window is large.  This
+   can arise during NewReno when ACKs are lost or treated as pure window
+   updates, thereby causing the sender to underestimate the number of
+   new segments that can be sent during the recovery procedure.
+   Specifically, bursts can occur when the FlightSize is much less than
+   the new congestion window when exiting from fast recovery.  One
+   simple mechanism to avoid a burst of data when leaving fast recovery
+
+
+
+
+<span class="grey">Henderson, et al.            Standards Track                    [Page 9]</span></pre>
+<hr class='noprint'/><!--NewPage--><pre class='newpage'><span id="page-10" ></span>
+<span class="grey"><a href="/doc/html/rfc6582">RFC 6582</a>                      TCP NewReno                     April 2012</span>
+
+
+   is to limit the number of data packets that can be sent in response
+   to a single acknowledgment.  (This is known as &quot;maxburst_&quot; in ns-2
+   [<a href="#ref-NS" title="&quot;The Network Simulator version 2 (ns-2)&quot;">NS</a>].)  Other possible mechanisms for avoiding bursts include rate-
+   based pacing, or setting the slow start threshold to the resultant
+   congestion window and then resetting the congestion window to
+   FlightSize.  A recommendation on the general mechanism to avoid
+   excessively bursty sending patterns is outside the scope of this
+   document.
+
+   An implementation may want to use a separate flag to record whether
+   or not it is presently in the fast recovery procedure.  The use of
+   the value of the duplicate acknowledgment counter for this purpose is
+   not reliable, because it can be reset upon window updates and out-of-
+   order acknowledgments.
+
+   When updating the Cumulative Acknowledgment field outside of fast
+   recovery, the state variable recover may also need to be updated in
+   order to continue to permit possible entry into fast recovery
+   (<a href="#section-3.2">Section 3.2</a>, step 2).  This issue arises when an update of the
+   Cumulative Acknowledgment field results in a sequence wraparound that
+   affects the ordering between the Cumulative Acknowledgment field and
+   the state variable recover.  Entry into fast recovery is only
+   possible when the Cumulative Acknowledgment field covers more than
+   the state variable recover.
+
+   It is important for the sender to respond correctly to duplicate ACKs
+   received when the sender is no longer in fast recovery (e.g., because
+   of a retransmit timeout).  The Limited Transmit procedure [<a href="/doc/html/rfc3042" title="&quot;Enhancing TCP&#x27;s Loss Recovery Using Limited Transmit&quot;">RFC3042</a>]
+   describes possible responses to the first and second duplicate
+   acknowledgments.  When three or more duplicate acknowledgments are
+   received, the Cumulative Acknowledgment field doesn&#x27;t cover more than
+   recover, and a new fast recovery is not invoked, the sender should
+   follow the guidance in <a href="#section-4">Section 4</a>.  Otherwise, the sender could end up
+   in a chain of spurious timeouts.  We mention this only because
+   several NewReno implementations had this bug, including the
+   implementation in ns-2 [<a href="#ref-NS" title="&quot;The Network Simulator version 2 (ns-2)&quot;">NS</a>].
+
+   It has been observed that some TCP implementations enter a slow start
+   or congestion avoidance window updating algorithm immediately after
+   the cwnd is set by the equation found in <a href="#section-3.2">Section 3.2</a>, step 3, even
+   without a new external event generating the cwnd change.  Note that
+   after cwnd is set based on the procedure for exiting fast recovery
+   (<a href="#section-3.2">Section 3.2</a>, step 3), cwnd should not be updated until a further
+   event occurs (e.g., arrival of an ack, or timeout) after this
+   adjustment.
+
+
+
+
+
+
+<span class="grey">Henderson, et al.            Standards Track                   [Page 10]</span></pre>
+<hr class='noprint'/><!--NewPage--><pre class='newpage'><span id="page-11" ></span>
+<span class="grey"><a href="/doc/html/rfc6582">RFC 6582</a>                      TCP NewReno                     April 2012</span>
+
+
+<span class="h2"><a class="selflink" id="section-7" href="#section-7">7</a>.  Security Considerations</span>
+
+   [<a id="ref-RFC5681">RFC5681</a>] discusses general security considerations concerning TCP
+   congestion control.  This document describes a specific algorithm
+   that conforms with the congestion control requirements of [<a href="/doc/html/rfc5681" title="&quot;TCP Congestion Control&quot;">RFC5681</a>],
+   and so those considerations apply to this algorithm, too.  There are
+   no known additional security concerns for this specific algorithm.
+
+<span class="h2"><a class="selflink" id="section-8" href="#section-8">8</a>.  Conclusions</span>
+
+   This document specifies the NewReno fast retransmit and fast recovery
+   algorithms for TCP.  This NewReno modification to TCP can even be
+   important for TCP implementations that support the SACK option,
+   because the SACK option can only be used for TCP connections when
+   both TCP end-nodes support the SACK option.  NewReno performs better
+   than Reno in a number of scenarios discussed in previous versions of
+   this RFC ([<a href="/doc/html/rfc2582" title="&quot;The NewReno Modification to TCP&#x27;s Fast Recovery Algorithm&quot;">RFC2582</a>] [<a href="/doc/html/rfc3782" title="&quot;The NewReno Modification to TCP&#x27;s Fast Recovery Algorithm&quot;">RFC3782</a>]).
+
+   A number of options for the basic algorithms presented in <a href="#section-3">Section 3</a>
+   are also referenced in <a href="#appendix-A">Appendix A</a> of this document.  These include
+   the handling of the retransmission timer, the response to partial
+   acknowledgments, and whether or not the sender must maintain a state
+   variable called recover.  Our belief is that the differences between
+   these variants of NewReno are small compared to the differences
+   between Reno and NewReno.  That is, the important thing is to
+   implement NewReno instead of Reno for a TCP connection without SACK;
+   it is less important exactly which variant of NewReno is implemented.
+
+<span class="h2"><a class="selflink" id="section-9" href="#section-9">9</a>.  Acknowledgments</span>
+
+   Many thanks to Anil Agarwal, Mark Allman, Armando Caro, Jeffrey Hsu,
+   Vern Paxson, Kacheong Poon, Keyur Shah, and Bernie Volz for detailed
+   feedback on the precursor RFCs 2582 and 3782.  Jeffrey Hsu provided
+   clarifications on the handling of the variable recover; these
+   clarifications were applied to <a href="/doc/html/rfc3782">RFC 3782</a> via an erratum and are
+   incorporated into the text of <a href="#section-6">Section 6</a> of this document.  Yoshifumi
+   Nishida contributed a modification to the fast recovery algorithm to
+   account for the case in which FlightSize is 0 when the TCP sender
+   leaves fast recovery and the TCP receiver uses delayed
+   acknowledgments.  Alexander Zimmermann provided several suggestions
+   to improve the clarity of the document.
+
+
+
+
+
+
+
+
+
+
+<span class="grey">Henderson, et al.            Standards Track                   [Page 11]</span></pre>
+<hr class='noprint'/><!--NewPage--><pre class='newpage'><span id="page-12" ></span>
+<span class="grey"><a href="/doc/html/rfc6582">RFC 6582</a>                      TCP NewReno                     April 2012</span>
+
+
+<span class="h2"><a class="selflink" id="section-10" href="#section-10">10</a>.  References</span>
+
+<span class="h3"><a class="selflink" id="section-10.1" href="#section-10.1">10.1</a>.  Normative References</span>
+
+   [<a id="ref-RFC2119">RFC2119</a>] Bradner, S., &quot;Key words for use in RFCs to Indicate
+             Requirement Levels&quot;, <a href="/doc/html/bcp14">BCP 14</a>, <a href="/doc/html/rfc2119">RFC 2119</a>, March 1997.
+
+   [<a id="ref-RFC5681">RFC5681</a>] Allman, M., Paxson, V., and E. Blanton, &quot;TCP Congestion
+             Control&quot;, <a href="/doc/html/rfc5681">RFC 5681</a>, September 2009.
+
+<span class="h3"><a class="selflink" id="section-10.2" href="#section-10.2">10.2</a>.  Informative References</span>
+
+   [<a id="ref-C98">C98</a>]     Cardwell, N., &quot;delayed ACKs for retransmitted packets:
+             ouch!&quot;.  November 1998, Email to the tcpimpl mailing list,
+             archived at
+             &lt;<a href="http://groups.yahoo.com/group/tcp-impl/message/1428">http://groups.yahoo.com/group/tcp-impl/message/1428</a>&gt;.
+
+   [<a id="ref-F94">F94</a>]     Floyd, S., &quot;TCP and Successive Fast Retransmits&quot;, Technical
+             report, May 1995.
+             &lt;<a href="ftp://ftp.ee.lbl.gov/papers/fastretrans.ps">ftp://ftp.ee.lbl.gov/papers/fastretrans.ps</a>&gt;.
+
+   [<a id="ref-FF96">FF96</a>]    Fall, K. and S. Floyd, &quot;Simulation-based Comparisons of
+             Tahoe, Reno and SACK TCP&quot;, Computer Communication Review,
+             July 1996.  &lt;<a href="ftp://ftp.ee.lbl.gov/papers/sacks.ps.Z">ftp://ftp.ee.lbl.gov/papers/sacks.ps.Z</a>&gt;.
+
+   [<a id="ref-GF04">GF04</a>]    Gurtov, A. and S. Floyd, &quot;Resolving Acknowledgment
+             Ambiguity in non-SACK TCP&quot;, NExt Generation Teletraffic and
+             Wired/Wireless Advanced Networking (NEW2AN&#x27;04),
+             February 2004.  &lt;<a href="http://www.cs.helsinki.fi/u/gurtov/papers/heuristics.html">http://www.cs.helsinki.fi/u/gurtov/</a>
+             <a href="http://www.cs.helsinki.fi/u/gurtov/papers/heuristics.html">papers/heuristics.html</a>&gt;.
+
+   [<a id="ref-Gur03">Gur03</a>]   Gurtov, A., &quot;[Tsvwg] resolving the problem of unnecessary
+             fast retransmits in go-back-N&quot;, email to the tsvwg mailing
+             list, July 28, 2003.  &lt;<a href="http://www.ietf.org/mail-archive/web/tsvwg/current/msg04334.html">http://www.ietf.org/mail-archive/</a>
+             <a href="http://www.ietf.org/mail-archive/web/tsvwg/current/msg04334.html">web/tsvwg/current/msg04334.html</a>&gt;.
+
+   [<a id="ref-Hen98">Hen98</a>]   Henderson, T., &quot;Re: NewReno and the 2001 Revision&quot;,
+             September 1998.  Email to the tcpimpl mailing list,
+             archived at
+             &lt;<a href="http://groups.yahoo.com/group/tcp-impl/message/1321">http://groups.yahoo.com/group/tcp-impl/message/1321</a>&gt;.
+
+   [<a id="ref-Hoe95">Hoe95</a>]   Hoe, J., &quot;Startup Dynamics of TCP&#x27;s Congestion Control and
+             Avoidance Schemes&quot;, Master&#x27;s Thesis, MIT, June 1995.
+
+   [<a id="ref-Hoe96">Hoe96</a>]   Hoe, J., &quot;Improving the Start-up Behavior of a Congestion
+             Control Scheme for TCP&quot;, ACM SIGCOMM, August 1996.
+             &lt;<a href="http://ccr.sigcomm.org/archive/1996/conf/hoe.pdf">http://ccr.sigcomm.org/archive/1996/conf/hoe.pdf</a>&gt;.
+
+
+
+
+<span class="grey">Henderson, et al.            Standards Track                   [Page 12]</span></pre>
+<hr class='noprint'/><!--NewPage--><pre class='newpage'><span id="page-13" ></span>
+<span class="grey"><a href="/doc/html/rfc6582">RFC 6582</a>                      TCP NewReno                     April 2012</span>
+
+
+   [<a id="ref-LM97">LM97</a>]    Lin, D. and R. Morris, &quot;Dynamics of Random Early
+             Detection&quot;, SIGCOMM 97, October 1997.
+
+   [<a id="ref-NS">NS</a>]      &quot;The Network Simulator version 2 (ns-2)&quot;,
+             &lt;<a href="http://www.isi.edu/nsnam/ns/">http://www.isi.edu/nsnam/ns/</a>&gt;.
+
+   [<a id="ref-RFC1323">RFC1323</a>] Jacobson, V., Braden, R., and D. Borman, &quot;TCP Extensions
+             for High Performance&quot;, <a href="/doc/html/rfc1323">RFC 1323</a>, May 1992.
+
+   [<a id="ref-RFC2582">RFC2582</a>] Floyd, S. and T. Henderson, &quot;The NewReno Modification to
+             TCP&#x27;s Fast Recovery Algorithm&quot;, <a href="/doc/html/rfc2582">RFC 2582</a>, April 1999.
+
+   [<a id="ref-RFC2883">RFC2883</a>] Floyd, S., Mahdavi, J., Mathis, M., and M. Podolsky, &quot;An
+             Extension to the Selective Acknowledgement (SACK) Option
+             for TCP&quot;, <a href="/doc/html/rfc2883">RFC 2883</a>, July 2000.
+
+   [<a id="ref-RFC3042">RFC3042</a>] Allman, M., Balakrishnan, H., and S. Floyd, &quot;Enhancing
+             TCP&#x27;s Loss Recovery Using Limited Transmit&quot;, <a href="/doc/html/rfc3042">RFC 3042</a>,
+             January 2001.
+
+   [<a id="ref-RFC3522">RFC3522</a>] Ludwig, R. and M. Meyer, &quot;The Eifel Detection Algorithm for
+             TCP&quot;, <a href="/doc/html/rfc3522">RFC 3522</a>, April 2003.
+
+   [<a id="ref-RFC3782">RFC3782</a>] Floyd, S., Henderson, T., and A. Gurtov, &quot;The NewReno
+             Modification to TCP&#x27;s Fast Recovery Algorithm&quot;, <a href="/doc/html/rfc3782">RFC 3782</a>,
+             April 2004.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<span class="grey">Henderson, et al.            Standards Track                   [Page 13]</span></pre>
+<hr class='noprint'/><!--NewPage--><pre class='newpage'><span id="page-14" ></span>
+<span class="grey"><a href="/doc/html/rfc6582">RFC 6582</a>                      TCP NewReno                     April 2012</span>
+
+
+<span class="h2"><a class="selflink" id="appendix-A" href="#appendix-A">Appendix A</a>.  Additional Information</span>
+
+   Previous versions of this RFC ([<a href="/doc/html/rfc2582" title="&quot;The NewReno Modification to TCP&#x27;s Fast Recovery Algorithm&quot;">RFC2582</a>] [<a href="/doc/html/rfc3782" title="&quot;The NewReno Modification to TCP&#x27;s Fast Recovery Algorithm&quot;">RFC3782</a>]) contained
+   additional informative material on the following subjects, and may be
+   consulted by readers who may want more information about possible
+   variants to the algorithms and who may want references to specific
+   [<a href="#ref-NS" title="&quot;The Network Simulator version 2 (ns-2)&quot;">NS</a>] simulations that provide NewReno test cases.
+
+   <a href="/doc/html/rfc3782#section-4">Section&nbsp;4 of [RFC3782]</a> discusses some alternative behaviors for
+   resetting the retransmit timer after a partial acknowledgment.
+
+   <a href="/doc/html/rfc3782#section-5">Section&nbsp;5 of [RFC3782]</a> discusses some alternative behaviors for
+   performing retransmission after a partial acknowledgment.
+
+   <a href="/doc/html/rfc3782#section-6">Section&nbsp;6 of [RFC3782]</a> describes more information about the
+   motivation for the sender&#x27;s state variable recover.
+
+   <a href="/doc/html/rfc3782#section-9">Section&nbsp;9 of [RFC3782]</a> introduces some NS simulation test suites for
+   NewReno.  In addition, references to simulation results can be found
+   throughout [<a href="/doc/html/rfc3782" title="&quot;The NewReno Modification to TCP&#x27;s Fast Recovery Algorithm&quot;">RFC3782</a>].
+
+   <a href="/doc/html/rfc3782#section-10">Section&nbsp;10 of [RFC3782]</a> provides a comparison of Reno and
+   NewReno TCP.
+
+   <a href="/doc/html/rfc3782#section-11">Section&nbsp;11 of [RFC3782]</a> lists changes relative to [<a href="/doc/html/rfc2582" title="&quot;The NewReno Modification to TCP&#x27;s Fast Recovery Algorithm&quot;">RFC2582</a>].
+
+<span class="h2"><a class="selflink" id="appendix-B" href="#appendix-B">Appendix B</a>.  Changes Relative to <a href="/doc/html/rfc3782">RFC 3782</a></span>
+
+   In [<a href="/doc/html/rfc3782" title="&quot;The NewReno Modification to TCP&#x27;s Fast Recovery Algorithm&quot;">RFC3782</a>], the cwnd after Full ACK reception will be set to
+   (1) min (ssthresh, FlightSize + SMSS) or (2) ssthresh.  However, the
+   first option carries a risk of performance degradation: With the
+   first option, if FlightSize is zero, the result will be 1 SMSS.  This
+   means TCP can transmit only 1 segment at that moment, which can cause
+   a delay in ACK transmission at the receiver due to a delayed ACK
+   algorithm.
+
+   The FlightSize on Full ACK reception can be zero in some situations.
+   A typical example is where the sending window size during fast
+   recovery is small.  In this case, the retransmitted packet and new
+   data packets can be transmitted within a short interval.  If all
+   these packets successfully arrive, the receiver may generate a Full
+   ACK that acknowledges all outstanding data.  Even if the window size
+   is not small, loss of ACK packets or a receive buffer shortage during
+   fast recovery can also increase the possibility of falling into this
+   situation.
+
+
+
+
+
+
+<span class="grey">Henderson, et al.            Standards Track                   [Page 14]</span></pre>
+<hr class='noprint'/><!--NewPage--><pre class='newpage'><span id="page-15" ></span>
+<span class="grey"><a href="/doc/html/rfc6582">RFC 6582</a>                      TCP NewReno                     April 2012</span>
+
+
+   The proposed fix in this document, which sets cwnd to at least 2*SMSS
+   if the implementation uses option 1 in the Full ACK case
+   (<a href="#section-3.2">Section 3.2</a>, step 3, option 1), ensures that the sender TCP
+   transmits at least two segments on Full ACK reception.
+
+   In addition, an erratum was reported for <a href="/doc/html/rfc3782">RFC 3782</a> (an editorial
+   clarification to <a href="#section-8">Section 8</a>); this erratum has been addressed in
+   <a href="#section-6">Section 6</a> of this document.
+
+   The specification text (<a href="#section-3.2">Section 3.2</a> herein) was rewritten to more
+   closely track <a href="/doc/html/rfc5681#section-3.2">Section&nbsp;3.2 of [RFC5681]</a>.
+
+   Sections <a href="#section-4">4</a>, <a href="#section-5">5</a>, and <a href="#section-9">9</a>-<a href="#section-11">11</a> of [<a href="/doc/html/rfc3782" title="&quot;The NewReno Modification to TCP&#x27;s Fast Recovery Algorithm&quot;">RFC3782</a>] were removed, and instead
+   <a href="#appendix-A">Appendix A</a> of this document was added to back-reference this
+   informative material.  A few references that have no citation in the
+   main body of the document have been removed.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<span class="grey">Henderson, et al.            Standards Track                   [Page 15]</span></pre>
+<hr class='noprint'/><!--NewPage--><pre class='newpage'><span id="page-16" ></span>
+<span class="grey"><a href="/doc/html/rfc6582">RFC 6582</a>                      TCP NewReno                     April 2012</span>
+
+
+Authors&#x27; Addresses
+
+   Tom Henderson
+   The Boeing Company
+
+   EMail: thomas.r.henderson@boeing.com
+
+
+   Sally Floyd
+   International Computer Science Institute
+
+   Phone: +1 (510) 666-2989
+   EMail: floyd@acm.org
+   URL: <a href="http://www.icir.org/floyd/">http://www.icir.org/floyd/</a>
+
+
+   Andrei Gurtov
+   University of Oulu
+   Centre for Wireless Communications CWC
+   P.O. Box 4500
+   FI-90014 University of Oulu
+   Finland
+
+   EMail: gurtov@ee.oulu.fi
+
+
+   Yoshifumi Nishida
+   WIDE Project
+   Endo 5322
+   Fujisawa, Kanagawa  252-8520
+   Japan
+
+   EMail: nishida@wide.ad.jp
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Henderson, et al.            Standards Track                   [Page 16]
+</pre>
+    </div>
+
+  </div>
+
+
+        
+	  </div>
+
+	
+
+	
+
+    </div>
+
+      
+    <script type="text/javascript"><!--
+    var legend_html = "Colour legend:<br /> \
+     <table> \
+        <tr><td>Unknown:</td>                   <td><span class='cplate bgwhite'>&nbsp;&nbsp;&nbsp;&nbsp;</span></td></tr> \
+        <tr><td>Draft:</td>                     <td><span class='cplate bgred'>&nbsp;&nbsp;&nbsp;&nbsp;</span></td></tr> \
+        <tr><td>Informational:</td>             <td><span class='cplate bgorange'>&nbsp;&nbsp;&nbsp;&nbsp;</span></td></tr> \
+        <tr><td>Experimental:</td>              <td><span class='cplate bgyellow'>&nbsp;&nbsp;&nbsp;&nbsp;</span></td></tr> \
+        <tr><td>Best Common Practice:</td>      <td><span class='cplate bgmagenta'>&nbsp;&nbsp;&nbsp;&nbsp;</span></td></tr> \
+        <tr><td>Proposed Standard:</td>         <td><span class='cplate bgblue'>&nbsp;&nbsp;&nbsp;&nbsp;</span></td></tr> \
+        <tr><td>Draft Standard (old designation):</td> <td><span class='cplate bgcyan'>&nbsp;&nbsp;&nbsp;&nbsp;</span></td></tr> \
+        <tr><td>Internet Standard:</td>         <td><span class='cplate bggreen'>&nbsp;&nbsp;&nbsp;&nbsp;</span></td></tr> \
+        <tr><td>Historic:</td>                  <td><span class='cplate bggrey'>&nbsp;&nbsp;&nbsp;&nbsp;</span></td></tr> \
+        <tr><td>Obsolete:</td>                  <td><span class='cplate bgbrown'>&nbsp;&nbsp;&nbsp;&nbsp;</span></td></tr> \
+    </table>";
+    function showLegend() {
+        var elem = document.getElementById('legend');
+        elem.innerHTML = legend_html
+        elem.style.visibility='visible';
+    }
+    function hideLegend() {
+        var elem = document.getElementById('legend');
+        elem.style.visibility='hidden';
+        elem.innerHTML = "";
+    }
+    // -->
+    </script>
+
+  </body>
+</html>

@@ -1,0 +1,1010 @@
+<!DOCTYPE html> 
+
+<!-- template: /a/www/ietf-datatracker/web/ietf/templates/doc/htmlized_base.html -->
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <title>
+  
+    rfc6673
+  
+</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+
+  @media only screen 
+    and (min-width: 992px)
+    and (max-width: 1199px) {
+      body { font-size: 14pt; }
+            div.content { width: 96ex; margin: 0 auto; }
+        }
+  @media only screen 
+    and (min-width: 768px)
+    and (max-width: 991px) {
+            body { font-size: 14pt; }
+            div.content { width: 96ex; margin: 0 auto; }
+        }
+  @media only screen 
+    and (min-width: 480px)
+    and (max-width: 767px) {
+            body { font-size: 11pt; }
+            div.content { width: 96ex; margin: 0 auto; }
+        }
+  @media only screen 
+    and (max-width: 479px) {
+            body { font-size: 8pt; }
+            div.content { width: 96ex; margin: 0 auto; }
+        }
+  @media only screen 
+    and (min-device-width : 375px) 
+    and (max-device-width : 667px) {
+            body { font-size: 9.5pt; }
+            div.content { width: 96ex; margin: 0; }
+        }
+  @media only screen 
+    and (min-device-width: 1200px) {
+            body { font-size: 10pt; margin: 0 4em; }
+            div.content { width: 96ex; margin: 0; }
+        }
+        h1, h2, h3, h4, h5, h6, .h1, .h2, .h3, .h4, .h5, .h6 {
+      font-weight: bold;
+            /* line-height: 0pt; */
+            display: inline;
+            white-space: pre;
+            font-family: monospace;
+            font-size: 1em;
+      font-weight: bold;
+        }
+        pre {
+            font-size: 1em;
+            margin-top: 0px;
+            margin-bottom: 0px;
+        }
+  .pre {
+      white-space: pre;
+      font-family: monospace;
+  }
+  .header{
+      font-weight: bold;
+  }
+        .newpage {
+            page-break-before: always;
+        }
+        .invisible {
+            text-decoration: none;
+            color: white;
+        }
+        @media print {
+            body {
+                margin-top: 5em;
+                font-family: monospace;
+                font-size: 10.5pt;
+            }
+            h1, h2, h3, h4, h5, h6 {
+                font-size: 1em;
+            }
+        
+            a:link, a:visited {
+                color: inherit;
+                text-decoration: none;
+            }
+            .noprint {
+                display: none;
+            }
+        }
+  @media screen {
+      .grey, .grey a:link, .grey a:visited {
+    color: #777;
+      }
+            .meta-info {
+                background-color: #EEE;
+            }
+            .top {
+                border-top: 7px solid #EEE;
+            }
+            .pad {
+                padding-top: 7px;
+                line-height: 24px;
+                padding-bottom: 4px;
+            }
+            .bgwhite  { background-color: white; }
+            .bgred    { background-color: #F44; }
+            .bggrey   { background-color: #666; }
+            .bgbrown  { background-color: #840; }            
+            .bgorange { background-color: #FA0; }
+            .bgyellow { background-color: #EE0; }
+            .bgmagenta{ background-color: #F4F; }
+            .bgblue   { background-color: #66F; }
+            .bgcyan   { background-color: #4DD; }
+            .bggreen  { background-color: #4F4; }
+
+            .legend   { font-size: 90%; }
+            .cplate   { font-size: 70%; border: solid grey 1px; }
+  }
+    
+     
+
+.bgwhite  { background-color: white; }
+.bgred    { background-color: #F44; }
+.bggrey   { background-color: #666; }
+.bgbrown  { background-color: #840; }            
+.bgorange { background-color: #FA0; }
+.bgyellow { background-color: #EE0; }
+.bgmagenta{ background-color: #F4F; }
+.bgblue   { background-color: #66F; }
+.bgcyan   { background-color: #4DD; }
+.bggreen  { background-color: #4F4; }
+
+.draftcontent { margin-top:0px !important;}
+
+
+    </style>
+
+    
+  <link rel="alternate" type="application/atom+xml" title="Document changes" href="/feed/document-changes/draft-ietf-ippm-rt-loss/">
+  <meta name="description" content="Round-Trip Packet Loss Metrics (RFC )">
+
+
+    
+    <link rel="shortcut icon" href="https://www.ietf.org/lib/dt/7.40.0/ietf/images/ietf-icon-blue3.png">
+    
+    <link rel="apple-touch-icon" href="https://www.ietf.org/lib/dt/7.40.0/ietf/images/apple-touch-icon.png">
+  </head>
+
+  <body style="padding-top: 0;">
+
+	  <div class="content" id="content">
+        
+  <!-- template: /a/www/ietf-datatracker/web/ietf/templates/doc/document_html.html -->
+ 
+  <div class="rfcmarkup">
+    <div class="noprint" style="height: 6px;">
+      <div onmouseover="this.style.cursor='pointer';"
+         onclick="showLegend();"
+         onmouseout="hideLegend()"
+         style="height: 6px; min-height: 6px; width: 96ex; position: absolute; margin-top:0; "
+         class="meta-info bgblue"
+         title="Click for colour legend." >&nbsp;</div>
+      <div id="legend"
+           class="meta-info noprint pre legend"
+           style="position:absolute; top: 4px; left: 4ex; visibility:hidden; background-color: white; padding: 4px 9px 5px 7px; border: solid #345 1px; "
+           onmouseover="showLegend();"
+           onmouseout="hideLegend();">
+      </div>
+    </div>
+
+    
+      <div class="noprint">
+	 <pre class="pre meta-info">[<a href="https://datatracker.ietf.org" title="Document search and retrieval page">Search</a>] [<a href="https://www.rfc-editor.org/rfc/rfc6673.txt" title="Plaintext version of this document">txt</a>|<a href="https://www.rfc-editor.org/rfc/rfc6673.html" title="HTML version of this document, from XML2RFC">html</a>|<a href="https://www.rfc-editor.org/rfc/pdfrfc/rfc6673.txt.pdf" title="PDF version of this document">pdf</a>|<a href="/doc/rfc6673/bibtex" title="BibTex entry for this document">bibtex</a>] [<a href="/doc/rfc6673/" title="Datatracker information for this document">Tracker</a>] [<a href="/group/ippm/" title="The working group handling this document">WG</a>] [<a href="mailto:draft-ietf-ippm-rt-loss@ietf.org?subject=draft-ietf-ippm-rt-loss" title="Send email to the document authors">Email</a>] [<a href="https://www.ietf.org/rfcdiff?difftype=--hwdiff&url2=draft-ietf-ippm-rt-loss-05.txt" title="Inline diff (wdiff)">Diff1</a>] [<a href="https://www.ietf.org/rfcdiff?url2=draft-ietf-ippm-rt-loss-05.txt" title="Side-by-side diff">Diff2</a>] [<a href="https://www.ietf.org/tools/idnits?url=https://www.ietf.org/archive/id/draft-ietf-ippm-rt-loss-05.txt" title="Run an idnits check of this document">Nits</a>]
+
+From: <a href="/doc/html/draft-ietf-ippm-rt-loss-05">draft-ietf-ippm-rt-loss-05</a>                       Proposed Standard</pre>
+      </div>
+    
+
+    <div class="draftcontent">
+    <pre>Internet Engineering Task Force (IETF)                         A. Morton
+Request for Comments: 6673                                     AT&amp;T Labs
+Category: Standards Track                                    August 2012
+ISSN: 2070-1721
+
+
+                     <span class="h1">Round-Trip Packet Loss Metrics</span>
+
+Abstract
+
+   Many user applications (and the transport protocols that make them
+   possible) require two-way communications.  To assess this capability,
+   and to achieve test system simplicity, round-trip loss measurements
+   are frequently conducted in practice.  The Two-Way Active Measurement
+   Protocol specified in <a href="/doc/html/rfc5357">RFC 5357</a> establishes a round-trip loss
+   measurement capability for the Internet.  However, there is currently
+   no round-trip packet loss metric specified according to the <a href="/doc/html/rfc2330">RFC 2330</a>
+   framework.
+
+   This memo adds round-trip loss to the set of IP Performance Metrics
+   (IPPM).
+
+Status of This Memo
+
+   This is an Internet Standards Track document.
+
+   This document is a product of the Internet Engineering Task Force
+   (IETF).  It represents the consensus of the IETF community.  It has
+   received public review and has been approved for publication by the
+   Internet Engineering Steering Group (IESG).  Further information on
+   Internet Standards is available in <a href="/doc/html/rfc5741#section-2">Section&nbsp;2 of RFC 5741</a>.
+
+   Information about the current status of this document, any errata,
+   and how to provide feedback on it may be obtained at
+   <a href="http://www.rfc-editor.org/info/rfc6673">http://www.rfc-editor.org/info/rfc6673</a>.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<span class="grey">Morton                       Standards Track                    [Page 1]</span></pre>
+<hr class='noprint'/><!--NewPage--><pre class='newpage'><span id="page-2" ></span>
+<span class="grey"><a href="/doc/html/rfc6673">RFC 6673</a>                     Round-Trip Loss                 August 2012</span>
+
+
+Copyright Notice
+
+   Copyright (c) 2012 IETF Trust and the persons identified as the
+   document authors.  All rights reserved.
+
+   This document is subject to <a href="/doc/html/bcp78">BCP 78</a> and the IETF Trust&#x27;s Legal
+   Provisions Relating to IETF Documents
+   (<a href="http://trustee.ietf.org/license-info">http://trustee.ietf.org/license-info</a>) in effect on the date of
+   publication of this document.  Please review these documents
+   carefully, as they describe your rights and restrictions with respect
+   to this document.  Code Components extracted from this document must
+   include Simplified BSD License text as described in Section 4.e of
+   the Trust Legal Provisions and are provided without warranty as
+   described in the Simplified BSD License.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<span class="grey">Morton                       Standards Track                    [Page 2]</span></pre>
+<hr class='noprint'/><!--NewPage--><pre class='newpage'><span id="page-3" ></span>
+<span class="grey"><a href="/doc/html/rfc6673">RFC 6673</a>                     Round-Trip Loss                 August 2012</span>
+
+
+Table of Contents
+
+   <a href="#section-1">1</a>. Introduction ....................................................<a href="#page-3">3</a>
+      <a href="#section-1.1">1.1</a>. Motivation .................................................<a href="#page-4">4</a>
+      <a href="#section-1.2">1.2</a>. Requirements Language ......................................<a href="#page-5">5</a>
+   <a href="#section-2">2</a>. Scope ...........................................................<a href="#page-5">5</a>
+   <a href="#section-3">3</a>. Common Specifications for Round-Trip Metrics ....................<a href="#page-5">5</a>
+      <a href="#section-3.1">3.1</a>. Name: Type-P-* .............................................<a href="#page-5">5</a>
+      <a href="#section-3.2">3.2</a>. Metric Parameters ..........................................<a href="#page-5">5</a>
+      <a href="#section-3.3">3.3</a>. Metric Definition ..........................................<a href="#page-6">6</a>
+      <a href="#section-3.4">3.4</a>. Metric Units ...............................................<a href="#page-6">6</a>
+   <a href="#section-4">4</a>. A Singleton Round-Trip Loss Metric ..............................<a href="#page-7">7</a>
+      <a href="#section-4.1">4.1</a>. Name: Type-P-Round-trip-Loss ...............................<a href="#page-7">7</a>
+      <a href="#section-4.2">4.2</a>. Metric Parameters ..........................................<a href="#page-7">7</a>
+      <a href="#section-4.3">4.3</a>. Definition and Metric Units ................................<a href="#page-7">7</a>
+      <a href="#section-4.4">4.4</a>. Discussion and Other Details ...............................<a href="#page-8">8</a>
+   <a href="#section-5">5</a>. A Sample Round-Trip Loss Metric .................................<a href="#page-9">9</a>
+      <a href="#section-5.1">5.1</a>. Name: Type-P-Round-trip-Loss-&lt;Sample&gt;-Stream ...............<a href="#page-9">9</a>
+      <a href="#section-5.2">5.2</a>. Metric Parameters ..........................................<a href="#page-9">9</a>
+      <a href="#section-5.3">5.3</a>. Definition and Metric Units ................................<a href="#page-9">9</a>
+      <a href="#section-5.4">5.4</a>. Discussion and Other Details ..............................<a href="#page-10">10</a>
+   <a href="#section-6">6</a>. Round-Trip Loss Statistic ......................................<a href="#page-10">10</a>
+      <a href="#section-6.1">6.1</a>. Type-P-Round-trip-Loss-&lt;Sample&gt;-Ratio .....................<a href="#page-10">10</a>
+   <a href="#section-7">7</a>. Round-Trip Testing and One-Way Reporting .......................<a href="#page-11">11</a>
+   <a href="#section-8">8</a>. Measurement Considerations and Calibration .....................<a href="#page-11">11</a>
+   <a href="#section-9">9</a>. Security Considerations ........................................<a href="#page-12">12</a>
+      <a href="#section-9.1">9.1</a>. Denial-of-Service Attacks .................................<a href="#page-12">12</a>
+      <a href="#section-9.2">9.2</a>. User Data Confidentiality .................................<a href="#page-12">12</a>
+      <a href="#section-9.3">9.3</a>. Interference with the Metrics .............................<a href="#page-12">12</a>
+   <a href="#section-10">10</a>. IANA Considerations ...........................................<a href="#page-13">13</a>
+   <a href="#section-11">11</a>. Acknowledgements ..............................................<a href="#page-13">13</a>
+   <a href="#section-12">12</a>. References ....................................................<a href="#page-13">13</a>
+      <a href="#section-12.1">12.1</a>. Normative References .....................................<a href="#page-13">13</a>
+      <a href="#section-12.2">12.2</a>. Informative References ...................................<a href="#page-14">14</a>
+
+<span class="h2"><a class="selflink" id="section-1" href="#section-1">1</a>.  Introduction</span>
+
+   This memo defines a metric to quantify an IP network&#x27;s ability to
+   transfer packets in both directions from one host to another host.
+   Two-way communication is almost always needed; thus, failure to
+   transfer a packet in either direction constitutes a round-trip packet
+   loss.
+
+   This memo defines a metric for round-trip packet loss on Internet
+   paths.  It builds on the notions and conventions introduced in the IP
+   Performance Metrics (IPPM) framework [<a href="/doc/html/rfc2330" title="&quot;Framework for IP Performance Metrics&quot;">RFC2330</a>].  Also, the
+   specifications of the one-way packet loss metric for IPPM [<a href="/doc/html/rfc2680" title="&quot;A One-way Packet Loss Metric for IPPM&quot;">RFC2680</a>]
+   and the round-trip delay metric for IPPM [<a href="/doc/html/rfc2681" title="&quot;A Round-trip Delay Metric for IPPM&quot;">RFC2681</a>] are frequently
+
+
+
+<span class="grey">Morton                       Standards Track                    [Page 3]</span></pre>
+<hr class='noprint'/><!--NewPage--><pre class='newpage'><span id="page-4" ></span>
+<span class="grey"><a href="/doc/html/rfc6673">RFC 6673</a>                     Round-Trip Loss                 August 2012</span>
+
+
+   referenced and modified to match the round-trip circumstances
+   addressed here.  However, this memo assumes that the reader is
+   familiar with the references; thus, it does not repeat material as
+   was done in [<a href="/doc/html/rfc2681" title="&quot;A Round-trip Delay Metric for IPPM&quot;">RFC2681</a>].
+
+   This memo uses the terms &quot;two-way&quot; and &quot;round-trip&quot; synonymously.
+
+<span class="h3"><a class="selflink" id="section-1.1" href="#section-1.1">1.1</a>.  Motivation</span>
+
+   Many user applications and the transport protocols that make them
+   possible require two-way communications.  For example, the TCP SYN-&gt;,
+   &lt;-SYN-ACK, ACK-&gt; three-way handshake attempted billions of times each
+   day cannot be completed without two-way connectivity in a near-
+   simultaneous time interval.  Thus, measurements of Internet round-
+   trip packet loss performance provide a basis to infer application
+   performance more easily.
+
+   Measurement system designers have also recognized advantages of
+   system simplicity when one host simply echoes or reflects test
+   packets to the sender.  Round-trip packet loss measurements are
+   frequently conducted and reported in practice.  The ubiquitous &quot;ping&quot;
+   tools allow the measurement of round-trip packet loss and delay but
+   usually require ICMP Echo-Request/Reply support, and ICMP packets may
+   encounter exceptional treatment on the measurement path (see
+   <a href="/doc/html/rfc2681#section-2.6">Section&nbsp;2.6 of [RFC2681]</a>).  The Two-Way Active Measurement Protocol
+   (TWAMP) specified in [<a href="/doc/html/rfc5357" title="&quot;A Two-Way Active Measurement Protocol (TWAMP)&quot;">RFC5357</a>] establishes a round-trip packet loss
+   measurement capability for the Internet.  However, there is currently
+   no round-trip packet loss metric specified according to the [<a href="/doc/html/rfc2330" title="&quot;Framework for IP Performance Metrics&quot;">RFC2330</a>]
+   framework.
+
+   [<a id="ref-RFC2681">RFC2681</a>] indicates that round-trip measurements may sometimes
+   encounter &quot;asymmetric&quot; paths.  When loss is observed using a round-
+   trip measurement, there is often a desire to ascertain which of the
+   two directional paths &quot;lost&quot; the packet.  Under some circumstances,
+   it is possible to make this inference.  The round-trip measurement
+   method raises a few complications when interpreting the embedded one-
+   way results, and the user should be aware of them.
+
+   [<a id="ref-RFC2681">RFC2681</a>] also points out that loss measurement conducted
+   sequentially in both directions of a path and reported as a round-
+   trip result may be exactly the desired metric.  On the other hand, it
+   may be difficult to derive the state of round-trip packet loss from
+   one-way measurements conducted in each direction unless a method to
+   match the appropriate one-way measurements has been pre-arranged.
+
+   Finally, many measurement systems report statistics on a conditional
+   delay distribution, where the condition is packet arrival at the
+   destination.  This condition is encouraged in [<a href="/doc/html/rfc3393" title="&quot;IP Packet Delay Variation Metric for IP Performance Metrics (IPPM)&quot;">RFC3393</a>], [<a href="/doc/html/rfc5481" title="&quot;Packet Delay Variation Applicability Statement&quot;">RFC5481</a>],
+
+
+
+<span class="grey">Morton                       Standards Track                    [Page 4]</span></pre>
+<hr class='noprint'/><!--NewPage--><pre class='newpage'><span id="page-5" ></span>
+<span class="grey"><a href="/doc/html/rfc6673">RFC 6673</a>                     Round-Trip Loss                 August 2012</span>
+
+
+   and [<a href="/doc/html/rfc6703" title="&quot;Reporting IP Network Performance Metrics: Different Points of View&quot;">RFC6703</a>].  As a result, lost packets need to be reported
+   separately, according to a standardized metric.  This memo defines
+   such a metric.
+
+   See <a href="/doc/html/rfc2680#section-1.1">Section&nbsp;1.1 of [RFC2680]</a> for additional motivation of the packet
+   loss metric.
+
+<span class="h3"><a class="selflink" id="section-1.2" href="#section-1.2">1.2</a>.  Requirements Language</span>
+
+   The key words &quot;MUST&quot;, &quot;MUST NOT&quot;, &quot;REQUIRED&quot;, &quot;SHALL&quot;, &quot;SHALL NOT&quot;,
+   &quot;SHOULD&quot;, &quot;SHOULD NOT&quot;, &quot;RECOMMENDED&quot;, &quot;MAY&quot;, and &quot;OPTIONAL&quot; in this
+   document are to be interpreted as described in <a href="/doc/html/rfc2119">RFC 2119</a> [<a href="/doc/html/rfc2119" title="&quot;Key words for use in RFCs to Indicate Requirement Levels&quot;">RFC2119</a>].
+
+<span class="h2"><a class="selflink" id="section-2" href="#section-2">2</a>.  Scope</span>
+
+   This memo defines a round-trip packet loss metric using the
+   conventions of the IPPM framework [<a href="/doc/html/rfc2330" title="&quot;Framework for IP Performance Metrics&quot;">RFC2330</a>].
+
+   The memo defines a singleton metric, a sample metric, and a
+   statistic, as per [<a href="/doc/html/rfc2330" title="&quot;Framework for IP Performance Metrics&quot;">RFC2330</a>].  The [<a href="/doc/html/rfc2330" title="&quot;Framework for IP Performance Metrics&quot;">RFC2330</a>] framework is for active
+   measurement methods.  Although this metric MAY be applicable in
+   passive measurement as well, discussion of additional considerations
+   for the passive scenario are beyond the normative scope of this memo.
+
+   The memo also investigates the topic of one-way loss inference from a
+   two-way measurement and lists some key considerations.
+
+<span class="h2"><a class="selflink" id="section-3" href="#section-3">3</a>.  Common Specifications for Round-Trip Metrics</span>
+
+   To reduce the redundant information presented in the detailed metrics
+   sections that follow, this section presents the specifications that
+   are common to two or more metrics.  The section is organized using
+   the same subsections as the individual metrics, to simplify
+   comparisons.
+
+<span class="h3"><a class="selflink" id="section-3.1" href="#section-3.1">3.1</a>.  Name: Type-P-*</span>
+
+   All metrics use the Type-P convention as described in [<a href="/doc/html/rfc2330" title="&quot;Framework for IP Performance Metrics&quot;">RFC2330</a>].  The
+   rest of the name is unique to each metric.
+
+<span class="h3"><a class="selflink" id="section-3.2" href="#section-3.2">3.2</a>.  Metric Parameters</span>
+
+   o  Src, the IP address of a host
+
+   o  Dst, the IP address of a host
+
+   o  T, a time (start of test interval)
+
+
+
+
+<span class="grey">Morton                       Standards Track                    [Page 5]</span></pre>
+<hr class='noprint'/><!--NewPage--><pre class='newpage'><span id="page-6" ></span>
+<span class="grey"><a href="/doc/html/rfc6673">RFC 6673</a>                     Round-Trip Loss                 August 2012</span>
+
+
+   o  Tf, a time (end of test interval)
+
+   o  lambda, a rate in reciprocal seconds (for Poisson Streams)
+
+   o  incT, the nominal duration of inter-packet interval, first bit to
+      first bit (for Periodic Streams)
+
+   o  T0, a time that MUST be selected at random from the interval
+      [T, T+dT] to start generating packets and taking measurements (for
+      Periodic Streams)
+
+   o  TstampSrc, the wire time of the packet as measured at MP(Src) as
+      it leaves for Dst.
+
+   o  TstampDst, the wire time of the packet as measured at MP(Dst),
+      assigned to packets that arrive within a &quot;reasonable&quot; time (less
+      than Tmax).
+
+   o  Tmax, a maximum waiting time for packets to arrive at Src, set
+      sufficiently long to disambiguate packets with long delays from
+      packets that are discarded (lost).
+
+   o  M, the total number of packets sent between T0 and Tf
+
+   o  N, the total number of packets received at Dst (sent between T0
+      and Tf)
+
+   o  Type-P, as defined in [<a href="/doc/html/rfc2330" title="&quot;Framework for IP Performance Metrics&quot;">RFC2330</a>], which includes any field that may
+      affect a packet&#x27;s treatment as it traverses the network
+
+<span class="h3"><a class="selflink" id="section-3.3" href="#section-3.3">3.3</a>.  Metric Definition</span>
+
+   This section is specific to each metric.
+
+<span class="h3"><a class="selflink" id="section-3.4" href="#section-3.4">3.4</a>.  Metric Units</span>
+
+   The metric units are logical (1 or 0) when describing a single
+   packet&#x27;s loss performance, where a 0 indicates successful packet
+   transmission and a 1 indicates packet loss.
+
+   Units of time are as specified in [<a href="/doc/html/rfc2330" title="&quot;Framework for IP Performance Metrics&quot;">RFC2330</a>].
+
+   Other units used are defined in the associated section where
+   needed (e.g., <a href="#section-6.1">Section 6.1</a> in the case of
+   Type-P-Round-trip-Loss-&lt;Sample&gt;-Ratio).
+
+
+
+
+
+
+<span class="grey">Morton                       Standards Track                    [Page 6]</span></pre>
+<hr class='noprint'/><!--NewPage--><pre class='newpage'><span id="page-7" ></span>
+<span class="grey"><a href="/doc/html/rfc6673">RFC 6673</a>                     Round-Trip Loss                 August 2012</span>
+
+
+<span class="h2"><a class="selflink" id="section-4" href="#section-4">4</a>.  A Singleton Round-Trip Loss Metric</span>
+
+<span class="h3"><a class="selflink" id="section-4.1" href="#section-4.1">4.1</a>.  Name: Type-P-Round-trip-Loss</span>
+
+<span class="h3"><a class="selflink" id="section-4.2" href="#section-4.2">4.2</a>.  Metric Parameters</span>
+
+   See <a href="#section-3.2">Section 3.2</a>.
+
+<span class="h3"><a class="selflink" id="section-4.3" href="#section-4.3">4.3</a>.  Definition and Metric Units</span>
+
+   Type-P-Round-trip-Loss SHALL be represented by the binary logical
+   values (or their equivalents) when the following conditions are met:
+
+   Type-P-Round-trip-Loss = 0:
+
+   o  Src sent the first bit of a Type-P packet to Dst at wire-time
+      TstampSrc,
+
+   o  that Dst received that packet,
+
+   o  the Dst sent a Type-P packet back to the Src as quickly as
+      possible (certainly less than Tmax, and fast enough for the
+      intended purpose), and
+
+   o  that Src received the last bit of the reflected packet prior to
+      wire-time TstampSrc + Tmax.
+
+   Type-P-Round-trip-Loss = 1:
+
+   o  Src sent the first bit of a Type-P packet to Dst at wire-time
+      TstampSrc,
+
+   o  that Src did not receive the last bit of the reflected packet
+      before the waiting time lapsed at TstampSrc + Tmax.
+
+   Possible causes for the Loss = 1 outcome are as follows:
+
+   o  the Dst did not receive that packet,
+
+   o  the Dst did not send a Type-P packet back to the Src, or
+
+   o  the Src did not receive a reflected Type-P packet sent from
+      the Dst.
+
+
+
+
+
+
+
+
+<span class="grey">Morton                       Standards Track                    [Page 7]</span></pre>
+<hr class='noprint'/><!--NewPage--><pre class='newpage'><span id="page-8" ></span>
+<span class="grey"><a href="/doc/html/rfc6673">RFC 6673</a>                     Round-Trip Loss                 August 2012</span>
+
+
+   Following the precedent of <a href="/doc/html/rfc2681#section-2.4">Section&nbsp;2.4 of [RFC2681]</a>, we make the
+   simplifying assertion that round-trip loss measured between two hosts
+   is equal regardless of the host that originates the test:
+
+   Type-P-Round-trip-Loss(Src-&gt;Dst-&gt;Src) =
+   Type-P-Round-trip-Loss(Dst-&gt;Src-&gt;Dst)
+
+   (and agree with the rationale presented there -- that the ambiguity
+   introduced is a small price to pay for measurement efficiency).
+
+   Therefore, each singleton can be represented by pairs of elements as
+   follows:
+
+   o  TstampSrc, the wire time of the packet at the Src (beginning the
+      round-trip journey).
+
+   o  L, either zero or one (or some logical equivalent), where L=1
+      indicates loss and L=0 indicates successful round-trip arrival
+      prior to TstampSrc + Tmax.
+
+<span class="h3"><a class="selflink" id="section-4.4" href="#section-4.4">4.4</a>.  Discussion and Other Details</span>
+
+   See [<a href="/doc/html/rfc2680" title="&quot;A One-way Packet Loss Metric for IPPM&quot;">RFC2680</a>] and [<a href="/doc/html/rfc2681" title="&quot;A Round-trip Delay Metric for IPPM&quot;">RFC2681</a>] for extensive discussion, methods of
+   measurement, errors and uncertainties, and other fundamental
+   considerations that need not be repeated here.
+
+   We add the following guidance regarding the responder process to
+   &quot;send a Type-P packet back to the Src as quickly as possible&quot;.
+
+   A response that was not generated within Tmax is inadequate for any
+   realistic test, and the Src will discard such responses.  A responder
+   that serves typical round-trip packet loss testing (which is relevant
+   to higher-layer application performance) SHOULD produce a response in
+   1 second or less.  A responder that is unable to satisfy this
+   requirement SHOULD log the fact so that an operator can adjust the
+   load and priorities as necessary.  Analysis of responder timestamps
+   [<a href="/doc/html/rfc5357" title="&quot;A Two-Way Active Measurement Protocol (TWAMP)&quot;">RFC5357</a>] that finds responses are not generated in a timely fashion
+   SHOULD result in operator notification, and the operator SHOULD
+   suspend tests to the responder, since it may be overloaded.
+   Additional measurement considerations are described in <a href="#section-8">Section 8</a>
+   below.
+
+
+
+
+
+
+
+
+
+
+<span class="grey">Morton                       Standards Track                    [Page 8]</span></pre>
+<hr class='noprint'/><!--NewPage--><pre class='newpage'><span id="page-9" ></span>
+<span class="grey"><a href="/doc/html/rfc6673">RFC 6673</a>                     Round-Trip Loss                 August 2012</span>
+
+
+<span class="h2"><a class="selflink" id="section-5" href="#section-5">5</a>.  A Sample Round-Trip Loss Metric</span>
+
+   Given the singleton metric Type-P-Round-trip-Loss, we now define one
+   particular sample of such singletons.  The idea of the sample is to
+   select a particular binding of the parameters Src, Dst, and Type-P,
+   then define a sample of values of parameter TstampSrc.  This can be
+   done in several ways, including the following:
+
+   1.  Poisson: a pseudo-random Poisson process of rate lambda, whose
+       values fall between T and Tf.  The time interval between
+       successive values of TstampSrc will then average 1/lambda, as per
+       <a href="/doc/html/rfc2330#section-11.1.1">Section&nbsp;11.1.1 of [RFC2330]</a>.
+
+   2.  Periodic: a periodic stream process with pseudo-random start time
+       T0 between T and dT, and nominal inter-packet interval incT, as
+       per [<a href="/doc/html/rfc3432" title="&quot;Network performance measurement with periodic streams&quot;">RFC3432</a>].
+
+   In the metric name, the variable &lt;Sample&gt; SHALL be replaced with the
+   process used to define the sample, using one of the above processes
+   (or another sample process meeting the criteria in <a href="/doc/html/rfc2330#section-11.1">Section&nbsp;11.1 of
+   [RFC2330]</a>, the details of which MUST be reported with the results if
+   used).
+
+<span class="h3"><a class="selflink" id="section-5.1" href="#section-5.1">5.1</a>.  Name: Type-P-Round-trip-Loss-&lt;Sample&gt;-Stream</span>
+
+<span class="h3"><a class="selflink" id="section-5.2" href="#section-5.2">5.2</a>.  Metric Parameters</span>
+
+   See <a href="#section-3.2">Section 3.2</a>.
+
+<span class="h3"><a class="selflink" id="section-5.3" href="#section-5.3">5.3</a>.  Definition and Metric Units</span>
+
+   Given one of the methods for defining the test interval -- the sample
+   of times (TstampSrc) and other metric parameters -- we obtain a
+   sequence of Type-P-Round-trip-Loss singletons as defined in
+   <a href="#section-4.3">Section 4.3</a>.
+
+   Type-P-Round-trip-Loss-&lt;Sample&gt;-Stream SHALL be a sequence of pairs
+   with elements as follows:
+
+   o  TstampSrc, as above
+
+   o  L, either zero or one (or some logical equivalent), where L=1
+      indicates loss and L=0 indicates successful round-trip arrival
+      prior to TstampSrc + Tmax
+
+   and where &lt;Sample&gt; SHALL be replaced with &quot;Poisson&quot;, &quot;Periodic&quot;, or
+   an appropriate term to designate another sample method as described
+   in <a href="#section-5">Section 5</a> above.
+
+
+
+<span class="grey">Morton                       Standards Track                    [Page 9]</span></pre>
+<hr class='noprint'/><!--NewPage--><pre class='newpage'><span id="page-10" ></span>
+<span class="grey"><a href="/doc/html/rfc6673">RFC 6673</a>                     Round-Trip Loss                 August 2012</span>
+
+
+<span class="h3"><a class="selflink" id="section-5.4" href="#section-5.4">5.4</a>.  Discussion and Other Details</span>
+
+   See [<a href="/doc/html/rfc2680" title="&quot;A One-way Packet Loss Metric for IPPM&quot;">RFC2680</a>] and [<a href="/doc/html/rfc2681" title="&quot;A Round-trip Delay Metric for IPPM&quot;">RFC2681</a>] for extensive discussion, methods of
+   measurement, errors and uncertainties, and other fundamental
+   considerations that need not be repeated here.  However, when these
+   references were approved, the packet reordering metrics in [<a href="/doc/html/rfc4737" title="&quot;Packet Reordering Metrics&quot;">RFC4737</a>]
+   had not yet been defined, nor had reordering been addressed in IPPM
+   methodologies.
+
+   [<a id="ref-RFC4737">RFC4737</a>] defines packets that arrive &quot;late&quot; with respect to their
+   sending order as reordered -- for example, when packets arrive with
+   sequence numbers 4, 7, 5, 6, then packets 5 and 6 are reordered, and
+   they are obviously not lost because they have arrived within some
+   reasonable waiting time threshold.  The presence of reordering on a
+   round-trip path has several likely effects on the measurement.
+
+   1.  Methods of measurement should continue to wait the specified time
+       for packets and avoid prematurely declaring round-trip packet
+       loss when a sequence gap or error is observed.
+
+   2.  The time distribution of the singletons in the sample has been
+       significantly changed.
+
+   3.  Either the original packet stream or the reflected packet stream
+       experienced path instability, and the original conditions may no
+       longer be present.
+
+   Measurement implementations MUST address the possibility of packet
+   reordering and avoid related errors in their processes.
+
+<span class="h2"><a class="selflink" id="section-6" href="#section-6">6</a>.  Round-Trip Loss Statistic</span>
+
+   This section gives the primary and overall statistic for loss
+   performance.  Additional statistics and metrics originally prepared
+   for one-way loss MAY also be applicable.
+
+<span class="h3"><a class="selflink" id="section-6.1" href="#section-6.1">6.1</a>.  Type-P-Round-trip-Loss-&lt;Sample&gt;-Ratio</span>
+
+   Given a Type-P-Round-trip-Loss-&lt;Sample&gt;-Stream, the average of
+   all the logical values, L, in the stream is the
+   Type-P-Round-trip-Loss-&lt;Sample&gt;-Ratio.  This ratio is in units of
+   lost packets per round-trip transmissions actually attempted.
+
+   In addition, the Type-P-Round-trip-Loss-&lt;Sample&gt;-Ratio is undefined
+   if the sample is empty.
+
+
+
+
+
+
+<span class="grey">Morton                       Standards Track                   [Page 10]</span></pre>
+<hr class='noprint'/><!--NewPage--><pre class='newpage'><span id="page-11" ></span>
+<span class="grey"><a href="/doc/html/rfc6673">RFC 6673</a>                     Round-Trip Loss                 August 2012</span>
+
+
+<span class="h2"><a class="selflink" id="section-7" href="#section-7">7</a>.  Round-Trip Testing and One-Way Reporting</span>
+
+   This section raises considerations for results collected using a
+   round-trip measurement architecture, such as in TWAMP [<a href="/doc/html/rfc5357" title="&quot;A Two-Way Active Measurement Protocol (TWAMP)&quot;">RFC5357</a>].
+
+   The sampling process for the reverse path (Dst-&gt;Src) is a conditional
+   process that depends on successful packet arrival at the Dst and
+   correct operation at the Dst to generate the reflected packet.
+   Therefore, the sampling process for the reverse path will be
+   significantly affected when appreciable loss occurs on the Src-&gt;Dst
+   path, making an attempt to assess the reverse path performance
+   invalid (for loss or possibly any metric).
+
+   Further, the sampling times for the reverse path (Dst-&gt;Src) are a
+   random process that depends on the original sample times (TstampSrc),
+   the one-way delay for successful packet arrival at the Dst, and time
+   taken at the Dst to generate the reflected packet.  Therefore, the
+   sampling process for the reverse path will be significantly affected
+   when appreciable delay variation occurs on the Src-&gt;Dst path, making
+   an attempt to assess the reverse path performance invalid (for loss
+   or possibly any metric).
+
+   As discussed above in <a href="#section-5.4">Section 5.4</a>, packet reordering is always a
+   possibility.  In addition to the severe delay variation that usually
+   accompanies it, reordering on the Src-&gt;Dst path will cause a
+   misalignment of sequence numbers applied at the Dst when compared to
+   the sender numbers.  Measurement implementations MUST address this
+   possible outcome.
+
+<span class="h2"><a class="selflink" id="section-8" href="#section-8">8</a>.  Measurement Considerations and Calibration</span>
+
+   Prior to conducting this measurement, the participating hosts MUST be
+   configured to send and receive test packets of the chosen Type-P.
+   Standard measurement protocols are capable of this task [<a href="/doc/html/rfc5357" title="&quot;A Two-Way Active Measurement Protocol (TWAMP)&quot;">RFC5357</a>],
+   but any reliable method is sufficient (e.g., if the issues with ICMP
+   discussed in <a href="/doc/html/rfc2681#section-2.6">Section&nbsp;2.6 of [RFC2681]</a> can be alleviated, and the
+   requirements of Sections <a href="#section-4.3">4.3</a> and <a href="#section-4.4">4.4</a> above are met, then ICMP could
+   be used).
+
+   Two key features of the host that receives test packets and returns
+   them to the originating host are described in <a href="/doc/html/rfc5357#section-4.2">Section&nbsp;4.2 of
+   [RFC5357]</a>.  Every received test packet MUST result in a responding
+   packet, and the response MUST be generated as quickly as possible.
+   This implies that interface buffers will be serviced promptly and
+   that buffer discards will be extremely rare.  These features of the
+
+
+
+
+
+
+<span class="grey">Morton                       Standards Track                   [Page 11]</span></pre>
+<hr class='noprint'/><!--NewPage--><pre class='newpage'><span id="page-12" ></span>
+<span class="grey"><a href="/doc/html/rfc6673">RFC 6673</a>                     Round-Trip Loss                 August 2012</span>
+
+
+   measurement equipment MUST be calibrated according to <a href="/doc/html/rfc2679#section-3.7.3">Section&nbsp;3.7.3
+   of [RFC2679]</a> when operating under a representative measurement load
+   (as defined by the user).  Both unexpected test packet discards, and
+   the systematic and random errors and uncertainties, MUST be recorded.
+
+   We note that <a href="/doc/html/rfc5357#section-4.2.1">Section&nbsp;4.2.1 of [RFC5357]</a> specifies a method to collect
+   all four significant timestamps needed to describe a packet&#x27;s round-
+   trip delay [<a href="/doc/html/rfc2681" title="&quot;A Round-trip Delay Metric for IPPM&quot;">RFC2681</a>] and remove the processing time incurred at the
+   responding host.  This information supports the measurement of the
+   corresponding one-way delays encountered on the round-trip path,
+   which can identify path asymmetry or unexpected processing time at
+   the responding host.
+
+<span class="h2"><a class="selflink" id="section-9" href="#section-9">9</a>.  Security Considerations</span>
+
+<span class="h3"><a class="selflink" id="section-9.1" href="#section-9.1">9.1</a>.  Denial-of-Service Attacks</span>
+
+   This metric requires a stream of packets sent from one host (source)
+   to another host (destination) through intervening networks, and back.
+   This method could be abused for denial-of-service attacks directed at
+   the destination and/or the intervening network(s).
+
+   Administrators of source, destination, and intervening network(s)
+   should establish bilateral or multilateral agreements regarding the
+   timing, size, and frequency of collection of sample metrics.  Use of
+   this method in excess of the terms agreed upon by the participants
+   may be cause for immediate rejection or discard of packets, or other
+   escalation procedures as defined between the affected parties.
+
+<span class="h3"><a class="selflink" id="section-9.2" href="#section-9.2">9.2</a>.  User Data Confidentiality</span>
+
+   Active use of this method generates packets for a sample, rather than
+   taking samples based on user data, and does not threaten user data
+   confidentiality.  Passive measurement must restrict attention to the
+   headers of interest.  Since user payloads may be temporarily stored
+   for length analysis, suitable precautions MUST be taken to keep this
+   information safe and confidential.  In most cases, a hashing function
+   will produce a value suitable for payload comparisons.
+
+<span class="h3"><a class="selflink" id="section-9.3" href="#section-9.3">9.3</a>.  Interference with the Metrics</span>
+
+   It may be possible to identify that a certain packet or stream of
+   packets is part of a sample.  With that knowledge at the destination
+   and/or the intervening networks, it is possible to change the
+   processing of the packets (e.g., increasing or decreasing delay) in a
+   way that may distort the measured performance.  It may also be
+
+
+
+
+
+<span class="grey">Morton                       Standards Track                   [Page 12]</span></pre>
+<hr class='noprint'/><!--NewPage--><pre class='newpage'><span id="page-13" ></span>
+<span class="grey"><a href="/doc/html/rfc6673">RFC 6673</a>                     Round-Trip Loss                 August 2012</span>
+
+
+   possible to generate additional packets that appear to be part of the
+   sample metric.  These additional packets are likely to perturb the
+   results of the sample measurement.
+
+   Authentication or encryption techniques, such as digital signatures,
+   MAY be used where appropriate to guard against injected traffic
+   attacks.  [<a href="/doc/html/rfc5357" title="&quot;A Two-Way Active Measurement Protocol (TWAMP)&quot;">RFC5357</a>] includes both authentication and encryption
+   features.
+
+<span class="h2"><a class="selflink" id="section-10" href="#section-10">10</a>.  IANA Considerations</span>
+
+   Metrics previously defined in the IETF were registered in the IANA
+   IPPM Metrics Registry; however, this process was discontinued when
+   the registry structure was found to be inadequate, and the registry
+   was declared obsolete [<a href="/doc/html/rfc6248" title="&quot;RFC 4148 and the IP Performance Metrics (IPPM) Registry of Metrics Are Obsolete&quot;">RFC6248</a>].
+
+   Although the metrics in this document may be considered for some form
+   of registration in the future, no IANA action is requested at this
+   time.
+
+<span class="h2"><a class="selflink" id="section-11" href="#section-11">11</a>.  Acknowledgements</span>
+
+   The author thanks Tiziano Ionta for his careful review of this memo,
+   primarily resulting in the development of measurement considerations
+   using TWAMP [<a href="/doc/html/rfc5357" title="&quot;A Two-Way Active Measurement Protocol (TWAMP)&quot;">RFC5357</a>] as an example method.  The reviews of Adrian
+   Farrel and Benoit Claise also contributed to the clarity of the memo.
+
+<span class="h2"><a class="selflink" id="section-12" href="#section-12">12</a>.  References</span>
+
+<span class="h3"><a class="selflink" id="section-12.1" href="#section-12.1">12.1</a>.  Normative References</span>
+
+   [<a id="ref-RFC2119">RFC2119</a>]  Bradner, S., &quot;Key words for use in RFCs to Indicate
+              Requirement Levels&quot;, <a href="/doc/html/bcp14">BCP 14</a>, <a href="/doc/html/rfc2119">RFC 2119</a>, March 1997.
+
+   [<a id="ref-RFC2330">RFC2330</a>]  Paxson, V., Almes, G., Mahdavi, J., and M. Mathis,
+              &quot;Framework for IP Performance Metrics&quot;, <a href="/doc/html/rfc2330">RFC 2330</a>,
+              May 1998.
+
+   [<a id="ref-RFC2679">RFC2679</a>]  Almes, G., Kalidindi, S., and M. Zekauskas, &quot;A One-way
+              Delay Metric for IPPM&quot;, <a href="/doc/html/rfc2679">RFC 2679</a>, September 1999.
+
+   [<a id="ref-RFC2680">RFC2680</a>]  Almes, G., Kalidindi, S., and M. Zekauskas, &quot;A One-way
+              Packet Loss Metric for IPPM&quot;, <a href="/doc/html/rfc2680">RFC 2680</a>, September 1999.
+
+   [<a id="ref-RFC2681">RFC2681</a>]  Almes, G., Kalidindi, S., and M. Zekauskas, &quot;A Round-trip
+              Delay Metric for IPPM&quot;, <a href="/doc/html/rfc2681">RFC 2681</a>, September 1999.
+
+
+
+
+
+<span class="grey">Morton                       Standards Track                   [Page 13]</span></pre>
+<hr class='noprint'/><!--NewPage--><pre class='newpage'><span id="page-14" ></span>
+<span class="grey"><a href="/doc/html/rfc6673">RFC 6673</a>                     Round-Trip Loss                 August 2012</span>
+
+
+   [<a id="ref-RFC3393">RFC3393</a>]  Demichelis, C. and P. Chimento, &quot;IP Packet Delay Variation
+              Metric for IP Performance Metrics (IPPM)&quot;, <a href="/doc/html/rfc3393">RFC 3393</a>,
+              November 2002.
+
+   [<a id="ref-RFC3432">RFC3432</a>]  Raisanen, V., Grotefeld, G., and A. Morton, &quot;Network
+              performance measurement with periodic streams&quot;, <a href="/doc/html/rfc3432">RFC 3432</a>,
+              November 2002.
+
+   [<a id="ref-RFC4737">RFC4737</a>]  Morton, A., Ciavattone, L., Ramachandran, G., Shalunov,
+              S., and J. Perser, &quot;Packet Reordering Metrics&quot;, <a href="/doc/html/rfc4737">RFC 4737</a>,
+              November 2006.
+
+   [<a id="ref-RFC5357">RFC5357</a>]  Hedayat, K., Krzanowski, R., Morton, A., Yum, K., and J.
+              Babiarz, &quot;A Two-Way Active Measurement Protocol (TWAMP)&quot;,
+              <a href="/doc/html/rfc5357">RFC 5357</a>, October 2008.
+
+<span class="h3"><a class="selflink" id="section-12.2" href="#section-12.2">12.2</a>.  Informative References</span>
+
+   [<a id="ref-RFC5481">RFC5481</a>]  Morton, A. and B. Claise, &quot;Packet Delay Variation
+              Applicability Statement&quot;, <a href="/doc/html/rfc5481">RFC 5481</a>, March 2009.
+
+   [<a id="ref-RFC6248">RFC6248</a>]  Morton, A., &quot;<a href="/doc/html/rfc4148">RFC 4148</a> and the IP Performance Metrics
+              (IPPM) Registry of Metrics Are Obsolete&quot;, <a href="/doc/html/rfc6248">RFC 6248</a>,
+              April 2011.
+
+   [<a id="ref-RFC6703">RFC6703</a>]  Morton, A., Ramachandran, G., and G. Maguluri, &quot;Reporting
+              IP Network Performance Metrics: Different Points of View&quot;,
+              <a href="/doc/html/rfc6703">RFC 6703</a>, August 2012.
+
+Author&#x27;s Address
+
+   Al Morton
+   AT&amp;T Labs
+   200 Laurel Avenue South
+   Middletown, NJ  07748
+   USA
+
+   Phone: +1 732 420 1571
+   Fax:   +1 732 368 1192
+   EMail: acmorton@att.com
+   URI:   <a href="http://home.comcast.net/~acmacm/">http://home.comcast.net/~acmacm/</a>
+
+
+
+
+
+
+
+
+
+
+Morton                       Standards Track                   [Page 14]
+</pre>
+    </div>
+
+  </div>
+
+
+        
+	  </div>
+
+	
+
+	
+
+    </div>
+
+      
+    <script type="text/javascript"><!--
+    var legend_html = "Colour legend:<br /> \
+     <table> \
+        <tr><td>Unknown:</td>                   <td><span class='cplate bgwhite'>&nbsp;&nbsp;&nbsp;&nbsp;</span></td></tr> \
+        <tr><td>Draft:</td>                     <td><span class='cplate bgred'>&nbsp;&nbsp;&nbsp;&nbsp;</span></td></tr> \
+        <tr><td>Informational:</td>             <td><span class='cplate bgorange'>&nbsp;&nbsp;&nbsp;&nbsp;</span></td></tr> \
+        <tr><td>Experimental:</td>              <td><span class='cplate bgyellow'>&nbsp;&nbsp;&nbsp;&nbsp;</span></td></tr> \
+        <tr><td>Best Common Practice:</td>      <td><span class='cplate bgmagenta'>&nbsp;&nbsp;&nbsp;&nbsp;</span></td></tr> \
+        <tr><td>Proposed Standard:</td>         <td><span class='cplate bgblue'>&nbsp;&nbsp;&nbsp;&nbsp;</span></td></tr> \
+        <tr><td>Draft Standard (old designation):</td> <td><span class='cplate bgcyan'>&nbsp;&nbsp;&nbsp;&nbsp;</span></td></tr> \
+        <tr><td>Internet Standard:</td>         <td><span class='cplate bggreen'>&nbsp;&nbsp;&nbsp;&nbsp;</span></td></tr> \
+        <tr><td>Historic:</td>                  <td><span class='cplate bggrey'>&nbsp;&nbsp;&nbsp;&nbsp;</span></td></tr> \
+        <tr><td>Obsolete:</td>                  <td><span class='cplate bgbrown'>&nbsp;&nbsp;&nbsp;&nbsp;</span></td></tr> \
+    </table>";
+    function showLegend() {
+        var elem = document.getElementById('legend');
+        elem.innerHTML = legend_html
+        elem.style.visibility='visible';
+    }
+    function hideLegend() {
+        var elem = document.getElementById('legend');
+        elem.style.visibility='hidden';
+        elem.innerHTML = "";
+    }
+    // -->
+    </script>
+
+  </body>
+</html>
