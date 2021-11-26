@@ -63,3 +63,8 @@ ucp_get_microseconds () {
    return (uint64_t) (tv.tv_sec) * 1000000 + tv.tv_usec;
 }
 #endif
+
+uint64_t
+ucp_get_milliseconds () {
+  return ucp_get_microseconds() / 1000;
+}

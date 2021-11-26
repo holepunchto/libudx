@@ -6,4 +6,7 @@
 uint64_t
 ucp_get_microseconds ();
 
+uint64_t
+ucp_get_milliseconds ();
+
 #endif

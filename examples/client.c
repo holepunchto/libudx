@@ -22,7 +22,7 @@ static int rt = 10000000;
 static ucp_write_t * pending_reqs[PARALLEL_WRITES];
 static int pending_writes = 0;
 static uint64_t start_time = 0;
-static size_t send_buf_len = UCP_MAX_PACKET_DATA;
+static size_t send_buf_len = UCP_MAX_DATA_SIZE;
 static char *send_buf;
 
 static void
@@ -40,20 +40,21 @@ on_uv_interval (uv_timer_t *req) {
 
   sent_prev = sent;
 
-  printf("lseq=%u, pen=%u, rt=%i, racks=%u (%u), sacks=%zu, pkts_sent=%zu, pkts_wait=%u, pkts_inflight=%u, cwin=%zu, mwin=%zu rto=%u rtt=%u Mbps=%i,%i (%i,%i)\n",
+  printf("lseq=%u, pwr=%u, rt=%u, racks=%u (%u), frt=%zu, sacks=%zu, pkts_sent=%zu, pkts_wait=%u, pkts_inflight=%u, inflight=%zu, cwnd=%zu rto=%u rtt=%u Mbps=%i,%i (%i,%i)\n",
     client_sock.stats_last_seq,
     pending_writes,
     rt,
     client_sock.remote_acked,
     ucp_cirbuf_get(&(client_sock.outgoing), client_sock.remote_acked) == NULL ? 0 : 1,
+    client_sock.stats_fast_rt,
     client_sock.stats_sacks,
     client_sock.stats_pkts_sent,
     client_sock.pkts_waiting,
     client_sock.pkts_inflight,
-    client_sock.cur_window_bytes,
-    client_sock.max_window_bytes,
+    client_sock.inflight,
+    client_sock.cwnd,
     client_sock.rto,
-    client_sock.rtt,
+    client_sock.srtt,
     top,
     btm,
     top_d,

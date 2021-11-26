@@ -8,9 +8,9 @@
 #include <uv.h>
 
 // TODO: research the packets sizes a bit more
-#define UCP_PACKET_SIZE 1400
+#define UCP_MTU 1400
 #define UCP_HEADER_SIZE 16
-#define UCP_MAX_PACKET_DATA (UCP_PACKET_SIZE - UCP_HEADER_SIZE)
+#define UCP_MAX_DATA_SIZE (UCP_MTU - UCP_HEADER_SIZE)
 
 // packet types
 #define UCP_PACKET_DATA_ID 0
@@ -22,6 +22,7 @@
 #define UCP_PACKET_INFLIGHT 2
 #define UCP_PACKET_ACKED 3
 
+#define UCP_CLOCK_GRANULARITY_MS 20
 
 typedef struct ucp {
   uv_udp_t handle;
@@ -91,18 +92,22 @@ typedef struct ucp_stream {
   uint32_t ack;
   uint32_t remote_acked;
 
-  uint32_t rtt;
-  uint32_t rtt_var;
+  uint32_t srtt;
+  uint32_t rttvar;
   uint32_t rto;
 
   uint32_t pkts_waiting;
   uint32_t pkts_inflight;
+  uint32_t dup_acks;
 
-  size_t cur_window_bytes;
-  size_t max_window_bytes;
+  size_t inflight;
+  size_t ssthresh;
+  size_t cwnd;
+  size_t rwnd;
 
   size_t stats_sacks;
   size_t stats_pkts_sent;
+  size_t stats_fast_rt;
   uint32_t stats_last_seq;
 
   ucp_cirbuf_t outgoing;
