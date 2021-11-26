@@ -1,7 +1,8 @@
 const net = require('net')
 
-const buf = Buffer.alloc(65536)
+const buf = Buffer.alloc(65536 * 100)
 let sent = 0
+let time = Date.now()
 
 if (process.argv[2]) {
   const [host, port] = process.argv.slice(2)
@@ -14,15 +15,18 @@ if (process.argv[2]) {
     drain()
 
     function drain () {
-      if (sent >= 100 * 1024 * 1024) {
+      if (sent >= 300 * 1024 * 1024) {
         console.timeEnd()
         console.log('Sent ' + sent + 'b')
         process.exit()
         return
       }
+      let r = 0
       do {
         sent += buf.byteLength
+        r++
       } while (socket.write(buf) !== false)
+      console.log(sent, 8 * sent / (Date.now() - time) / 1000)
     }
   })
 } else {
