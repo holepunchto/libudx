@@ -40,13 +40,12 @@ on_uv_interval (uv_timer_t *req) {
 
   sent_prev = sent;
 
-  printf("lseq=%u, pwr=%u, rt=%u, racks=%u (%u), frt=%zu, sacks=%zu, pkts_sent=%zu, pkts_wait=%u, pkts_inflight=%u, inflight=%zu, cwnd=%zu rto=%u rtt=%u Mbps=%i,%i (%i,%i)\n",
+  printf("lseq=%u, pwr=%u, rt=%u, frt=%zu, racks=%u, sacks=%zu, pkts_s=%zu, pkts_w=%u, pkts_inf=%u, byt_inf=%zu, cwnd=%zu rto=%u rtt=%u Mbps=%i,%i (%i,%i)\n",
     client_sock.stats_last_seq,
     pending_writes,
     rt,
-    client_sock.remote_acked,
-    ucp_cirbuf_get(&(client_sock.outgoing), client_sock.remote_acked) == NULL ? 0 : 1,
     client_sock.stats_fast_rt,
+    client_sock.remote_acked,
     client_sock.stats_sacks,
     client_sock.stats_pkts_sent,
     client_sock.pkts_waiting,
@@ -96,7 +95,7 @@ on_write (ucp_stream_t *stream, ucp_write_t *req, int status, int unordered) {
   }
 
   if (--rt > 0) {
-    if (pending_writes) printf("ordered write... %i\n", pending_writes);
+    // if (pending_writes) printf("ordered write... %i\n", pending_writes);
     sent += send_buf_len;
     ucp_stream_write(stream, req, send_buf, send_buf_len);
     while (pending_writes > 0) {
@@ -135,7 +134,9 @@ main (int argc, char **argv) {
 
   ucp_set_callback(&client, UCP_ON_MESSAGE, on_message);
 
-  ucp_stream_init(&client, &client_sock);
+  int id;
+
+  ucp_stream_init(&client, &client_sock, &id);
 
   printf("local socket id: %u\n", client_sock.local_id);
 
@@ -144,7 +145,7 @@ main (int argc, char **argv) {
   uv_ip4_addr(argc == 1 ? "127.0.0.1" : argv[1], 10101, &addr);
   ucp_send(&client, &sreq, (char *) &sbuf, 4, (const struct sockaddr *) &addr);
 
-  ucp_stream_set_callback(&client_sock, UCP_ON_WRITE, on_write);
+  ucp_stream_set_callback(&client_sock, UCP_ON_ACK, on_write);
 
   // printf("server stream id is: %u\n", server_sock.local_id);
 

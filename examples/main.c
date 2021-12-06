@@ -85,11 +85,13 @@ main () {
   // ucp_send(&client, &(req[4]), buf, 5, (const struct sockaddr *) &addr);
   // ucp_send(&client, &(req[5]), buf, 5, (const struct sockaddr *) &addr);
 
+  int id;
+
   ucp_stream_t client_sock;
-  ucp_stream_init(&client, &client_sock);
+  ucp_stream_init(&client, &client_sock, &id);
 
   ucp_stream_t server_sock;
-  ucp_stream_init(&server, &server_sock);
+  ucp_stream_init(&server, &server_sock, &id);
 
   printf("client stream id is: %u\n", client_sock.local_id);
   printf("server stream id is: %u\n", server_sock.local_id);
@@ -101,7 +103,7 @@ main () {
   ucp_stream_connect(&server_sock, client_sock.local_id, (const struct sockaddr *) &addr);
 
   ucp_stream_set_callback(&server_sock, UCP_ON_READ, on_read);
-  ucp_stream_set_callback(&client_sock, UCP_ON_WRITE, on_write);
+  ucp_stream_set_callback(&client_sock, UCP_ON_ACK, on_write);
 
   for (int i = 0; i < 1000; i++) {
     ucp_write_t *req = (ucp_write_t *) malloc(sizeof(ucp_write_t));

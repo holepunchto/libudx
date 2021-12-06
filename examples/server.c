@@ -85,7 +85,9 @@ main () {
   ucp_bind(&server, (const struct sockaddr *) &addr);
   ucp_set_callback(&server, UCP_ON_MESSAGE, on_message);
 
-  ucp_stream_init(&server, &server_sock);
+  int id;
+
+  ucp_stream_init(&server, &server_sock, &id);
   ucp_stream_set_callback(&server_sock, UCP_ON_READ, on_read);
 
   printf("local socket id: %u\n", server_sock.local_id);

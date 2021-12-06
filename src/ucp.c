@@ -31,7 +31,7 @@ update_poll (ucp_t *self) {
   int events = (self->send_queue.len > 0 ? UV_WRITABLE : 0) | UV_READABLE;
   if (events == self->events) return 0;
 
-// printf("update io polling flags=%i\n", events);
+  // printf("update io polling flags=%i\n", events);
 
   self->events = events;
   return uv_poll_start(&(self->io_poll), events, on_uv_poll);
@@ -47,10 +47,6 @@ ack_packet (ucp_stream_t *stream, uint32_t seq, int sack) {
   if (pkt->status == UCP_PACKET_INFLIGHT) {
     stream->pkts_inflight--;
     stream->inflight -= pkt->size;
-
-    // TODO: do some proper congestion control stuff...
-    // stream->cwnd += UCP_MTU;
-    // stream->cwnd = UCP_MAX_PACKET_DATA + UCP_MAX_PACKET_DATA * UCP_MAX_PACKET_DATA / stream->cwnd;
   }
 
   if (pkt->transmits == 1) {
@@ -84,8 +80,8 @@ ack_packet (ucp_stream_t *stream, uint32_t seq, int sack) {
     free(pkt);
   }
 
-  if (--(w->packets) == 0 && stream->on_write != NULL) {
-    stream->on_write(stream, w, 0, sack);
+  if (--(w->packets) == 0 && stream->on_ack != NULL) {
+    stream->on_ack(stream, w, 0, sack);
   }
 
   return 1;
@@ -96,7 +92,7 @@ process_sacks (ucp_stream_t *stream, char *buf, size_t buf_len) {
   uint32_t n = 0;
   uint32_t *sacks = (uint32_t *) buf;
 
-  for (int i = 0; i + 8 <= buf_len; i += 8) {
+  for (size_t i = 0; i + 8 <= buf_len; i += 8) {
     uint32_t start = *(sacks++);
     uint32_t end = *(sacks++);
     uint32_t len = end - start;
@@ -142,13 +138,12 @@ process_packet (ucp_t *self, char *buf, ssize_t buf_len) {
   buf += UCP_HEADER_SIZE;
   buf_len -= UCP_HEADER_SIZE;
 
-  ucp_stream_t *stream = (ucp_stream_t *) ucp_cirbuf_get(&(self->sockets), local_id);
+  ucp_stream_t *stream = (ucp_stream_t *) ucp_cirbuf_get(&(self->streams_by_id), local_id);
   if (stream == NULL) return 0;
 
   UCP_DEBUG("incoming packet header:\n  h = %u\n  id = %u\n  seq = %u\n  ack = %u\n", h, local_id, seq, ack);
 
   ucp_cirbuf_t *inc = &(stream->incoming);
-  ucp_cirbuf_t *out = &(stream->outgoing);
 
   switch (h) {
     case UCP_PACKET_DATA_ID: {
@@ -226,8 +221,6 @@ process_packet (ucp_t *self, char *buf, ssize_t buf_len) {
 static void
 on_uv_poll (uv_poll_t *handle, int status, int events) {
   ucp_t *self = handle->data;
-  uv_poll_t *poll = &(self->io_poll);
-  const uint32_t pending = self->send_queue.len;
 
   if (self->send_queue.len > 0 && events & UV_WRITABLE) {
     ssize_t size;
@@ -249,13 +242,15 @@ on_uv_poll (uv_poll_t *handle, int status, int events) {
       size = sendmsg(handle->io_watcher.fd, h, 0);
     } while (size == -1 && errno == EINTR);
 
-    if (pkt->send != NULL) {
-      // TODO: needs free'ing also
-      UCP_DEBUG("sent udp packet!\n");
-    } else if (pkt->write != NULL) {
-      UCP_DEBUG("sent stream packet!\n");
+    if (pkt->write != NULL) {
       pkt->write->stream->stats_last_seq = pkt->seq;
-    } else { // an ack etc
+    } else if (pkt->send != NULL) {
+      if (self->on_send != NULL) {
+        self->on_send(self, pkt->send, 0);
+        // TODO: watch for re-entry here!
+      }
+    } else {
+      // Fire and forget package - ie and ack etc
       free(pkt);
     }
 
@@ -270,9 +265,9 @@ on_uv_poll (uv_poll_t *handle, int status, int events) {
     struct msghdr h;
     struct iovec buf;
 
-    char b[4096];
+    char b[2048];
     buf.iov_base = &b;
-    buf.iov_len = 4096;
+    buf.iov_len = 2048;
 
     h.msg_name = &(self->on_message_addr);
     h.msg_namelen = sizeof(struct sockaddr_in);
@@ -283,8 +278,9 @@ on_uv_poll (uv_poll_t *handle, int status, int events) {
       size = recvmsg(handle->io_watcher.fd, &h, 0);
     } while (size == -1 && errno == EINTR);
 
-    if (!process_packet(self, b, size) && self->on_message != NULL) {
+    if (size > 0 && !process_packet(self, b, size) && self->on_message != NULL) {
       self->on_message(self, b, size, h.msg_name);
+      // TODO: watch for re-entry here!
     }
 
     return;
@@ -297,25 +293,31 @@ int
 ucp_init (ucp_t *self, uv_loop_t *loop) {
   int err;
 
-  self->active_sockets = 0;
+  self->streams_len = 0;
+  self->streams_max_len = 16;
   self->events = 0;
-  self->bound = 0;
   self->loop = loop;
   self->on_message = NULL;
+  self->on_send = NULL;
 
+  self->streams = malloc(self->streams_max_len * sizeof(ucp_stream_t *));
   ucp_fifo_init(&(self->send_queue), 16);
-  ucp_cirbuf_init(&(self->sockets), 1);
+  ucp_cirbuf_init(&(self->streams_by_id), 1);
 
   err = uv_udp_init(loop, &(self->handle));
   return err;
 }
 
 int
-ucp_set_callback (ucp_t *self, enum UCP_TYPE name, void *fn) {
+ucp_set_callback (ucp_t *self, enum UCP_CALLBACK name, void *fn) {
   switch (name) {
+    case UCP_ON_SEND: {
+      self->on_send = fn;
+      return 0;
+    }
     case UCP_ON_MESSAGE: {
       self->on_message = fn;
-      return self->bound ? update_poll(self) : 0;
+      return 0;
     }
     default: {
       return -1;
@@ -334,10 +336,13 @@ ucp_recv_buffer_size(ucp_t *self, int *value) {
 }
 
 int
+ucp_set_ttl(ucp_t *self, int ttl) {
+  return uv_udp_set_ttl((uv_udp_t *) &(self->handle), ttl);
+}
+
+int
 ucp_bind (ucp_t *self, const struct sockaddr *addr) {
   int err;
-
-  if (self->bound) return -1;
 
   uv_udp_t *handle = &(self->handle);
   uv_poll_t *poll = &(self->io_poll);
@@ -352,11 +357,15 @@ ucp_bind (ucp_t *self, const struct sockaddr *addr) {
   err = uv_poll_init(self->loop, poll, fd);
   if (err) return err;
 
-  self->bound = 1;
   poll->data = self;
 
   err = update_poll(self);
   return err;
+}
+
+int
+ucp_getsockname (ucp_t *self, struct sockaddr * name, int *name_len) {
+  return uv_udp_getsockname(&(self->handle), name, name_len);
 }
 
 int
@@ -392,20 +401,29 @@ ucp_send (ucp_t *self, ucp_send_t *req, const char *buf, size_t buf_len, const s
 }
 
 int
-ucp_stream_init (ucp_t *self, ucp_stream_t *stream) {
-  if (self->active_sockets >= 65536) return -1;
+ucp_stream_init (ucp_t *self, ucp_stream_t *stream, uint32_t *local_id) {
+  if (self->streams_len >= 65536) return -1;
 
   // Get a free socket id (pick a random one until we get a free one)
   uint32_t id;
   while (1) {
     id = random_id();
-    ucp_cirbuf_val_t *v = ucp_cirbuf_get_stored(&(self->sockets), id);
+    ucp_cirbuf_val_t *v = ucp_cirbuf_get_stored(&(self->streams_by_id), id);
     if (v == NULL) break;
   }
 
-  stream->local_id = id;
+  if (self->streams_len == self->streams_max_len) {
+    self->streams_max_len *= 2;
+    self->streams = realloc(self->streams, self->streams_max_len * sizeof(ucp_stream_t *));
+  }
+
+  *local_id = stream->local_id = id;
   stream->remote_id = 0;
+  stream->index = self->streams_len++;
   stream->ucp = self;
+
+  self->streams[stream->index] = stream;
+
   stream->seq = 0;
   stream->ack = 0;
   stream->remote_acked = 0;
@@ -422,6 +440,7 @@ ucp_stream_init (ucp_t *self, ucp_stream_t *stream) {
   stream->ssthresh = 65535;
   stream->cwnd = 2 * UCP_MTU;
   stream->rwnd = 0;
+  stream->crt = 0;
 
   stream->stats_sacks = 0;
   stream->stats_pkts_sent = 0;
@@ -429,11 +448,11 @@ ucp_stream_init (ucp_t *self, ucp_stream_t *stream) {
   stream->stats_last_seq = 0;
 
   stream->on_read = NULL;
-  stream->on_write = NULL;
+  stream->on_ack = NULL;
 
   // Add the socket to the active set
-  self->active_sockets++;
-  ucp_cirbuf_set(&(self->sockets), (ucp_cirbuf_val_t *) stream);
+  self->streams_len++;
+  ucp_cirbuf_set(&(self->streams_by_id), (ucp_cirbuf_val_t *) stream);
 
   // Init stream write/read buffers
   ucp_cirbuf_init(&(stream->outgoing), 16);
@@ -443,22 +462,26 @@ ucp_stream_init (ucp_t *self, ucp_stream_t *stream) {
 }
 
 int
-ucp_stream_set_callback (ucp_stream_t *self, enum UCP_TYPE name, void *fn) {
+ucp_stream_set_callback (ucp_stream_t *self, enum UCP_CALLBACK name, void *fn) {
   switch (name) {
     case UCP_ON_READ: {
       self->on_read = fn;
       return 0;
     }
-    case UCP_ON_WRITE: {
-      self->on_write = fn;
+    case UCP_ON_ACK: {
+      self->on_ack = fn;
+      return 0;
+    }
+    case UCP_ON_DRAIN: {
+      self->on_drain = fn;
       return 0;
     }
     default: {
-      return -1;
+      return UV_EINVAL;
     }
   }
 
-  return -1;
+  return UV_EINVAL;
 }
 
 static int
@@ -473,6 +496,7 @@ send_data_packet (ucp_stream_t *stream, ucp_outgoing_packet_t *pkt) {
   }
 
   pkt->status = UCP_PACKET_SENDING;
+  pkt->crt = stream->crt;
 
   stream->pkts_waiting--;
   stream->pkts_inflight++;
@@ -481,45 +505,18 @@ send_data_packet (ucp_stream_t *stream, ucp_outgoing_packet_t *pkt) {
   stream->stats_pkts_sent++;
 
   ucp_fifo_push(&(stream->ucp->send_queue), pkt);
-  return update_poll(stream->ucp) < 0 ? -1 : 1;
+  int err = update_poll(stream->ucp);
+  return err < 0 ? err : 1;
 }
 
-int
-ucp_stream_check_timeouts (ucp_stream_t *stream) {
-  const uint32_t cur_range = stream->seq - stream->remote_acked;
-
-  int sent = 0;
-
-  if (ucp_stream_resend(stream) < 0) return -1;
-
-  for (uint32_t i = 0; i < cur_range && stream->pkts_waiting > 0; i++) {
-    uint32_t seq = stream->remote_acked + i;
-    ucp_outgoing_packet_t *pkt = (ucp_outgoing_packet_t *) ucp_cirbuf_get(&(stream->outgoing), seq);
-
-    if (pkt == NULL) continue;
-    if (pkt->status != UCP_PACKET_WAITING) continue;
-
-    sent = send_data_packet(stream, pkt);
-    if (sent <= 0) break;
-  }
-
-  if (sent < 0) return -1;
-  return 0;
-}
-
-int
-ucp_stream_resend (ucp_stream_t *stream) {
-  if (stream->remote_acked == stream->seq) return 0;
+static void
+stream_resend (ucp_stream_t *stream) {
+  if (stream->remote_acked == stream->seq) return;
 
   const uint32_t cur_range = stream->seq - stream->remote_acked;
   const uint64_t ms = ucp_get_milliseconds();
 
-  ucp_fifo_t *queue = &(stream->ucp->send_queue);
-
-  int sent = 0;
-  int congested = 0;
-
-  uint32_t retr = 0;
+  int lost = 0;
 
   for (uint32_t i = 0; i < cur_range; i++) {
     uint32_t seq = stream->remote_acked + i;
@@ -538,22 +535,41 @@ ucp_stream_resend (ucp_stream_t *stream) {
     stream->pkts_waiting++;
     stream->pkts_inflight--;
 
-    retr++;
-
-    if (congested == 0) {
-      congested = 1;
-      stream->cwnd = max(UCP_MTU, stream->cwnd / 2);
-    }
-
-    // sent = send_data_packet(stream, pkt);
-    // if (sent < 0) break;
+    if (stream->crt == pkt->crt) lost++;
   }
 
-  if (congested) {
-    printf("stream is congested, scaling back (requeued %u)\n", retr);
+  if (lost > 0) {
+    stream->crt++;
+    stream->cwnd = max(UCP_MTU, stream->cwnd / 2);
+    printf("pkt loss! stream is congested, scaling back (requeued %u)\n", lost);
+  }
+}
+
+int
+ucp_stream_check_timeouts (ucp_stream_t *stream) {
+  const uint32_t cur_range = stream->seq - stream->remote_acked;
+
+  stream_resend(stream);
+  int sent = 0;
+  uint32_t was_waiting = stream->pkts_waiting;
+
+  for (uint32_t i = 0; i < cur_range && stream->pkts_waiting > 0; i++) {
+    uint32_t seq = stream->remote_acked + i;
+    ucp_outgoing_packet_t *pkt = (ucp_outgoing_packet_t *) ucp_cirbuf_get(&(stream->outgoing), seq);
+
+    if (pkt == NULL) continue;
+    if (pkt->status != UCP_PACKET_WAITING) continue;
+
+    sent = send_data_packet(stream, pkt);
+    if (sent <= 0) break;
   }
 
-  return sent < 0 ? -1 : 0;
+  if (was_waiting > 0 && stream->pkts_waiting == 0 && stream->on_drain != NULL) {
+    stream->on_drain(stream);
+  }
+
+  if (sent < 0) return sent;
+  return 0;
 }
 
 void
@@ -567,15 +583,15 @@ ucp_stream_send_state (ucp_stream_t *stream) {
   UCP_DEBUG("writing ack\n");
 
   uint32_t *sacks = NULL;
-  uint32_t start = -1;
-  uint32_t end = -1;
+  uint32_t start = 0;
+  uint32_t end = 0;
 
   ucp_outgoing_packet_t *pkt = NULL;
 
   void *payload = NULL;
   size_t payload_len = 0;
 
-  int max = 512;
+  uint32_t max = 512;
   for (uint32_t i = 0; i < max && payload_len < 400; i++) {
     uint32_t seq = stream->ack + 1 + i;
     if (ucp_cirbuf_get(&(stream->incoming), seq) == NULL) continue;
@@ -599,7 +615,7 @@ ucp_stream_send_state (ucp_stream_t *stream) {
     max = i + 512;
   }
 
-  if (start != -1) {
+  if (start != end) {
     *(sacks++) = start;
     *(sacks++) = end;
     payload_len += 8;
@@ -650,44 +666,56 @@ int
 ucp_stream_write (ucp_stream_t *stream, ucp_write_t *req, const char *buf, size_t buf_len) {
   UCP_DEBUG("writing data (%zu bytes) - packet size is %zu bytes\n", buf_len, buf_len + UCP_HEADER_SIZE);
 
-  ucp_outgoing_packet_t *pkt = malloc(sizeof(ucp_outgoing_packet_t));
+  int err = 0;
 
-  req->packets = 1;
+  req->packets = 0;
   req->stream = stream;
 
-  uint32_t *p = (uint32_t *) &(pkt->header);
+  while (buf_len > 0 || err < 0) {
+    ucp_outgoing_packet_t *pkt = malloc(sizeof(ucp_outgoing_packet_t));
 
-  *(p++) = UCP_PACKET_DATA_ID;
-  *(p++) = stream->remote_id;
-  *(p++) = (pkt->seq = stream->seq++);
-  *(p++) = stream->ack;
+    size_t buf_partial_len = buf_len < UCP_MAX_DATA_SIZE ? buf_len : UCP_MAX_DATA_SIZE;
+    uint32_t *p = (uint32_t *) &(pkt->header);
 
-  UCP_DEBUG("outgoing packet header:\n  h = 0\n  id = %u\n  seq = %u\n  ack = %u\n", stream->remote_id, pkt->seq, stream->ack);
+    *(p++) = UCP_PACKET_DATA_ID;
+    *(p++) = stream->remote_id;
+    *(p++) = (pkt->seq = stream->seq++);
+    *(p++) = stream->ack;
 
-  memset(&(pkt->h), 0, sizeof(struct msghdr));
+    UCP_DEBUG("outgoing packet header:\n  h = 0\n  id = %u\n  seq = %u\n  ack = %u\n", stream->remote_id, pkt->seq, stream->ack);
 
-  pkt->status = UCP_PACKET_WAITING;
-  pkt->transmits = 0;
-  pkt->size = (uint16_t) (UCP_HEADER_SIZE + buf_len);
+    memset(&(pkt->h), 0, sizeof(struct msghdr));
 
-  pkt->h.msg_name = &(stream->remote_addr);
-  pkt->h.msg_namelen = sizeof(struct sockaddr_in);
+    pkt->status = UCP_PACKET_WAITING;
+    pkt->transmits = 0;
+    pkt->size = (uint16_t) (UCP_HEADER_SIZE + buf_partial_len);
 
-  pkt->h.msg_iov = (struct iovec *) &(pkt->buf);
-  pkt->h.msg_iovlen = 2;
+    pkt->h.msg_name = &(stream->remote_addr);
+    pkt->h.msg_namelen = sizeof(struct sockaddr_in);
 
-  pkt->buf[0].iov_base = &(pkt->header);
-  pkt->buf[0].iov_len = UCP_HEADER_SIZE;
+    pkt->h.msg_iov = (struct iovec *) &(pkt->buf);
+    pkt->h.msg_iovlen = 2;
 
-  pkt->buf[1].iov_base = (void *) buf;
-  pkt->buf[1].iov_len = buf_len;
+    pkt->buf[0].iov_base = &(pkt->header);
+    pkt->buf[0].iov_len = UCP_HEADER_SIZE;
 
-  pkt->send = NULL;
-  pkt->write = req;
+    pkt->buf[1].iov_base = (void *) buf;
+    pkt->buf[1].iov_len = buf_partial_len;
 
-  ucp_cirbuf_set(&(stream->outgoing), (ucp_cirbuf_val_t *) pkt);
+    pkt->send = NULL;
+    pkt->write = req;
 
-  // If we are not the first packet in the queue, wait to send us until the queue is flushed...
-  if (stream->pkts_waiting++ > 0) return 0;
-  return send_data_packet(stream, pkt);
+    req->packets++;
+
+    buf_len -= buf_partial_len;
+    buf += buf_partial_len;
+
+    ucp_cirbuf_set(&(stream->outgoing), (ucp_cirbuf_val_t *) pkt);
+
+    // If we are not the first packet in the queue, wait to send us until the queue is flushed...
+    if (stream->pkts_waiting++ > 0) continue;
+    err = send_data_packet(stream, pkt);
+  }
+
+  return err;
 }
