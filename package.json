@@ -1,0 +1,35 @@
+{
+  "name": "libucp",
+  "version": "0.0.0",
+  "description": "UDP Control Protocol",
+  "main": "lib/socket.js",
+  "directories": {
+    "doc": "docs",
+    "example": "examples"
+  },
+  "scripts": {
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "install": "node-gyp rebuild"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/mafintosh/libucp.git"
+  },
+  "keywords": [
+    "tcp",
+    "udp",
+    "stream",
+    "reliable"
+  ],
+  "author": "Mathias Buus (@mafintosh)",
+  "license": "MIT",
+  "gypfile": true,
+  "bugs": {
+    "url": "https://github.com/mafintosh/libucp/issues"
+  },
+  "homepage": "https://github.com/mafintosh/libucp#readme",
+  "dependencies": {
+    "napi-macros": "^2.0.0",
+    "node-gyp-build": "^4.3.0"
+  }
+}
