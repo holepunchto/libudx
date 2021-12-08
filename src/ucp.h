@@ -72,7 +72,6 @@ typedef struct {
   uint8_t transmits;
   uint16_t size;
   uint64_t time_sent;
-  uint32_t crt; // see stream crt for info
 
   struct msghdr h;
   struct ucp_write *write;
@@ -129,12 +128,12 @@ typedef struct ucp_stream {
   uint32_t rttvar;
   uint32_t rto;
 
+  uint64_t rto_timeout;
+
   uint32_t pkts_waiting;
   uint32_t pkts_inflight;
   uint32_t dup_acks;
-  // congestion round trip - used to track which packets where part of which congestion events
-  // to avoid triggering cascading congestions (ie multiple pkt losses in the same rtt is consider one loss).
-  uint32_t crt;
+  uint32_t retransmits_waiting;
 
   size_t inflight;
   size_t ssthresh;

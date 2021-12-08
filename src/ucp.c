@@ -7,9 +7,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 
-// #define UCP_DEBUG(fmt, ...) printf("DEBUG: " fmt, ##__VA_ARGS__)
-#define UCP_DEBUG(fmt, ...) {}
-
 #define UCP_MIN_WINDOW_SIZE 10
 #define UCP_MAX_CWND_INCREASE_BYTES_PER_RTT 1
 
@@ -70,6 +67,10 @@ ack_packet (ucp_stream_t *stream, uint32_t seq, int sack) {
     stream->rto = max(stream->srtt + max(UCP_CLOCK_GRANULARITY_MS, 4 * stream->rttvar), 1000);
   }
 
+  if (!sack) { // Reset rto timer when new data is ack'ed (inorder)
+    stream->rto_timeout = ucp_get_milliseconds() + stream->rto;
+  }
+
   ucp_write_t *w = (ucp_write_t *) pkt->write;
 
   // If this packet was queued for sending we cannot free it now,
@@ -114,14 +115,17 @@ fast_retransmit (ucp_stream_t *stream) {
   ucp_cirbuf_t *out = &(stream->outgoing);
   ucp_outgoing_packet_t *pkt = (ucp_outgoing_packet_t *) ucp_cirbuf_get(out, stream->remote_acked);
 
-  if (pkt == NULL) return;
-  if (pkt->transmits != 1 || pkt->status != UCP_PACKET_INFLIGHT) return;
+  if (pkt == NULL || pkt->transmits != 1 || pkt->status != UCP_PACKET_INFLIGHT) return;
 
   pkt->status = UCP_PACKET_WAITING;
   stream->inflight -= pkt->size;
   stream->pkts_waiting++;
   stream->pkts_inflight--;
+  stream->retransmits_waiting++;
   stream->stats_fast_rt++;
+
+  // Shrink the window
+  stream->cwnd = max(UCP_MTU, stream->cwnd / 2);
 }
 
 static int
@@ -140,8 +144,6 @@ process_packet (ucp_t *self, char *buf, ssize_t buf_len) {
 
   ucp_stream_t *stream = (ucp_stream_t *) ucp_cirbuf_get(&(self->streams_by_id), local_id);
   if (stream == NULL) return 0;
-
-  UCP_DEBUG("incoming packet header:\n  h = %u\n  id = %u\n  seq = %u\n  ack = %u\n", h, local_id, seq, ack);
 
   ucp_cirbuf_t *inc = &(stream->incoming);
 
@@ -208,11 +210,13 @@ process_packet (ucp_t *self, char *buf, ssize_t buf_len) {
     ack_packet(stream, stream->remote_acked++, 0);
   }
 
-  ucp_stream_check_timeouts(stream);
-
   // if data pkt, send an ack - use deferred acks as well...
   if (h == UCP_PACKET_DATA_ID) {
     ucp_stream_send_state(stream);
+  }
+
+  if (stream->pkts_waiting > 0) {
+    ucp_stream_check_timeouts(stream);
   }
 
   return 1;
@@ -431,16 +435,17 @@ ucp_stream_init (ucp_t *self, ucp_stream_t *stream, uint32_t *local_id) {
   stream->srtt = 0;
   stream->rttvar = 0;
   stream->rto = 1000;
+  stream->rto_timeout = ucp_get_milliseconds() + stream->rto;
 
   stream->pkts_waiting = 0;
   stream->pkts_inflight = 0;
   stream->dup_acks = 0;
+  stream->retransmits_waiting = 0;
 
   stream->inflight = 0;
   stream->ssthresh = 65535;
   stream->cwnd = 2 * UCP_MTU;
   stream->rwnd = 0;
-  stream->crt = 0;
 
   stream->stats_sacks = 0;
   stream->stats_pkts_sent = 0;
@@ -496,11 +501,11 @@ send_data_packet (ucp_stream_t *stream, ucp_outgoing_packet_t *pkt) {
   }
 
   pkt->status = UCP_PACKET_SENDING;
-  pkt->crt = stream->crt;
 
   stream->pkts_waiting--;
   stream->pkts_inflight++;
   stream->inflight += pkt->size;
+  if (pkt->transmits > 0) stream->retransmits_waiting--;
 
   stream->stats_pkts_sent++;
 
@@ -509,67 +514,62 @@ send_data_packet (ucp_stream_t *stream, ucp_outgoing_packet_t *pkt) {
   return err < 0 ? err : 1;
 }
 
-static void
-stream_resend (ucp_stream_t *stream) {
-  if (stream->remote_acked == stream->seq) return;
+static int
+flush_waiting_packets (ucp_stream_t *stream) {
+  const uint32_t was_waiting = stream->pkts_waiting;
+  uint32_t seq = stream->retransmits_waiting ? stream->remote_acked : (stream->seq - stream->pkts_waiting);
 
-  const uint32_t cur_range = stream->seq - stream->remote_acked;
-  const uint64_t ms = ucp_get_milliseconds();
-
-  int lost = 0;
-
-  for (uint32_t i = 0; i < cur_range; i++) {
-    uint32_t seq = stream->remote_acked + i;
-    ucp_outgoing_packet_t *pkt = (ucp_outgoing_packet_t *) ucp_cirbuf_get(&(stream->outgoing), seq);
-
-    if (pkt == NULL) continue;
-    if (pkt->status != UCP_PACKET_INFLIGHT) continue;
-
-    const uint32_t delta = (uint32_t) (ms - pkt->time_sent);
-    if (delta < 3 * stream->rto) continue;
-
-    // Consider this packet lost
-
-    pkt->status = UCP_PACKET_WAITING;
-    stream->inflight -= pkt->size;
-    stream->pkts_waiting++;
-    stream->pkts_inflight--;
-
-    if (stream->crt == pkt->crt) lost++;
-  }
-
-  if (lost > 0) {
-    stream->crt++;
-    stream->cwnd = max(UCP_MTU, stream->cwnd / 2);
-    printf("pkt loss! stream is congested, scaling back (requeued %u)\n", lost);
-  }
-}
-
-int
-ucp_stream_check_timeouts (ucp_stream_t *stream) {
-  const uint32_t cur_range = stream->seq - stream->remote_acked;
-
-  stream_resend(stream);
   int sent = 0;
-  uint32_t was_waiting = stream->pkts_waiting;
 
-  for (uint32_t i = 0; i < cur_range && stream->pkts_waiting > 0; i++) {
-    uint32_t seq = stream->remote_acked + i;
-    ucp_outgoing_packet_t *pkt = (ucp_outgoing_packet_t *) ucp_cirbuf_get(&(stream->outgoing), seq);
+  while (seq != stream->seq && stream->pkts_waiting > 0) {
+    ucp_outgoing_packet_t *pkt = (ucp_outgoing_packet_t *) ucp_cirbuf_get(&(stream->outgoing), seq++);
 
-    if (pkt == NULL) continue;
-    if (pkt->status != UCP_PACKET_WAITING) continue;
+    if (pkt == NULL || pkt->status != UCP_PACKET_WAITING) continue;
 
     sent = send_data_packet(stream, pkt);
     if (sent <= 0) break;
   }
 
+  // TODO: factor in retransmits
   if (was_waiting > 0 && stream->pkts_waiting == 0 && stream->on_drain != NULL) {
     stream->on_drain(stream);
   }
 
   if (sent < 0) return sent;
   return 0;
+}
+
+int
+ucp_stream_check_timeouts (ucp_stream_t *stream) {
+  if (stream->remote_acked == stream->seq) return 0;
+
+  const uint64_t now = stream->inflight ? ucp_get_milliseconds() : 0;
+
+  if (now > stream->rto_timeout) {
+    // Ensure it backs off until data is acked...
+    stream->rto_timeout = now + 2 * stream->rto;
+
+    // Consider all packet losts - seems to be the simple consensus across different stream impls
+    // which we like cause it is nice and simple to implement.
+    for (uint32_t seq = stream->remote_acked; seq != stream->seq; seq++) {
+      ucp_outgoing_packet_t *pkt = (ucp_outgoing_packet_t *) ucp_cirbuf_get(&(stream->outgoing), seq);
+
+      if (pkt == NULL || pkt->status != UCP_PACKET_INFLIGHT) continue;
+
+      pkt->status = UCP_PACKET_WAITING;
+
+      stream->inflight -= pkt->size;
+      stream->pkts_waiting++;
+      stream->pkts_inflight--;
+      stream->retransmits_waiting++;
+    }
+
+    stream->cwnd = max(UCP_MTU, stream->cwnd / 2);
+
+    printf("pkt loss! stream is congested, scaling back (requeued the full window)\n");
+  }
+
+  return flush_waiting_packets(stream);
 }
 
 void
@@ -580,8 +580,6 @@ ucp_stream_connect (ucp_stream_t *stream, uint32_t remote_id, const struct socka
 
 int
 ucp_stream_send_state (ucp_stream_t *stream) {
-  UCP_DEBUG("writing ack\n");
-
   uint32_t *sacks = NULL;
   uint32_t start = 0;
   uint32_t end = 0;
@@ -664,12 +662,15 @@ ucp_stream_send_state (ucp_stream_t *stream) {
 
 int
 ucp_stream_write (ucp_stream_t *stream, ucp_write_t *req, const char *buf, size_t buf_len) {
-  UCP_DEBUG("writing data (%zu bytes) - packet size is %zu bytes\n", buf_len, buf_len + UCP_HEADER_SIZE);
-
   int err = 0;
 
   req->packets = 0;
   req->stream = stream;
+
+  // if this is the first inflight packet, we should "restart" rto timer
+  if (stream->inflight == 0) {
+    stream->rto_timeout = ucp_get_milliseconds() + stream->rto;
+  }
 
   while (buf_len > 0 || err < 0) {
     ucp_outgoing_packet_t *pkt = malloc(sizeof(ucp_outgoing_packet_t));
@@ -681,8 +682,6 @@ ucp_stream_write (ucp_stream_t *stream, ucp_write_t *req, const char *buf, size_
     *(p++) = stream->remote_id;
     *(p++) = (pkt->seq = stream->seq++);
     *(p++) = stream->ack;
-
-    UCP_DEBUG("outgoing packet header:\n  h = 0\n  id = %u\n  seq = %u\n  ack = %u\n", stream->remote_id, pkt->seq, stream->ack);
 
     memset(&(pkt->h), 0, sizeof(struct msghdr));
 
