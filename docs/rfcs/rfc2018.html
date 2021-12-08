@@ -1,0 +1,899 @@
+<!DOCTYPE html> 
+
+<!-- template: /a/www/ietf-datatracker/web/ietf/templates/doc/htmlized_base.html -->
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <title>
+  
+    rfc2018
+  
+</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+
+  @media only screen 
+    and (min-width: 992px)
+    and (max-width: 1199px) {
+      body { font-size: 14pt; }
+            div.content { width: 96ex; margin: 0 auto; }
+        }
+  @media only screen 
+    and (min-width: 768px)
+    and (max-width: 991px) {
+            body { font-size: 14pt; }
+            div.content { width: 96ex; margin: 0 auto; }
+        }
+  @media only screen 
+    and (min-width: 480px)
+    and (max-width: 767px) {
+            body { font-size: 11pt; }
+            div.content { width: 96ex; margin: 0 auto; }
+        }
+  @media only screen 
+    and (max-width: 479px) {
+            body { font-size: 8pt; }
+            div.content { width: 96ex; margin: 0 auto; }
+        }
+  @media only screen 
+    and (min-device-width : 375px) 
+    and (max-device-width : 667px) {
+            body { font-size: 9.5pt; }
+            div.content { width: 96ex; margin: 0; }
+        }
+  @media only screen 
+    and (min-device-width: 1200px) {
+            body { font-size: 10pt; margin: 0 4em; }
+            div.content { width: 96ex; margin: 0; }
+        }
+        h1, h2, h3, h4, h5, h6, .h1, .h2, .h3, .h4, .h5, .h6 {
+      font-weight: bold;
+            /* line-height: 0pt; */
+            display: inline;
+            white-space: pre;
+            font-family: monospace;
+            font-size: 1em;
+      font-weight: bold;
+        }
+        pre {
+            font-size: 1em;
+            margin-top: 0px;
+            margin-bottom: 0px;
+        }
+  .pre {
+      white-space: pre;
+      font-family: monospace;
+  }
+  .header{
+      font-weight: bold;
+  }
+        .newpage {
+            page-break-before: always;
+        }
+        .invisible {
+            text-decoration: none;
+            color: white;
+        }
+        @media print {
+            body {
+                margin-top: 5em;
+                font-family: monospace;
+                font-size: 10.5pt;
+            }
+            h1, h2, h3, h4, h5, h6 {
+                font-size: 1em;
+            }
+        
+            a:link, a:visited {
+                color: inherit;
+                text-decoration: none;
+            }
+            .noprint {
+                display: none;
+            }
+        }
+  @media screen {
+      .grey, .grey a:link, .grey a:visited {
+    color: #777;
+      }
+            .meta-info {
+                background-color: #EEE;
+            }
+            .top {
+                border-top: 7px solid #EEE;
+            }
+            .pad {
+                padding-top: 7px;
+                line-height: 24px;
+                padding-bottom: 4px;
+            }
+            .bgwhite  { background-color: white; }
+            .bgred    { background-color: #F44; }
+            .bggrey   { background-color: #666; }
+            .bgbrown  { background-color: #840; }            
+            .bgorange { background-color: #FA0; }
+            .bgyellow { background-color: #EE0; }
+            .bgmagenta{ background-color: #F4F; }
+            .bgblue   { background-color: #66F; }
+            .bgcyan   { background-color: #4DD; }
+            .bggreen  { background-color: #4F4; }
+
+            .legend   { font-size: 90%; }
+            .cplate   { font-size: 70%; border: solid grey 1px; }
+  }
+    
+     
+
+.bgwhite  { background-color: white; }
+.bgred    { background-color: #F44; }
+.bggrey   { background-color: #666; }
+.bgbrown  { background-color: #840; }            
+.bgorange { background-color: #FA0; }
+.bgyellow { background-color: #EE0; }
+.bgmagenta{ background-color: #F4F; }
+.bgblue   { background-color: #66F; }
+.bgcyan   { background-color: #4DD; }
+.bggreen  { background-color: #4F4; }
+
+.draftcontent { margin-top:0px !important;}
+
+
+    </style>
+
+    
+  <link rel="alternate" type="application/atom+xml" title="Document changes" href="/feed/document-changes/draft-ietf-tcplw-sack/">
+  <meta name="description" content="TCP Selective Acknowledgment Options (RFC )">
+
+
+    
+    <link rel="shortcut icon" href="https://www.ietf.org/lib/dt/7.40.0/ietf/images/ietf-icon-blue3.png">
+    
+    <link rel="apple-touch-icon" href="https://www.ietf.org/lib/dt/7.40.0/ietf/images/apple-touch-icon.png">
+  </head>
+
+  <body style="padding-top: 0;">
+
+	  <div class="content" id="content">
+        
+  <!-- template: /a/www/ietf-datatracker/web/ietf/templates/doc/document_html.html -->
+ 
+  <div class="rfcmarkup">
+    <div class="noprint" style="height: 6px;">
+      <div onmouseover="this.style.cursor='pointer';"
+         onclick="showLegend();"
+         onmouseout="hideLegend()"
+         style="height: 6px; min-height: 6px; width: 96ex; position: absolute; margin-top:0; "
+         class="meta-info bgblue"
+         title="Click for colour legend." >&nbsp;</div>
+      <div id="legend"
+           class="meta-info noprint pre legend"
+           style="position:absolute; top: 4px; left: 4ex; visibility:hidden; background-color: white; padding: 4px 9px 5px 7px; border: solid #345 1px; "
+           onmouseover="showLegend();"
+           onmouseout="hideLegend();">
+      </div>
+    </div>
+
+    
+      <div class="noprint">
+	 <pre class="pre meta-info">[<a href="https://datatracker.ietf.org" title="Document search and retrieval page">Search</a>] [<a href="https://www.rfc-editor.org/rfc/rfc2018.txt" title="Plaintext version of this document">txt</a>|<a href="https://www.rfc-editor.org/rfc/rfc2018.html" title="HTML version of this document, from XML2RFC">html</a>|<a href="https://www.rfc-editor.org/rfc/pdfrfc/rfc2018.txt.pdf" title="PDF version of this document">pdf</a>|<a href="https://www.rfc-editor.org/rfc/inline-errata/rfc2018.html">with errata</a>|<a href="/doc/rfc2018/bibtex" title="BibTex entry for this document">bibtex</a>] [<a href="/doc/rfc2018/" title="Datatracker information for this document">Tracker</a>] [<a href="/group/tcplw/" title="The working group handling this document">WG</a>] [<a href="mailto:draft-ietf-tcplw-sack@ietf.org?subject=draft-ietf-tcplw-sack" title="Send email to the document authors">Email</a>] [<a href="https://www.ietf.org/rfcdiff?difftype=--hwdiff&url2=draft-ietf-tcplw-sack-02.txt" title="Inline diff (wdiff)">Diff1</a>] [<a href="https://www.ietf.org/rfcdiff?url2=draft-ietf-tcplw-sack-02.txt" title="Side-by-side diff">Diff2</a>] [<a href="https://www.ietf.org/tools/idnits?url=https://www.ietf.org/archive/id/draft-ietf-tcplw-sack-02.txt" title="Run an idnits check of this document">Nits</a>]
+
+From: <a href="/doc/html/draft-ietf-tcplw-sack-02">draft-ietf-tcplw-sack-02</a>                         Proposed Standard
+                                                            <a class="text-warning" href="https://www.rfc-editor.org/errata_search.php?rfc=2018&amp;rec_status=0">Errata exist</a></pre>
+      </div>
+    
+
+    <div class="draftcontent">
+    <pre>Network Working Group                                        M. Mathis
+Request for Comments: 2018                                  J. Mahdavi
+Category: Standards Track                                          PSC
+                                                              S. Floyd
+                                                                  LBNL
+                                                            A. Romanow
+                                                      Sun Microsystems
+                                                          October 1996
+
+
+                  <span class="h1">TCP Selective Acknowledgment Options</span>
+
+Status of this Memo
+
+   This document specifies an Internet standards track protocol for the
+   Internet community, and requests discussion and suggestions for
+   improvements.  Please refer to the current edition of the &quot;Internet
+   Official Protocol Standards&quot; (STD 1) for the standardization state
+   and status of this protocol.  Distribution of this memo is unlimited.
+
+Abstract
+
+   TCP may experience poor performance when multiple packets are lost
+   from one window of data.   With the limited information available
+   from cumulative acknowledgments, a TCP sender can only learn about a
+   single lost packet per round trip time.  An aggressive sender could
+   choose to retransmit packets early, but such retransmitted segments
+   may have already been successfully received.
+
+   A Selective Acknowledgment (SACK) mechanism, combined with a
+   selective repeat retransmission policy, can help to overcome these
+   limitations.  The receiving TCP sends back SACK packets to the sender
+   informing the sender of data that has been received. The sender can
+   then retransmit only the missing data segments.
+
+   This memo proposes an implementation of SACK and discusses its
+   performance and related issues.
+
+Acknowledgements
+
+   Much of the text in this document is taken directly from <a href="/doc/html/rfc1072">RFC1072</a> &quot;TCP
+   Extensions for Long-Delay Paths&quot; by Bob Braden and Van Jacobson.  The
+   authors would like to thank Kevin Fall (LBNL), Christian Huitema
+   (INRIA), Van Jacobson (LBNL), Greg Miller (MITRE), Greg Minshall
+   (Ipsilon), Lixia Zhang (XEROX PARC and UCLA), Dave Borman (BSDI),
+   Allison Mankin (ISI) and others for their review and constructive
+   comments.
+
+
+
+
+<span class="grey">Mathis, et. al.             Standards Track                     [Page 1]</span></pre>
+<hr class='noprint'/><!--NewPage--><pre class='newpage'><span id="page-2" ></span>
+<span class="grey"><a href="/doc/html/rfc2018">RFC 2018</a>         TCP Selective Acknowledgement Options      October 1996</span>
+
+
+<span class="h2"><a class="selflink" id="section-1" href="#section-1">1</a>.  Introduction</span>
+
+   Multiple packet losses from a window of data can have a catastrophic
+   effect on TCP throughput. TCP [<a href="#ref-Postel81" title="&quot;Transmission Control Protocol - DARPA Internet Program Protocol Specification&quot;">Postel81</a>] uses a cumulative
+   acknowledgment scheme in which received segments that are not at the
+   left edge of the receive window are not acknowledged.  This forces
+   the sender to either wait a roundtrip time to find out about each
+   lost packet, or to unnecessarily retransmit segments which have been
+   correctly received [<a href="#ref-Fall95" title="&quot;Comparisons of Tahoe, Reno, and Sack TCP&quot;">Fall95</a>].  With the cumulative acknowledgment
+   scheme, multiple dropped segments generally cause TCP to lose its
+   ACK-based clock, reducing overall throughput.
+
+   Selective Acknowledgment (SACK) is a strategy which corrects this
+   behavior in the face of multiple dropped segments.  With selective
+   acknowledgments, the data receiver can inform the sender about all
+   segments that have arrived successfully, so the sender need
+   retransmit only the segments that have actually been lost.
+
+   Several transport protocols, including NETBLT [<a href="#ref-Clark87" title="&quot;NETBLT: A Bulk Data Transfer Protocol&quot;">Clark87</a>], XTP
+   [<a href="#ref-Strayer92" title="A.">Strayer92</a>], RDP [<a href="#ref-Velten84" title="&quot;Reliable Data Protocol&quot;">Velten84</a>], NADIR [<a href="#ref-Huitema81" title="I.">Huitema81</a>], and VMTP [<a href="#ref-Cheriton88" title="&quot;VMTP: Versatile Message Transaction Protocol&quot;">Cheriton88</a>]
+   have used selective acknowledgment.  There is some empirical evidence
+   in favor of selective acknowledgments -- simple experiments with RDP
+   have shown that disabling the selective acknowledgment facility
+   greatly increases the number of retransmitted segments over a lossy,
+   high-delay Internet path [<a href="#ref-Partridge87" title="&quot;Private Communication&quot;">Partridge87</a>]. A recent simulation study by
+   Kevin Fall and Sally Floyd [<a href="#ref-Fall95" title="&quot;Comparisons of Tahoe, Reno, and Sack TCP&quot;">Fall95</a>], demonstrates the strength of TCP
+   with SACK over the non-SACK Tahoe and Reno TCP implementations.
+
+   <a href="/doc/html/rfc1072">RFC1072</a> [VJ88] describes one possible implementation of SACK options
+   for TCP.  Unfortunately, it has never been deployed in the Internet,
+   as there was disagreement about how SACK options should be used in
+   conjunction with the TCP window shift option (initially described
+   <a href="/doc/html/rfc1072">RFC1072</a> and revised in [<a href="#ref-Jacobson92" title="&quot;TCP Extensions for High Performance&quot;">Jacobson92</a>]).
+
+   We propose slight modifications to the SACK options as proposed in
+   <a href="/doc/html/rfc1072">RFC1072</a>.  Specifically, sending a selective acknowledgment for the
+   most recently received data reduces the need for long SACK options
+   [<a href="#ref-Keshav94" title="presentation to the Internet End-to-End Research Group">Keshav94</a>, <a href="#ref-Mathis95" title="J.">Mathis95</a>].  In addition, the SACK option now carries full
+   32 bit sequence numbers.  These two modifications represent the only
+   changes to the proposal in <a href="/doc/html/rfc1072">RFC1072</a>.  They make SACK easier to
+   implement and address concerns about robustness.
+
+   The selective acknowledgment extension uses two TCP options. The
+   first is an enabling option, &quot;SACK-permitted&quot;, which may be sent in a
+   SYN segment to indicate that the SACK option can be used once the
+   connection is established.  The other is the SACK option itself,
+   which may be sent over an established connection once permission has
+   been given by SACK-permitted.
+
+
+
+<span class="grey">Mathis, et. al.             Standards Track                     [Page 2]</span></pre>
+<hr class='noprint'/><!--NewPage--><pre class='newpage'><span id="page-3" ></span>
+<span class="grey"><a href="/doc/html/rfc2018">RFC 2018</a>         TCP Selective Acknowledgement Options      October 1996</span>
+
+
+   The SACK option is to be included in a segment sent from a TCP that
+   is receiving data to the TCP that is sending that data; we will refer
+   to these TCP&#x27;s as the data receiver and the data sender,
+   respectively.  We will consider a particular simplex data flow; any
+   data flowing in the reverse direction over the same connection can be
+   treated independently.
+
+<span class="h2"><a class="selflink" id="section-2" href="#section-2">2</a>.  Sack-Permitted Option</span>
+
+   This two-byte option may be sent in a SYN by a TCP that has been
+   extended to receive (and presumably process) the SACK option once the
+   connection has opened.  It MUST NOT be sent on non-SYN segments.
+
+       TCP Sack-Permitted Option:
+
+       Kind: 4
+
+       +---------+---------+
+       | Kind=4  | Length=2|
+       +---------+---------+
+
+<span class="h2"><a class="selflink" id="section-3" href="#section-3">3</a>.  Sack Option Format</span>
+
+   The SACK option is to be used to convey extended acknowledgment
+   information from the receiver to the sender over an established TCP
+   connection.
+
+       TCP SACK Option:
+
+       Kind: 5
+
+       Length: Variable
+
+                         +--------+--------+
+                         | Kind=5 | Length |
+       +--------+--------+--------+--------+
+       |      Left Edge of 1st Block       |
+       +--------+--------+--------+--------+
+       |      Right Edge of 1st Block      |
+       +--------+--------+--------+--------+
+       |                                   |
+       /            . . .                  /
+       |                                   |
+       +--------+--------+--------+--------+
+       |      Left Edge of nth Block       |
+       +--------+--------+--------+--------+
+       |      Right Edge of nth Block      |
+       +--------+--------+--------+--------+
+
+
+
+<span class="grey">Mathis, et. al.             Standards Track                     [Page 3]</span></pre>
+<hr class='noprint'/><!--NewPage--><pre class='newpage'><span id="page-4" ></span>
+<span class="grey"><a href="/doc/html/rfc2018">RFC 2018</a>         TCP Selective Acknowledgement Options      October 1996</span>
+
+
+   The SACK option is to be sent by a data receiver to inform the data
+   sender of non-contiguous blocks of data that have been received and
+   queued.  The data receiver awaits the receipt of data (perhaps by
+   means of retransmissions) to fill the gaps in sequence space between
+   received blocks.  When missing segments are received, the data
+   receiver acknowledges the data normally by advancing the left window
+   edge in the Acknowledgement Number Field of the TCP header.  The SACK
+   option does not change the meaning of the Acknowledgement Number
+   field.
+
+   This option contains a list of some of the blocks of contiguous
+   sequence space occupied by data that has been received and queued
+   within the window.
+
+   Each contiguous block of data queued at the data receiver is defined
+   in the SACK option by two 32-bit unsigned integers in network byte
+   order:
+
+   *    Left Edge of Block
+
+        This is the first sequence number of this block.
+
+   *    Right Edge of Block
+
+        This is the sequence number immediately following the last
+        sequence number of this block.
+
+   Each block represents received bytes of data that are contiguous and
+   isolated; that is, the bytes just below the block, (Left Edge of
+   Block - 1), and just above the block, (Right Edge of Block), have not
+   been received.
+
+   A SACK option that specifies n blocks will have a length of 8*n+2
+   bytes, so the 40 bytes available for TCP options can specify a
+   maximum of 4 blocks.  It is expected that SACK will often be used in
+   conjunction with the Timestamp option used for RTTM [<a href="#ref-Jacobson92" title="&quot;TCP Extensions for High Performance&quot;">Jacobson92</a>],
+   which takes an additional 10 bytes (plus two bytes of padding); thus
+   a maximum of 3 SACK blocks will be allowed in this case.
+
+   The SACK option is advisory, in that, while it notifies the data
+   sender that the data receiver has received the indicated segments,
+   the data receiver is permitted to later discard data which have been
+   reported in a SACK option.  A discussion appears below in <a href="#section-8">Section 8</a>
+   of the consequences of advisory SACK, in particular that the data
+   receiver may renege, or drop already SACKed data.
+
+
+
+
+
+
+<span class="grey">Mathis, et. al.             Standards Track                     [Page 4]</span></pre>
+<hr class='noprint'/><!--NewPage--><pre class='newpage'><span id="page-5" ></span>
+<span class="grey"><a href="/doc/html/rfc2018">RFC 2018</a>         TCP Selective Acknowledgement Options      October 1996</span>
+
+
+<span class="h2"><a class="selflink" id="section-4" href="#section-4">4</a>.  Generating Sack Options: Data Receiver Behavior</span>
+
+   If the data receiver has received a SACK-Permitted option on the SYN
+   for this connection, the data receiver MAY elect to generate SACK
+   options as described below.  If the data receiver generates SACK
+   options under any circumstance, it SHOULD generate them under all
+   permitted circumstances.  If the data receiver has not received a
+   SACK-Permitted option for a given connection, it MUST NOT send SACK
+   options on that connection.
+
+   If sent at all, SACK options SHOULD be included in all ACKs which do
+   not ACK the highest sequence number in the data receiver&#x27;s queue.  In
+   this situation the network has lost or mis-ordered data, such that
+   the receiver holds non-contiguous data in its queue.  <a href="/doc/html/rfc1122#section-4.2.2.21">RFC 1122,
+   Section&nbsp;4.2.2.21</a>, discusses the reasons for the receiver to send ACKs
+   in response to additional segments received in this state.  The
+   receiver SHOULD send an ACK for every valid segment that arrives
+   containing new data, and each of these &quot;duplicate&quot; ACKs SHOULD bear a
+   SACK option.
+
+   If the data receiver chooses to send a SACK option, the following
+   rules apply:
+
+      * The first SACK block (i.e., the one immediately following the
+      kind and length fields in the option) MUST specify the contiguous
+      block of data containing the segment which triggered this ACK,
+      unless that segment advanced the Acknowledgment Number field in
+      the header.  This assures that the ACK with the SACK option
+      reflects the most recent change in the data receiver&#x27;s buffer
+      queue.
+
+      * The data receiver SHOULD include as many distinct SACK blocks as
+      possible in the SACK option.  Note that the maximum available
+      option space may not be sufficient to report all blocks present in
+      the receiver&#x27;s queue.
+
+      * The SACK option SHOULD be filled out by repeating the most
+      recently reported SACK blocks (based on first SACK blocks in
+      previous SACK options) that are not subsets of a SACK block
+      already included in the SACK option being constructed.  This
+      assures that in normal operation, any segment remaining part of a
+      non-contiguous block of data held by the data receiver is reported
+      in at least three successive SACK options, even for large-window
+      TCP implementations [<a href="/doc/html/rfc1323">RFC1323</a>]).  After the first SACK block, the
+      following SACK blocks in the SACK option may be listed in
+      arbitrary order.
+
+
+
+
+
+<span class="grey">Mathis, et. al.             Standards Track                     [Page 5]</span></pre>
+<hr class='noprint'/><!--NewPage--><pre class='newpage'><span id="page-6" ></span>
+<span class="grey"><a href="/doc/html/rfc2018">RFC 2018</a>         TCP Selective Acknowledgement Options      October 1996</span>
+
+
+   It is very important that the SACK option always reports the block
+   containing the most recently received segment, because this provides
+   the sender with the most up-to-date information about the state of
+   the network and the data receiver&#x27;s queue.
+
+<span class="h2"><a class="selflink" id="section-5" href="#section-5">5</a>.  Interpreting the Sack Option and Retransmission Strategy: Data</span>
+<span class="h2">   Sender Behavior</span>
+
+   When receiving an ACK containing a SACK option, the data sender
+   SHOULD record the selective acknowledgment for future reference.  The
+   data sender is assumed to have a retransmission queue that contains
+   the segments that have been transmitted but not yet acknowledged, in
+   sequence-number order.  If the data sender performs re-packetization
+   before retransmission, the block boundaries in a SACK option that it
+   receives may not fall on boundaries of segments in the retransmission
+   queue; however, this does not pose a serious difficulty for the
+   sender.
+
+   One possible implementation of the sender&#x27;s behavior is as follows.
+   Let us suppose that for each segment in the retransmission queue
+   there is a (new) flag bit &quot;SACKed&quot;, to be used to indicate that this
+   particular segment has been reported in a SACK option.
+
+   When an acknowledgment segment arrives containing a SACK option, the
+   data sender will turn on the SACKed bits for segments that have been
+   selectively acknowledged.  More specifically, for each block in the
+   SACK option, the data sender will turn on the SACKed flags for all
+   segments in the retransmission queue that are wholly contained within
+   that block.  This requires straightforward sequence number
+   comparisons.
+
+   After the SACKed bit is turned on (as the result of processing a
+   received SACK option), the data sender will skip that segment during
+   any later retransmission.  Any segment that has the SACKed bit turned
+   off and is less than the highest SACKed segment is available for
+   retransmission.
+
+   After a retransmit timeout the data sender SHOULD turn off all of the
+   SACKed bits, since the timeout might indicate that the data receiver
+   has reneged.  The data sender MUST retransmit the segment at the left
+   edge of the window after a retransmit timeout, whether or not the
+   SACKed bit is on for that segment.  A segment will not be dequeued
+   and its buffer freed until the left window edge is advanced over it.
+
+
+
+
+
+
+
+
+<span class="grey">Mathis, et. al.             Standards Track                     [Page 6]</span></pre>
+<hr class='noprint'/><!--NewPage--><pre class='newpage'><span id="page-7" ></span>
+<span class="grey"><a href="/doc/html/rfc2018">RFC 2018</a>         TCP Selective Acknowledgement Options      October 1996</span>
+
+
+<span class="h3"><a class="selflink" id="section-5.1" href="#section-5.1">5.1</a>  Congestion Control Issues</span>
+
+   This document does not attempt to specify in detail the congestion
+   control algorithms for implementations of TCP with SACK.  However,
+   the congestion control algorithms present in the de facto standard
+   TCP implementations MUST be preserved [<a href="#ref-Stevens94" title=" Addison-Wesley">Stevens94</a>].  In particular, to
+   preserve robustness in the presence of packets reordered by the
+   network, recovery is not triggered by a single ACK reporting out-of-
+   order packets at the receiver.  Further, during recovery the data
+   sender limits the number of segments sent in response to each ACK.
+   Existing implementations limit the data sender to sending one segment
+   during Reno-style fast recovery, or to two segments during slow-start
+   [<a href="#ref-Jacobson88" title="&quot;Congestion Avoidance and Control&quot;">Jacobson88</a>].  Other aspects of congestion control, such as reducing
+   the congestion window in response to congestion, must similarly be
+   preserved.
+
+   The use of time-outs as a fall-back mechanism for detecting dropped
+   packets is unchanged by the SACK option.  Because the data receiver
+   is allowed to discard SACKed data, when a retransmit timeout occurs
+   the data sender MUST ignore prior SACK information in determining
+   which data to retransmit.
+
+   Future research into congestion control algorithms may take advantage
+   of the additional information provided by SACK.  One such area for
+   future research concerns modifications to TCP for a wireless or
+   satellite environment where packet loss is not necessarily an
+   indication of congestion.
+
+<span class="h2"><a class="selflink" id="section-6" href="#section-6">6</a>.  Efficiency and Worst Case Behavior</span>
+
+   If the return path carrying ACKs and SACK options were lossless, one
+   block per SACK option packet would always be sufficient.  Every
+   segment arriving while the data receiver holds discontinuous data
+   would cause the data receiver to send an ACK with a SACK option
+   containing the one altered block in the receiver&#x27;s queue.  The data
+   sender is thus able to construct a precise replica of the receiver&#x27;s
+   queue by taking the union of all the first SACK blocks.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<span class="grey">Mathis, et. al.             Standards Track                     [Page 7]</span></pre>
+<hr class='noprint'/><!--NewPage--><pre class='newpage'><span id="page-8" ></span>
+<span class="grey"><a href="/doc/html/rfc2018">RFC 2018</a>         TCP Selective Acknowledgement Options      October 1996</span>
+
+
+   Since the return path is not lossless, the SACK option is defined to
+   include more than one SACK block in a single packet.  The redundant
+   blocks in the SACK option packet increase the robustness of SACK
+   delivery in the presence of lost ACKs.  For a receiver that is also
+   using the time stamp option [<a href="#ref-Jacobson92" title="&quot;TCP Extensions for High Performance&quot;">Jacobson92</a>], the SACK option has room to
+   include three SACK blocks.  Thus each SACK block will generally be
+   repeated at least three times, if necessary, once in each of three
+   successive ACK packets.  However, if all of the ACK packets reporting
+   a particular SACK block are dropped, then the sender might assume
+   that the data in that SACK block has not been received, and
+   unnecessarily retransmit those segments.
+
+   The deployment of other TCP options may reduce the number of
+   available SACK blocks to 2 or even to 1.  This will reduce the
+   redundancy of SACK delivery in the presence of lost ACKs.  Even so,
+   the exposure of TCP SACK in regard to the unnecessary retransmission
+   of packets is strictly less than the exposure of current
+   implementations of TCP.  The worst-case conditions necessary for the
+   sender to needlessly retransmit data is discussed in more detail in a
+   separate document [<a href="#ref-Floyd96" title="&quot;Issues of TCP with SACK&quot;">Floyd96</a>].
+
+   Older TCP implementations which do not have the SACK option will not
+   be unfairly disadvantaged when competing against SACK-capable TCPs.
+   This issue is discussed in more detail in [<a href="#ref-Floyd96" title="&quot;Issues of TCP with SACK&quot;">Floyd96</a>].
+
+<span class="h2"><a class="selflink" id="section-7" href="#section-7">7</a>.  Sack Option Examples</span>
+
+   The following examples attempt to demonstrate the proper behavior of
+   SACK generation by the data receiver.
+
+   Assume the left window edge is 5000 and that the data transmitter
+   sends a burst of 8 segments, each containing 500 data bytes.
+
+      Case 1: The first 4 segments are received but the last 4 are
+      dropped.
+
+      The data receiver will return a normal TCP ACK segment
+      acknowledging sequence number 7000, with no SACK option.
+
+
+
+
+
+
+
+
+
+
+
+
+
+<span class="grey">Mathis, et. al.             Standards Track                     [Page 8]</span></pre>
+<hr class='noprint'/><!--NewPage--><pre class='newpage'><span id="page-9" ></span>
+<span class="grey"><a href="/doc/html/rfc2018">RFC 2018</a>         TCP Selective Acknowledgement Options      October 1996</span>
+
+
+      Case 2:  The first segment is dropped but the remaining 7 are
+      received.
+
+         Upon receiving each of the last seven packets, the data
+         receiver will return a TCP ACK segment that acknowledges
+         sequence number 5000 and contains a SACK option specifying
+         one block of queued data:
+
+             Triggering    ACK      Left Edge   Right Edge
+             Segment
+
+             5000         (lost)
+             5500         5000     5500       6000
+             6000         5000     5500       6500
+             6500         5000     5500       7000
+             7000         5000     5500       7500
+             7500         5000     5500       8000
+             8000         5000     5500       8500
+             8500         5000     5500       9000
+
+
+      Case 3:  The 2nd, 4th, 6th, and 8th (last) segments are
+      dropped.
+
+      The data receiver ACKs the first packet normally.  The
+      third, fifth, and seventh packets trigger SACK options as
+      follows:
+
+          Triggering  ACK    First Block   2nd Block     3rd Block
+          Segment            Left   Right  Left   Right  Left   Right
+                             Edge   Edge   Edge   Edge   Edge   Edge
+
+          5000       5500
+          5500       (lost)
+          6000       5500    6000   6500
+          6500       (lost)
+          7000       5500    7000   7500   6000   6500
+          7500       (lost)
+          8000       5500    8000   8500   7000   7500   6000   6500
+          8500       (lost)
+
+
+
+
+
+
+
+
+
+
+
+<span class="grey">Mathis, et. al.             Standards Track                     [Page 9]</span></pre>
+<hr class='noprint'/><!--NewPage--><pre class='newpage'><span id="page-10" ></span>
+<span class="grey"><a href="/doc/html/rfc2018">RFC 2018</a>         TCP Selective Acknowledgement Options      October 1996</span>
+
+
+      Suppose at this point, the 4th packet is received out of order.
+      (This could either be because the data was badly misordered in the
+      network, or because the 2nd packet was retransmitted and lost, and
+      then the 4th packet was retransmitted). At this point the data
+      receiver has only two SACK blocks to report.  The data receiver
+      replies with the following Selective Acknowledgment:
+
+          Triggering  ACK    First Block   2nd Block     3rd Block
+          Segment            Left   Right  Left   Right  Left   Right
+                             Edge   Edge   Edge   Edge   Edge   Edge
+
+          6500       5500    6000   7500   8000   8500
+
+      Suppose at this point, the 2nd segment is received.  The data
+      receiver then replies with the following Selective Acknowledgment:
+
+          Triggering  ACK    First Block   2nd Block     3rd Block
+          Segment            Left   Right  Left   Right  Left   Right
+                             Edge   Edge   Edge   Edge   Edge   Edge
+
+          5500       7500    8000   8500
+
+<span class="h2"><a class="selflink" id="section-8" href="#section-8">8</a>.  Data Receiver Reneging</span>
+
+   Note that the data receiver is permitted to discard data in its queue
+   that has not been acknowledged to the data sender, even if the data
+   has already been reported in a SACK option.  Such discarding of
+   SACKed packets is discouraged, but may be used if the receiver runs
+   out of buffer space.
+
+   The data receiver MAY elect not to keep data which it has reported in
+   a SACK option.  In this case, the receiver SACK generation is
+   additionally qualified:
+
+      * The first SACK block MUST reflect the newest segment.  Even if
+      the newest segment is going to be discarded and the receiver has
+      already discarded adjacent segments, the first SACK block MUST
+      report, at a minimum, the left and right edges of the newest
+      segment.
+
+      * Except for the newest segment, all SACK blocks MUST NOT report
+      any old data which is no longer actually held by the receiver.
+
+   Since the data receiver may later discard data reported in a SACK
+   option, the sender MUST NOT discard data before it is acknowledged by
+   the Acknowledgment Number field in the TCP header.
+
+
+
+
+
+<span class="grey">Mathis, et. al.             Standards Track                    [Page 10]</span></pre>
+<hr class='noprint'/><!--NewPage--><pre class='newpage'><span id="page-11" ></span>
+<span class="grey"><a href="/doc/html/rfc2018">RFC 2018</a>         TCP Selective Acknowledgement Options      October 1996</span>
+
+
+<span class="h2"><a class="selflink" id="section-9" href="#section-9">9</a>.  Security Considerations</span>
+
+   This document neither strengthens nor weakens TCP&#x27;s current security
+   properties.
+
+<span class="h2"><a class="selflink" id="section-10" href="#section-10">10</a>. References</span>
+
+   [<a id="ref-Cheriton88">Cheriton88</a>]  Cheriton, D., &quot;VMTP: Versatile Message Transaction
+   Protocol&quot;, <a href="/doc/html/rfc1045">RFC 1045</a>, Stanford University, February 1988.
+
+   [<a id="ref-Clark87">Clark87</a>] Clark, D., Lambert, M., and L. Zhang, &quot;NETBLT: A Bulk Data
+   Transfer Protocol&quot;, <a href="/doc/html/rfc998">RFC 998</a>, MIT, March 1987.
+
+   [<a id="ref-Fall95">Fall95</a>]  Fall, K. and Floyd, S., &quot;Comparisons of Tahoe, Reno, and
+   Sack TCP&quot;, <a href="ftp://ftp.ee.lbl.gov/papers/sacks.ps.Z">ftp://ftp.ee.lbl.gov/papers/sacks.ps.Z</a>, December 1995.
+
+   [<a id="ref-Floyd96">Floyd96</a>]  Floyd, S.,  &quot;Issues of TCP with SACK&quot;,
+   <a href="ftp://ftp.ee.lbl.gov/papers/issues_sa.ps.Z">ftp://ftp.ee.lbl.gov/papers/issues_sa.ps.Z</a>, January 1996.
+
+   [<a id="ref-Huitema81">Huitema81</a>] Huitema, C., and Valet, I., An Experiment on High Speed
+   File Transfer using Satellite Links, 7th Data Communication
+   Symposium, Mexico, October 1981.
+
+   [<a id="ref-Jacobson88">Jacobson88</a>] Jacobson, V., &quot;Congestion Avoidance and Control&quot;,
+   Proceedings of SIGCOMM &#x27;88, Stanford, CA., August 1988.
+
+   [Jacobson88}, Jacobson, V. and R. Braden, &quot;TCP Extensions for Long-
+   Delay Paths&quot;, <a href="/doc/html/rfc1072">RFC 1072</a>, October 1988.
+
+   [<a id="ref-Jacobson92">Jacobson92</a>] Jacobson, V., Braden, R., and D. Borman, &quot;TCP Extensions
+   for High Performance&quot;, <a href="/doc/html/rfc1323">RFC 1323</a>, May 1992.
+
+   [<a id="ref-Keshav94">Keshav94</a>]  Keshav, presentation to the Internet End-to-End Research
+   Group, November 1994.
+
+   [<a id="ref-Mathis95">Mathis95</a>]  Mathis, M., and Mahdavi, J., TCP Forward Acknowledgment
+   Option, presentation to the Internet End-to-End Research Group, June
+   1995.
+
+   [<a id="ref-Partridge87">Partridge87</a>]  Partridge, C., &quot;Private Communication&quot;, February 1987.
+
+   [<a id="ref-Postel81">Postel81</a>]  Postel, J., &quot;Transmission Control Protocol - DARPA
+   Internet Program Protocol Specification&quot;, <a href="/doc/html/rfc793">RFC 793</a>, DARPA, September
+   1981.
+
+   [<a id="ref-Stevens94">Stevens94</a>] Stevens, W., TCP/IP Illustrated, Volume 1: The Protocols,
+   Addison-Wesley, 1994.
+
+
+
+
+<span class="grey">Mathis, et. al.             Standards Track                    [Page 11]</span></pre>
+<hr class='noprint'/><!--NewPage--><pre class='newpage'><span id="page-12" ></span>
+<span class="grey"><a href="/doc/html/rfc2018">RFC 2018</a>         TCP Selective Acknowledgement Options      October 1996</span>
+
+
+   [<a id="ref-Strayer92">Strayer92</a>] Strayer, T., Dempsey, B., and Weaver, A., XTP -- the
+   xpress transfer protocol. Addison-Wesley Publishing Company, 1992.
+
+   [<a id="ref-Velten84">Velten84</a>] Velten, D., Hinden, R., and J. Sax, &quot;Reliable Data
+   Protocol&quot;, <a href="/doc/html/rfc908">RFC 908</a>, BBN, July 1984.
+
+<span class="h2"><a class="selflink" id="section-11" href="#section-11">11</a>. Authors&#x27; Addresses</span>
+
+    Matt Mathis and Jamshid Mahdavi
+    Pittsburgh Supercomputing Center
+    4400 Fifth Ave
+    Pittsburgh, PA 15213
+    mathis@psc.edu
+    mahdavi@psc.edu
+
+    Sally Floyd
+    Lawrence Berkeley National Laboratory
+    One Cyclotron Road
+    Berkeley, CA 94720
+    floyd@ee.lbl.gov
+
+    Allyn Romanow
+    Sun Microsystems, Inc.
+    2550 Garcia Ave., MPK17-202
+    Mountain View, CA 94043
+    allyn@eng.sun.com
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Mathis, et. al.             Standards Track                    [Page 12]
+</pre>
+    </div>
+
+  </div>
+
+
+        
+	  </div>
+
+	
+
+	
+
+    </div>
+
+      
+    <script type="text/javascript"><!--
+    var legend_html = "Colour legend:<br /> \
+     <table> \
+        <tr><td>Unknown:</td>                   <td><span class='cplate bgwhite'>&nbsp;&nbsp;&nbsp;&nbsp;</span></td></tr> \
+        <tr><td>Draft:</td>                     <td><span class='cplate bgred'>&nbsp;&nbsp;&nbsp;&nbsp;</span></td></tr> \
+        <tr><td>Informational:</td>             <td><span class='cplate bgorange'>&nbsp;&nbsp;&nbsp;&nbsp;</span></td></tr> \
+        <tr><td>Experimental:</td>              <td><span class='cplate bgyellow'>&nbsp;&nbsp;&nbsp;&nbsp;</span></td></tr> \
+        <tr><td>Best Common Practice:</td>      <td><span class='cplate bgmagenta'>&nbsp;&nbsp;&nbsp;&nbsp;</span></td></tr> \
+        <tr><td>Proposed Standard:</td>         <td><span class='cplate bgblue'>&nbsp;&nbsp;&nbsp;&nbsp;</span></td></tr> \
+        <tr><td>Draft Standard (old designation):</td> <td><span class='cplate bgcyan'>&nbsp;&nbsp;&nbsp;&nbsp;</span></td></tr> \
+        <tr><td>Internet Standard:</td>         <td><span class='cplate bggreen'>&nbsp;&nbsp;&nbsp;&nbsp;</span></td></tr> \
+        <tr><td>Historic:</td>                  <td><span class='cplate bggrey'>&nbsp;&nbsp;&nbsp;&nbsp;</span></td></tr> \
+        <tr><td>Obsolete:</td>                  <td><span class='cplate bgbrown'>&nbsp;&nbsp;&nbsp;&nbsp;</span></td></tr> \
+    </table>";
+    function showLegend() {
+        var elem = document.getElementById('legend');
+        elem.innerHTML = legend_html
+        elem.style.visibility='visible';
+    }
+    function hideLegend() {
+        var elem = document.getElementById('legend');
+        elem.style.visibility='hidden';
+        elem.innerHTML = "";
+    }
+    // -->
+    </script>
+
+  </body>
+</html>

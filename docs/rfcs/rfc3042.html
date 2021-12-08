@@ -1,0 +1,730 @@
+<!DOCTYPE html> 
+
+<!-- template: /a/www/ietf-datatracker/web/ietf/templates/doc/htmlized_base.html -->
+<html lang="en">
+  <head>
+    <meta charset="utf-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <title>
+  
+    rfc3042
+  
+</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <style>
+
+  @media only screen 
+    and (min-width: 992px)
+    and (max-width: 1199px) {
+      body { font-size: 14pt; }
+            div.content { width: 96ex; margin: 0 auto; }
+        }
+  @media only screen 
+    and (min-width: 768px)
+    and (max-width: 991px) {
+            body { font-size: 14pt; }
+            div.content { width: 96ex; margin: 0 auto; }
+        }
+  @media only screen 
+    and (min-width: 480px)
+    and (max-width: 767px) {
+            body { font-size: 11pt; }
+            div.content { width: 96ex; margin: 0 auto; }
+        }
+  @media only screen 
+    and (max-width: 479px) {
+            body { font-size: 8pt; }
+            div.content { width: 96ex; margin: 0 auto; }
+        }
+  @media only screen 
+    and (min-device-width : 375px) 
+    and (max-device-width : 667px) {
+            body { font-size: 9.5pt; }
+            div.content { width: 96ex; margin: 0; }
+        }
+  @media only screen 
+    and (min-device-width: 1200px) {
+            body { font-size: 10pt; margin: 0 4em; }
+            div.content { width: 96ex; margin: 0; }
+        }
+        h1, h2, h3, h4, h5, h6, .h1, .h2, .h3, .h4, .h5, .h6 {
+      font-weight: bold;
+            /* line-height: 0pt; */
+            display: inline;
+            white-space: pre;
+            font-family: monospace;
+            font-size: 1em;
+      font-weight: bold;
+        }
+        pre {
+            font-size: 1em;
+            margin-top: 0px;
+            margin-bottom: 0px;
+        }
+  .pre {
+      white-space: pre;
+      font-family: monospace;
+  }
+  .header{
+      font-weight: bold;
+  }
+        .newpage {
+            page-break-before: always;
+        }
+        .invisible {
+            text-decoration: none;
+            color: white;
+        }
+        @media print {
+            body {
+                margin-top: 5em;
+                font-family: monospace;
+                font-size: 10.5pt;
+            }
+            h1, h2, h3, h4, h5, h6 {
+                font-size: 1em;
+            }
+        
+            a:link, a:visited {
+                color: inherit;
+                text-decoration: none;
+            }
+            .noprint {
+                display: none;
+            }
+        }
+  @media screen {
+      .grey, .grey a:link, .grey a:visited {
+    color: #777;
+      }
+            .meta-info {
+                background-color: #EEE;
+            }
+            .top {
+                border-top: 7px solid #EEE;
+            }
+            .pad {
+                padding-top: 7px;
+                line-height: 24px;
+                padding-bottom: 4px;
+            }
+            .bgwhite  { background-color: white; }
+            .bgred    { background-color: #F44; }
+            .bggrey   { background-color: #666; }
+            .bgbrown  { background-color: #840; }            
+            .bgorange { background-color: #FA0; }
+            .bgyellow { background-color: #EE0; }
+            .bgmagenta{ background-color: #F4F; }
+            .bgblue   { background-color: #66F; }
+            .bgcyan   { background-color: #4DD; }
+            .bggreen  { background-color: #4F4; }
+
+            .legend   { font-size: 90%; }
+            .cplate   { font-size: 70%; border: solid grey 1px; }
+  }
+    
+     
+
+.bgwhite  { background-color: white; }
+.bgred    { background-color: #F44; }
+.bggrey   { background-color: #666; }
+.bgbrown  { background-color: #840; }            
+.bgorange { background-color: #FA0; }
+.bgyellow { background-color: #EE0; }
+.bgmagenta{ background-color: #F4F; }
+.bgblue   { background-color: #66F; }
+.bgcyan   { background-color: #4DD; }
+.bggreen  { background-color: #4F4; }
+
+.draftcontent { margin-top:0px !important;}
+
+
+    </style>
+
+    
+  <link rel="alternate" type="application/atom+xml" title="Document changes" href="/feed/document-changes/draft-ietf-tsvwg-limited-xmit/">
+  <meta name="description" content="Enhancing TCP&#39;s Loss Recovery Using Limited Transmit (RFC )">
+
+
+    
+    <link rel="shortcut icon" href="https://www.ietf.org/lib/dt/7.40.0/ietf/images/ietf-icon-blue3.png">
+    
+    <link rel="apple-touch-icon" href="https://www.ietf.org/lib/dt/7.40.0/ietf/images/apple-touch-icon.png">
+  </head>
+
+  <body style="padding-top: 0;">
+
+	  <div class="content" id="content">
+        
+  <!-- template: /a/www/ietf-datatracker/web/ietf/templates/doc/document_html.html -->
+ 
+  <div class="rfcmarkup">
+    <div class="noprint" style="height: 6px;">
+      <div onmouseover="this.style.cursor='pointer';"
+         onclick="showLegend();"
+         onmouseout="hideLegend()"
+         style="height: 6px; min-height: 6px; width: 96ex; position: absolute; margin-top:0; "
+         class="meta-info bgblue"
+         title="Click for colour legend." >&nbsp;</div>
+      <div id="legend"
+           class="meta-info noprint pre legend"
+           style="position:absolute; top: 4px; left: 4ex; visibility:hidden; background-color: white; padding: 4px 9px 5px 7px; border: solid #345 1px; "
+           onmouseover="showLegend();"
+           onmouseout="hideLegend();">
+      </div>
+    </div>
+
+    
+      <div class="noprint">
+	 <pre class="pre meta-info">[<a href="https://datatracker.ietf.org" title="Document search and retrieval page">Search</a>] [<a href="https://www.rfc-editor.org/rfc/rfc3042.txt" title="Plaintext version of this document">txt</a>|<a href="https://www.rfc-editor.org/rfc/rfc3042.html" title="HTML version of this document, from XML2RFC">html</a>|<a href="https://www.rfc-editor.org/rfc/pdfrfc/rfc3042.txt.pdf" title="PDF version of this document">pdf</a>|<a href="/doc/rfc3042/bibtex" title="BibTex entry for this document">bibtex</a>] [<a href="/doc/rfc3042/" title="Datatracker information for this document">Tracker</a>] [<a href="/group/tsvwg/" title="The working group handling this document">WG</a>] [<a href="mailto:draft-ietf-tsvwg-limited-xmit@ietf.org?subject=draft-ietf-tsvwg-limited-xmit" title="Send email to the document authors">Email</a>] [<a href="https://www.ietf.org/tools/idnits?url=https://www.ietf.org/archive/id/draft-ietf-tsvwg-limited-xmit-00.txt" title="Run an idnits check of this document">Nits</a>]
+
+From: <a href="/doc/html/draft-ietf-tsvwg-limited-xmit-00">draft-ietf-tsvwg-limited-xmit-00</a>                 Proposed Standard</pre>
+      </div>
+    
+
+    <div class="draftcontent">
+    <pre>Network Working Group                                          M. Allman
+Request for Comments: 3042                                  NASA GRC/BBN
+Category: Standards Track                                H. Balakrishnan
+                                                                     MIT
+                                                                S. Floyd
+                                                                   ACIRI
+                                                            January 2001
+
+
+          <span class="h1">Enhancing TCP&#x27;s Loss Recovery Using Limited Transmit</span>
+
+Status of this Memo
+
+   This document specifies an Internet standards track protocol for the
+   Internet community, and requests discussion and suggestions for
+   improvements.  Please refer to the current edition of the &quot;Internet
+   Official Protocol Standards&quot; (STD 1) for the standardization state
+   and status of this protocol.  Distribution of this memo is unlimited.
+
+Copyright Notice
+
+   Copyright (C) The Internet Society (2001).  All Rights Reserved.
+
+Abstract
+
+   This document proposes a new Transmission Control Protocol (TCP)
+   mechanism that can be used to more effectively recover lost segments
+   when a connection&#x27;s congestion window is small, or when a large
+   number of segments are lost in a single transmission window.  The
+   &quot;Limited Transmit&quot; algorithm calls for sending a new data segment in
+   response to each of the first two duplicate acknowledgments that
+   arrive at the sender.  Transmitting these segments increases the
+   probability that TCP can recover from a single lost segment using the
+   fast retransmit algorithm, rather than using a costly retransmission
+   timeout.  Limited Transmit can be used both in conjunction with, and
+   in the absence of, the TCP selective acknowledgment (SACK) mechanism.
+
+<span class="h2"><a class="selflink" id="section-1" href="#section-1">1</a>   Introduction</span>
+
+   A number of researchers have observed that TCP&#x27;s loss recovery
+   strategies do not work well when the congestion window at a TCP
+   sender is small.  This can happen, for instance, because there is
+   only a limited amount of data to send, or because of the limit
+   imposed by the receiver-advertised window, or because of the
+   constraints imposed by end-to-end congestion control over a
+   connection with a small bandwidth-delay product
+   [Riz96,Mor97,BPS+98,Bal98,LK98].  When a TCP detects a missing
+   segment, it enters a loss recovery phase using one of two methods.
+
+
+
+<span class="grey">Allman, et al.              Standards Track                     [Page 1]</span></pre>
+<hr class='noprint'/><!--NewPage--><pre class='newpage'><span id="page-2" ></span>
+<span class="grey"><a href="/doc/html/rfc3042">RFC 3042</a>              Enhancing TCP Loss Recovery           January 2001</span>
+
+
+   First, if an acknowledgment (ACK) for a given segment is not received
+   in a certain amount of time a retransmission timeout occurs and the
+   segment is resent [<a href="/doc/html/rfc793">RFC793</a>,<a href="#ref-PA00">PA00</a>].  Second, the &quot;Fast Retransmit&quot;
+   algorithm resends a segment when three duplicate ACKs arrive at the
+   sender [Jac88,<a href="/doc/html/rfc2581">RFC2581</a>].  However, because duplicate ACKs from the
+   receiver are also triggered by packet reordering in the Internet, the
+   TCP sender waits for three duplicate ACKs in an attempt to
+   disambiguate segment loss from packet reordering.  Once in a loss
+   recovery phase, a number of techniques can be used to retransmit lost
+   segments, including slow start-based recovery or Fast Recovery
+   [<a href="/doc/html/rfc2581">RFC2581</a>], NewReno [<a href="/doc/html/rfc2582">RFC2582</a>], and loss recovery based on selective
+   acknowledgments (SACKs) [<a href="/doc/html/rfc2018">RFC2018</a>,<a href="#ref-FF96">FF96</a>].
+
+   TCP&#x27;s retransmission timeout (RTO) is based on measured round-trip
+   times (RTT) between the sender and receiver, as specified in [<a href="#ref-PA00">PA00</a>].
+   To prevent spurious retransmissions of segments that are only delayed
+   and not lost, the minimum RTO is conservatively chosen to be 1
+   second.  Therefore, it behooves TCP senders to detect and recover
+   from as many losses as possible without incurring a lengthy timeout
+   when the connection remains idle.  However, if not enough duplicate
+   ACKs arrive from the receiver, the Fast Retransmit algorithm is never
+   triggered---this situation occurs when the congestion window is small
+   or if a large number of segments in a window are lost.  For instance,
+   consider a congestion window (cwnd) of three segments.  If one
+   segment is dropped by the network, then at most two duplicate ACKs
+   will arrive at the sender.  Since three duplicate ACKs are required
+   to trigger Fast Retransmit, a timeout will be required to resend the
+   dropped packet.
+
+   [BPS+97] found that roughly 56% of retransmissions sent by a busy web
+   server were sent after the RTO expires, while only 44% were handled
+   by Fast Retransmit.  In addition, only 4% of the RTO-based
+   retransmissions could have been avoided with SACK, which of course
+   has to continue to disambiguate reordering from genuine loss.  In
+   contrast, using the technique outlined in this document and in
+   [<a href="#ref-Bal98">Bal98</a>], 25% of the RTO-based retransmissions in that dataset would
+   have likely been avoided.
+
+   The next section of this document outlines small changes to TCP
+   senders that will decrease the reliance on the retransmission timer,
+   and thereby improve TCP performance when Fast Retransmit is not
+   triggered.  These changes do not adversely affect the performance of
+   TCP nor interact adversely with other connections, in other
+   circumstances.
+
+
+
+
+
+
+
+<span class="grey">Allman, et al.              Standards Track                     [Page 2]</span></pre>
+<hr class='noprint'/><!--NewPage--><pre class='newpage'><span id="page-3" ></span>
+<span class="grey"><a href="/doc/html/rfc3042">RFC 3042</a>              Enhancing TCP Loss Recovery           January 2001</span>
+
+
+<span class="h3"><a class="selflink" id="section-1.1" href="#section-1.1">1.1</a> Terminology</span>
+
+   In this document, he key words &quot;MUST&quot;, &quot;MUST NOT&quot;, &quot;REQUIRED&quot;,
+   &quot;SHALL&quot;, &quot;SHALL NOT&quot;, &quot;SHOULD&quot;, &quot;SHOULD NOT&quot;, &quot;RECOMMENDED&quot;, &quot;MAY&quot;,
+   AND &quot;OPTIONAL&quot; are to be interpreted as described in <a href="/doc/html/rfc2119">RFC 2119</a> [1] and
+   indicate requirement levels for protocols.
+
+<span class="h2"><a class="selflink" id="section-2" href="#section-2">2</a>   The Limited Transmit Algorithm</span>
+
+   When a TCP sender has previously unsent data queued for transmission
+   it SHOULD use the Limited Transmit algorithm, which calls for a TCP
+   sender to transmit new data upon the arrival of the first two
+   consecutive duplicate ACKs when the following conditions are
+   satisfied:
+
+     * The receiver&#x27;s advertised window allows the transmission of the
+       segment.
+
+     * The amount of outstanding data would remain less than or equal
+       to the congestion window plus 2 segments.  In other words, the
+       sender can only send two segments beyond the congestion window
+       (cwnd).
+
+   The congestion window (cwnd) MUST NOT be changed when these new
+   segments are transmitted.  Assuming that these new segments and the
+   corresponding ACKs are not dropped, this procedure allows the sender
+   to infer loss using the standard Fast Retransmit threshold of three
+   duplicate ACKs [<a href="/doc/html/rfc2581">RFC2581</a>].  This is more robust to reordered packets
+   than if an old packet were retransmitted on the first or second
+   duplicate ACK.
+
+   Note: If the connection is using selective acknowledgments [<a href="/doc/html/rfc2018">RFC2018</a>],
+   the data sender MUST NOT send new segments in response to duplicate
+   ACKs that contain no new SACK information, as a misbehaving receiver
+   can generate such ACKs to trigger inappropriate transmission of data
+   segments.  See [<a href="#ref-SCWA99">SCWA99</a>] for a discussion of attacks by misbehaving
+   receivers.
+
+   Limited Transmit follows the &quot;conservation of packets&quot; congestion
+   control principle [<a href="#ref-Jac88">Jac88</a>].  Each of the first two duplicate ACKs
+   indicate that a segment has left the network.  Furthermore, the
+   sender has not yet decided that a segment has been dropped and
+   therefore has no reason to assume that the current congestion control
+   state is inaccurate.  Therefore, transmitting segments does not
+   deviate from the spirit of TCP&#x27;s congestion control principles.
+
+
+
+
+
+
+<span class="grey">Allman, et al.              Standards Track                     [Page 3]</span></pre>
+<hr class='noprint'/><!--NewPage--><pre class='newpage'><span id="page-4" ></span>
+<span class="grey"><a href="/doc/html/rfc3042">RFC 3042</a>              Enhancing TCP Loss Recovery           January 2001</span>
+
+
+   [<a id="ref-BPS99">BPS99</a>] shows that packet reordering is not a rare network event.
+   [<a href="/doc/html/rfc2581">RFC2581</a>] does not provide for sending of data on the first two
+   duplicate ACKs that arrive at the sender.  This causes a burst of
+   segments to be sent when an ACK for new data does arrive following
+   packet reordering.  Using Limited Transmit, data packets will be
+   clocked out by incoming ACKs and therefore transmission will not be
+   as bursty.
+
+   Note: Limited Transmit is implemented in the ns simulator [<a href="#ref-NS">NS</a>].
+   Researchers wishing to investigate this mechanism further can do so
+   by enabling &quot;singledup_&quot; for the given TCP connection.
+
+<span class="h2"><a class="selflink" id="section-3" href="#section-3">3</a>   Related Work</span>
+
+   Deployment of Explicit Congestion Notification (ECN) [Flo94,<a href="/doc/html/rfc2481">RFC2481</a>]
+   may benefit connections with small congestion window sizes [<a href="#ref-SA00">SA00</a>].
+   ECN provides a method for indicating congestion to the end-host
+   without dropping segments.  While some segment drops may still occur,
+   ECN may allow TCP to perform better with small congestion window
+   sizes because the sender can avoid many of the Fast Retransmits and
+   Retransmit Timeouts that would otherwise have been needed to detect
+   dropped segments [<a href="#ref-SA00">SA00</a>].
+
+   When ECN-enabled TCP traffic competes with non-ECN-enabled TCP
+   traffic, ECN-enabled traffic can receive up to 30% higher goodput.
+   For bulk transfers, the relative performance benefit of ECN is
+   greatest when on average each flow has 3-4 outstanding packets during
+   each round-trip time [<a href="#ref-ZQ00">ZQ00</a>].  This should be a good estimate for the
+   performance impact of a flow using Limited Transmit, since both ECN
+   and Limited Transmit reduce the reliance on the retransmission timer
+   for signaling congestion.
+
+   The Rate-Halving congestion control algorithm [<a href="#ref-MSML99">MSML99</a>] uses a form of
+   limited transmit, as it calls for transmitting a data segment on
+   every second duplicate ACK that arrives at the sender.  The algorithm
+   decouples the decision of what to send from the decision of when to
+   send.  However, similar to Limited Transmit the algorithm will always
+   send a new data segment on the second duplicate ACK that arrives at
+   the sender.
+
+<span class="h2"><a class="selflink" id="section-4" href="#section-4">4</a>   Security Considerations</span>
+
+   The additional security implications of the changes proposed in this
+   document, compared to TCP&#x27;s current vulnerabilities, are minimal.
+   The potential security issues come from the subversion of end-to-end
+   congestion control from &quot;false&quot; duplicate ACKs, where a &quot;false&quot;
+   duplicate ACK is a duplicate ACK that does not actually acknowledge
+   new data received at the TCP receiver.  False duplicate ACKs could
+
+
+
+<span class="grey">Allman, et al.              Standards Track                     [Page 4]</span></pre>
+<hr class='noprint'/><!--NewPage--><pre class='newpage'><span id="page-5" ></span>
+<span class="grey"><a href="/doc/html/rfc3042">RFC 3042</a>              Enhancing TCP Loss Recovery           January 2001</span>
+
+
+   result from duplicate ACKs that are themselves duplicated in the
+   network, or from misbehaving TCP receivers that send false duplicate
+   ACKs to subvert end-to-end congestion control [SCWA99,<a href="/doc/html/rfc2581">RFC2581</a>].
+
+   When the TCP data receiver has agreed to use the SACK option, the TCP
+   data sender has fairly strong protection against false duplicate
+   ACKs.  In particular, with SACK, a duplicate ACK that acknowledges
+   new data arriving at the receiver reports the sequence numbers of
+   that new data.  Thus, with SACK, the TCP sender can verify that an
+   arriving duplicate ACK acknowledges data that the TCP sender has
+   actually sent, and for which no previous acknowledgment has been
+   received, before sending new data as a result of that acknowledgment.
+   For further protection, the TCP sender could keep a record of packet
+   boundaries for transmitted data packets, and recognize at most one
+   valid acknowledgment for each packet (e.g., the first acknowledgment
+   acknowledging the receipt of all of the sequence numbers in that
+   packet).
+
+   One could imagine some limited protection against false duplicate
+   ACKs for a non-SACK TCP connection, where the TCP sender keeps a
+   record of the number of packets transmitted, and recognizes at most
+   one acknowledgment per packet to be used for triggering the sending
+   of new data.  However, this accounting of packets transmitted and
+   acknowledged would require additional state and extra complexity at
+   the TCP sender, and does not seem necessary.
+
+   The most important protection against false duplicate ACKs comes from
+   the limited potential of duplicate ACKs in subverting end-to-end
+   congestion control.  There are two separate cases to consider: when
+   the TCP sender receives less than a threshold number of duplicate
+   ACKs, and when the TCP sender receives at least a threshold number of
+   duplicate ACKs.  In the latter case a TCP with Limited Transmit will
+   behave essentially the same as a TCP without Limited Transmit in that
+   the congestion window will be halved and a loss recovery period will
+   be initiated.
+
+   When a TCP sender receives less than a threshold number of duplicate
+   ACKs a misbehaving receiver could send two duplicate ACKs after each
+   regular ACK.  One might imagine that the TCP sender would send at
+   three times its allowed sending rate.  However, using Limited
+   Transmit as outlined in <a href="#section-2">section 2</a> the sender is only allowed to
+   exceed the congestion window by less than the duplicate ACK threshold
+   (of three segments), and thus would not send a new packet for each
+   duplicate ACK received.
+
+
+
+
+
+
+
+<span class="grey">Allman, et al.              Standards Track                     [Page 5]</span></pre>
+<hr class='noprint'/><!--NewPage--><pre class='newpage'><span id="page-6" ></span>
+<span class="grey"><a href="/doc/html/rfc3042">RFC 3042</a>              Enhancing TCP Loss Recovery           January 2001</span>
+
+
+Acknowledgments
+
+   Bill Fenner, Jamshid Mahdavi and the Transport Area Working Group
+   provided valuable feedback on an early version of this document.
+
+References
+
+   [<a id="ref-Bal98">Bal98</a>]   Hari Balakrishnan.  Challenges to Reliable Data Transport
+             over Heterogeneous Wireless Networks.  Ph.D. Thesis,
+             University of California at Berkeley, August 1998.
+
+   [BPS+97]  Hari Balakrishnan, Venkata Padmanabhan, Srinivasan Seshan,
+             Mark Stemm, and Randy Katz.  TCP Behavior of a Busy Web
+             Server:  Analysis and Improvements.  Technical Report
+             UCB/CSD-97-966, August 1997.  Available from
+             <a href="http://nms.lcs.mit.edu/~hari/papers/csd-97-966.ps">http://nms.lcs.mit.edu/~hari/papers/csd-97-966.ps</a>.  (Also
+             in Proc. IEEE INFOCOM Conf., San Francisco, CA, March
+             1998.)
+
+   [<a id="ref-BPS99">BPS99</a>]   Jon Bennett, Craig Partridge, Nicholas Shectman.  Packet
+             Reordering is Not Pathological Network Behavior.  IEEE/ACM
+             Transactions on Networking, December 1999.
+
+   [<a id="ref-FF96">FF96</a>]    Kevin Fall, Sally Floyd.  Simulation-based Comparisons of
+             Tahoe, Reno, and SACK TCP.  ACM Computer Communication
+             Review, July 1996.
+
+   [<a id="ref-Flo94">Flo94</a>]   Sally Floyd.  TCP and Explicit Congestion Notification.
+             ACM Computer Communication Review, October 1994.
+
+   [<a id="ref-Jac88">Jac88</a>]   Van Jacobson.  Congestion Avoidance and Control.  ACM
+             SIGCOMM 1988.
+
+   [<a id="ref-LK98">LK98</a>]    Dong Lin, H.T. Kung.  TCP Fast Recovery Strategies:
+             Analysis and Improvements.  Proceedings of InfoCom, March
+             1998.
+
+   [<a id="ref-MSML99">MSML99</a>]  Matt Mathis, Jeff Semke, Jamshid Mahdavi, Kevin Lahey.  The
+             Rate Halving Algorithm, 1999. URL:
+             <a href="http://www.psc.edu/networking/rate_halving.html">http://www.psc.edu/networking/rate_halving.html</a>.
+
+   [<a id="ref-Mor97">Mor97</a>]   Robert Morris.  TCP Behavior with Many Flows.  Proceedings
+             of the Fifth IEEE International Conference on Network
+             Protocols.  October 1997.
+
+   [<a id="ref-NS">NS</a>]      Ns network simulator.  URL: <a href="http://www.isi.edu/nsnam/">http://www.isi.edu/nsnam/</a>.
+
+
+
+
+
+<span class="grey">Allman, et al.              Standards Track                     [Page 6]</span></pre>
+<hr class='noprint'/><!--NewPage--><pre class='newpage'><span id="page-7" ></span>
+<span class="grey"><a href="/doc/html/rfc3042">RFC 3042</a>              Enhancing TCP Loss Recovery           January 2001</span>
+
+
+   [<a id="ref-PA00">PA00</a>]    Paxson, V. and M. Allman, &quot;Computing TCP&#x27;s Retransmission
+             Timer&quot;, <a href="/doc/html/rfc2988">RFC 2988</a>, November 2000.
+
+   [<a id="ref-Riz96">Riz96</a>]   Luigi Rizzo.  Issues in the Implementation of Selective
+             Acknowledgments for TCP.  January, 1996.  URL:
+             <a href="http://www.iet.unipi.it/~luigi/selack.ps">http://www.iet.unipi.it/~luigi/selack.ps</a>
+
+   [<a id="ref-SA00">SA00</a>]    Hadi Salim, J. and U. Ahmed, &quot;Performance Evaluation of
+             Explicit Congestion Notification (ECN) in IP Networks&quot;, <a href="/doc/html/rfc2884">RFC</a>
+             <a href="/doc/html/rfc2884">2884</a>, July 2000.
+
+   [<a id="ref-SCWA99">SCWA99</a>]  Stefan Savage, Neal Cardwell, David Wetherall, Tom
+             Anderson.  TCP Congestion Control with a Misbehaving
+             Receiver.  ACM Computer Communications Review, October
+             1999.
+
+   [<a id="ref-RFC793">RFC793</a>]  Postel, J., &quot;Transmission Control Protocol&quot;, STD 7, <a href="/doc/html/rfc793">RFC</a>
+             <a href="/doc/html/rfc793">793</a>, September 1981.
+
+   [<a id="ref-RFC2018">RFC2018</a>] Mathis, M., Mahdavi, J., Floyd, S. and A. Romanow, &quot;TCP
+             Selective Acknowledgement Options&quot;, <a href="/doc/html/rfc2018">RFC 2018</a>, October 1996.
+
+   [<a id="ref-RFC2119">RFC2119</a>] Bradner, S., &quot;Key words for use in RFCs to Indicate
+             Requirement Levels&quot;, <a href="/doc/html/bcp14">BCP 14</a>, <a href="/doc/html/rfc2119">RFC 2119</a>, March 1997.
+
+   [<a id="ref-RFC2481">RFC2481</a>] Ramakrishnan, K. and S. Floyd, &quot;A Proposal to Add Explicit
+             Congestion Notification (ECN) to IP&quot;, <a href="/doc/html/rfc2481">RFC 2481</a>, January
+             1999.
+
+   [<a id="ref-RFC2581">RFC2581</a>] Allman, M., Paxson, V. and W. Stevens, &quot;TCP Congestion
+             Control&quot;, <a href="/doc/html/rfc2581">RFC 2581</a>, April 1999.
+
+   [<a id="ref-RFC2582">RFC2582</a>] Floyd, S. and T. Henderson, &quot;The NewReno Modification to
+             TCP&#x27;s Fast Recovery Algorithm&quot;, <a href="/doc/html/rfc2582">RFC 2582</a>, April 1999.
+
+   [<a id="ref-ZQ00">ZQ00</a>]    Yin Zhang and Lili Qiu, Understanding the End-to-End
+             Performance Impact of RED in a Heterogeneous Environment,
+             Cornell CS Technical Report 2000-1802, July 2000.  URL
+             <a href="http://www.cs.cornell.edu/yzhang/papers.htm">http://www.cs.cornell.edu/yzhang/papers.htm</a>.
+
+
+
+
+
+
+
+
+
+
+
+
+<span class="grey">Allman, et al.              Standards Track                     [Page 7]</span></pre>
+<hr class='noprint'/><!--NewPage--><pre class='newpage'><span id="page-8" ></span>
+<span class="grey"><a href="/doc/html/rfc3042">RFC 3042</a>              Enhancing TCP Loss Recovery           January 2001</span>
+
+
+Authors&#x27; Addresses
+
+   Mark Allman
+   NASA Glenn Research Center/BBN Technologies
+   Lewis Field
+   21000 Brookpark Rd.  MS 54-5
+   Cleveland, OH  44135
+
+   Phone: +1-216-433-6586
+   Fax:   +1-216-433-8705
+   EMail: mallman@grc.nasa.gov
+   <a href="http://roland.grc.nasa.gov/~mallman">http://roland.grc.nasa.gov/~mallman</a>
+
+
+   Hari Balakrishnan
+   Laboratory for Computer Science
+   545 Technology Square
+   Massachusetts Institute of Technology
+   Cambridge, MA 02139
+
+   EMail: hari@lcs.mit.edu
+   <a href="http://nms.lcs.mit.edu/~hari/">http://nms.lcs.mit.edu/~hari/</a>
+
+
+   Sally Floyd
+   AT&amp;T Center for Internet Research at ICSI (ACIRI)
+   1947 Center St, Suite 600
+   Berkeley, CA 94704
+
+   Phone: +1-510-666-2989
+   EMail: floyd@aciri.org
+   <a href="http://www.aciri.org/floyd/">http://www.aciri.org/floyd/</a>
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+<span class="grey">Allman, et al.              Standards Track                     [Page 8]</span></pre>
+<hr class='noprint'/><!--NewPage--><pre class='newpage'><span id="page-9" ></span>
+<span class="grey"><a href="/doc/html/rfc3042">RFC 3042</a>              Enhancing TCP Loss Recovery           January 2001</span>
+
+
+Full Copyright Statement
+
+   Copyright (C) The Internet Society (2001).  All Rights Reserved.
+
+   This document and translations of it may be copied and furnished to
+   others, and derivative works that comment on or otherwise explain it
+   or assist in its implementation may be prepared, copied, published
+   and distributed, in whole or in part, without restriction of any
+   kind, provided that the above copyright notice and this paragraph are
+   included on all such copies and derivative works.  However, this
+   document itself may not be modified in any way, such as by removing
+   the copyright notice or references to the Internet Society or other
+   Internet organizations, except as needed for the purpose of
+   developing Internet standards in which case the procedures for
+   copyrights defined in the Internet Standards process must be
+   followed, or as required to translate it into languages other than
+   English.
+
+   The limited permissions granted above are perpetual and will not be
+   revoked by the Internet Society or its successors or assigns.
+
+   This document and the information contained herein is provided on an
+   &quot;AS IS&quot; basis and THE INTERNET SOCIETY AND THE INTERNET ENGINEERING
+   TASK FORCE DISCLAIMS ALL WARRANTIES, EXPRESS OR IMPLIED, INCLUDING
+   BUT NOT LIMITED TO ANY WARRANTY THAT THE USE OF THE INFORMATION
+   HEREIN WILL NOT INFRINGE ANY RIGHTS OR ANY IMPLIED WARRANTIES OF
+   MERCHANTABILITY OR FITNESS FOR A PARTICULAR PURPOSE.
+
+Acknowledgement
+
+   Funding for the RFC Editor function is currently provided by the
+   Internet Society.
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+Allman, et al.              Standards Track                     [Page 9]
+</pre>
+    </div>
+
+  </div>
+
+
+        
+	  </div>
+
+	
+
+	
+
+    </div>
+
+      
+    <script type="text/javascript"><!--
+    var legend_html = "Colour legend:<br /> \
+     <table> \
+        <tr><td>Unknown:</td>                   <td><span class='cplate bgwhite'>&nbsp;&nbsp;&nbsp;&nbsp;</span></td></tr> \
+        <tr><td>Draft:</td>                     <td><span class='cplate bgred'>&nbsp;&nbsp;&nbsp;&nbsp;</span></td></tr> \
+        <tr><td>Informational:</td>             <td><span class='cplate bgorange'>&nbsp;&nbsp;&nbsp;&nbsp;</span></td></tr> \
+        <tr><td>Experimental:</td>              <td><span class='cplate bgyellow'>&nbsp;&nbsp;&nbsp;&nbsp;</span></td></tr> \
+        <tr><td>Best Common Practice:</td>      <td><span class='cplate bgmagenta'>&nbsp;&nbsp;&nbsp;&nbsp;</span></td></tr> \
+        <tr><td>Proposed Standard:</td>         <td><span class='cplate bgblue'>&nbsp;&nbsp;&nbsp;&nbsp;</span></td></tr> \
+        <tr><td>Draft Standard (old designation):</td> <td><span class='cplate bgcyan'>&nbsp;&nbsp;&nbsp;&nbsp;</span></td></tr> \
+        <tr><td>Internet Standard:</td>         <td><span class='cplate bggreen'>&nbsp;&nbsp;&nbsp;&nbsp;</span></td></tr> \
+        <tr><td>Historic:</td>                  <td><span class='cplate bggrey'>&nbsp;&nbsp;&nbsp;&nbsp;</span></td></tr> \
+        <tr><td>Obsolete:</td>                  <td><span class='cplate bgbrown'>&nbsp;&nbsp;&nbsp;&nbsp;</span></td></tr> \
+    </table>";
+    function showLegend() {
+        var elem = document.getElementById('legend');
+        elem.innerHTML = legend_html
+        elem.style.visibility='visible';
+    }
+    function hideLegend() {
+        var elem = document.getElementById('legend');
+        elem.style.visibility='hidden';
+        elem.innerHTML = "";
+    }
+    // -->
+    </script>
+
+  </body>
+</html>
