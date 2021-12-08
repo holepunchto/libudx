@@ -20,7 +20,7 @@ static size_t ticks = 0;
 static void
 on_uv_interval (uv_timer_t *req) {
   // ucp_stream_send_state(&server_sock);
-  ucp_stream_check_timeouts(&server_sock);
+  // ucp_stream_check_timeouts(&server_sock);
 
   if ((ticks++ & 63) == 0) {
     printf("on read, total recv=%zu total reads=%zu ack=%u pkts_sent=%zu\n", rcvd, reads, server_sock.ack, server_sock.stats_pkts_sent);
