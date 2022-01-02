@@ -14,6 +14,9 @@
 
 #define UCP_CLOCK_GRANULARITY_MS 20
 
+#define UCP_MAGIC_BYTE 255
+#define UCP_VERSION 1
+
 // packet types
 
 enum UCP_HEADER_TYPE {

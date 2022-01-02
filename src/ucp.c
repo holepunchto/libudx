@@ -34,6 +34,47 @@ update_poll (ucp_t *self) {
   return uv_poll_start(&(self->io_poll), events, on_uv_poll);
 }
 
+static inline void
+encode_header (char *h, enum UCP_HEADER_TYPE type, uint8_t ext, uint32_t id, uint32_t win, uint32_t seq, uint32_t ack) {
+  // TODO: the header is ALWAYS little endian, make this work on big endian archs also
+
+  uint8_t *b = (uint8_t *) h;
+
+  *(b++) = UCP_MAGIC_BYTE;
+  *(b++) = UCP_VERSION;
+  *(b++) = (uint8_t) type;
+  *(b++) = ext;
+
+  uint32_t *i = (uint32_t *) b;
+
+  *(i++) = id;
+  *(i++) = win;
+  *(i++) = seq;
+  *(i++) = ack;
+}
+
+static inline int
+decode_header (char *h, enum UCP_HEADER_TYPE *type, uint8_t *ext, uint32_t *id, uint32_t *win, uint32_t *seq, uint32_t *ack) {
+  // TODO: the header is ALWAYS little endian, make this work on big endian archs also
+
+  uint8_t *b = (uint8_t *) h;
+
+  if (*(b++) != UCP_MAGIC_BYTE) return 0;
+  if (*(b++) != UCP_VERSION) return 0;
+
+  *type = (enum UCP_HEADER_TYPE) *(b++);
+  *ext = *(b++);
+
+  uint32_t *i = (uint32_t *) b;
+
+  *id = *(i++);
+  *win = *(i++);
+  *seq = *(i++);
+  *ack = *(i++);
+
+  return 1;
+}
+
 static int
 ack_packet (ucp_stream_t *stream, uint32_t seq, int sack) {
   ucp_cirbuf_t *out = &(stream->outgoing);
