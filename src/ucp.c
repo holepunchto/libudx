@@ -407,8 +407,11 @@ ucp_send (ucp_t *self, ucp_send_t *req, const char *buf, size_t buf_len, const s
 int
 ucp_check_timeouts (ucp_t *self) {
   for (uint32_t i = 0; i < self->streams_len; i++) {
-    ucp_stream_check_timeouts(self->streams[i]);
+    // TODO: if this results in the stream being removed, we should decrement i
+    int err = ucp_stream_check_timeouts(self->streams[i]);
+    if (err < 0) return err;
   }
+  return 0;
 }
 
 int
