@@ -16,8 +16,12 @@
 
 // packet types
 
-#define UCP_PACKET_DATA_ID 0
-#define UCP_PACKET_STATE_ID 1
+enum UCP_HEADER_TYPE {
+  UCP_HEADER_STATE = 0,
+  UCP_HEADER_DATA = 1,
+  UCP_HEADER_END = 2,
+  UCP_HEADER_SHUTDOWN = 3,
+};
 
 // packet states
 
@@ -117,8 +121,10 @@ typedef struct ucp_stream {
   int userid;
 
   void (*on_read)(struct ucp_stream *stream, const char *buf, size_t buf_len);
+  void (*on_end)(struct ucp_stream *stream);
   void (*on_ack)(struct ucp_stream *stream, ucp_write_t *req, int status, int unordered);
   void (*on_drain)(struct ucp_stream *stream);
+  void (*on_close)(struct ucp_stream *stream, int hard_shutdown);
 
   uint32_t seq;
   uint32_t ack;
@@ -174,6 +180,9 @@ int
 ucp_send (ucp_t *self, ucp_send_t *req, const char *buf, size_t buf_len, const struct sockaddr *addr);
 
 int
+ucp_check_timeouts (ucp_t *self);
+
+int
 ucp_stream_init (ucp_t *self, ucp_stream_t *stream, uint32_t *local_id);
 
 int
@@ -187,6 +196,12 @@ ucp_stream_check_timeouts (ucp_stream_t *stream);
 
 int
 ucp_stream_write (ucp_stream_t *stream, ucp_write_t *req, const char *buf, size_t buf_len);
+
+int
+ucp_stream_end (ucp_stream_t *stream);
+
+int
+ucp_stream_shutdown (ucp_stream_t *stream);
 
 int
 ucp_stream_send_state (ucp_stream_t *stream);

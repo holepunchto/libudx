@@ -148,7 +148,13 @@ process_packet (ucp_t *self, char *buf, ssize_t buf_len) {
   ucp_cirbuf_t *inc = &(stream->incoming);
 
   switch (h) {
-    case UCP_PACKET_DATA_ID: {
+    case UCP_HEADER_STATE: {
+      if (buf_len == 0) break;
+      process_sacks(stream, buf, buf_len);
+      break;
+    }
+
+    case UCP_HEADER_DATA: {
       if (buf_len == 0 || ucp_cirbuf_get(inc, seq) != NULL) break;
       // copy over incoming buffer as we CURRENTLY do not own it (stack allocated upstream)
       // also malloc the packet wrap which needs to be freed at some point obvs
@@ -164,12 +170,6 @@ process_packet (ucp_t *self, char *buf, ssize_t buf_len) {
       pkt->buf.iov_len = buf_len;
 
       ucp_cirbuf_set(inc, (ucp_cirbuf_val_t *) pkt);
-      break;
-    }
-
-    case UCP_PACKET_STATE_ID: {
-      if (buf_len == 0) break;
-      process_sacks(stream, buf, buf_len);
       break;
     }
   }
@@ -211,7 +211,7 @@ process_packet (ucp_t *self, char *buf, ssize_t buf_len) {
   }
 
   // if data pkt, send an ack - use deferred acks as well...
-  if (h == UCP_PACKET_DATA_ID) {
+  if (h == UCP_HEADER_DATA) {
     ucp_stream_send_state(stream);
   }
 
@@ -402,6 +402,13 @@ ucp_send (ucp_t *self, ucp_send_t *req, const char *buf, size_t buf_len, const s
   err = update_poll(self);
 
   return err;
+}
+
+int
+ucp_check_timeouts (ucp_t *self) {
+  for (uint32_t i = 0; i < self->streams_len; i++) {
+    ucp_stream_check_timeouts(self->streams[i]);
+  }
 }
 
 int
@@ -623,7 +630,7 @@ ucp_stream_send_state (ucp_stream_t *stream) {
 
   uint32_t *p = (uint32_t *) &(pkt->header);
 
-  *(p++) = 1;
+  *(p++) = UCP_HEADER_STATE;
   *(p++) = stream->remote_id;
   *(p++) = (pkt->seq = stream->seq);
   *(p++) = stream->ack;
@@ -678,7 +685,7 @@ ucp_stream_write (ucp_stream_t *stream, ucp_write_t *req, const char *buf, size_
     size_t buf_partial_len = buf_len < UCP_MAX_DATA_SIZE ? buf_len : UCP_MAX_DATA_SIZE;
     uint32_t *p = (uint32_t *) &(pkt->header);
 
-    *(p++) = UCP_PACKET_DATA_ID;
+    *(p++) = UCP_HEADER_DATA;
     *(p++) = stream->remote_id;
     *(p++) = (pkt->seq = stream->seq++);
     *(p++) = stream->ack;
@@ -717,4 +724,14 @@ ucp_stream_write (ucp_stream_t *stream, ucp_write_t *req, const char *buf, size_
   }
 
   return err;
+}
+
+int
+ucp_stream_end (ucp_stream_t *stream) {
+  return 0;
+}
+
+int
+ucp_stream_shutdown (ucp_stream_t *stream) {
+  return 0;
 }
