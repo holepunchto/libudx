@@ -37,6 +37,8 @@ typedef struct {
   napi_ref ctx;
   napi_ref on_send;
   napi_ref on_message;
+
+  uv_timer_t timer;
 } ucp_napi_t;
 
 typedef struct {
@@ -52,14 +54,12 @@ typedef struct {
   napi_ref on_drain;
   napi_ref on_ack;
   napi_ref on_close;
-
-  uv_timer_t timer;
 } ucp_napi_stream_t;
 
 static void
 on_uv_interval (uv_timer_t *req) {
-  ucp_stream_t *stream = req->data;
-  ucp_stream_check_timeouts(stream);
+  ucp_t *ucp = req->data;
+  ucp_check_timeouts(ucp);
 }
 
 inline static void
@@ -144,7 +144,7 @@ on_ack (ucp_stream_t *stream, ucp_write_t *req, int status, int unordered) {
 }
 
 static void
-on_close (ucp_stream_t *stream) {
+on_close (ucp_stream_t *stream, int hard_close) {
   printf("I closed!\n");
 }
 
@@ -164,6 +164,12 @@ NAPI_METHOD(ucp_napi_init) {
 
   int err = ucp_init(ucp, loop);
   if (err < 0) UCP_NAPI_THROW(err)
+
+  uv_timer_t *timer = (uv_timer_t *) &(self->timer);
+
+  uv_timer_init(loop, timer);
+  uv_timer_start(timer, on_uv_interval, 20, 20);
+  timer->data = ucp;
 
   ucp_set_callback(ucp, UCP_ON_SEND, on_send);
   ucp_set_callback(ucp, UCP_ON_MESSAGE, on_message);
@@ -258,14 +264,6 @@ NAPI_METHOD(ucp_napi_stream_init) {
 
   stream->read_buf = NULL;
   stream->read_buf_len = 0;
-
-// TODO: move this to the ucp instance
-struct uv_loop_s *loop;
-uv_timer_t *timer = &(stream->timer);
-napi_get_uv_event_loop(env, &loop);
-uv_timer_init(loop, timer);
-uv_timer_start(timer, on_uv_interval, 20, 20);
-timer->data = stream;
 
   stream->env = env;
   napi_create_reference(env, argv[2], 1, &(stream->ctx));
