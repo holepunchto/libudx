@@ -544,7 +544,8 @@ flush_waiting_packets (ucp_stream_t *stream) {
     if (sent <= 0) break;
   }
 
-  // TODO: factor in retransmits
+  // TODO: retransmits are counted in pkts_waiting, but we (prob) should not count them
+  // towards to drain loop - investigate that.
   if (was_waiting > 0 && stream->pkts_waiting == 0 && stream->on_drain != NULL) {
     stream->on_drain(stream);
   }
