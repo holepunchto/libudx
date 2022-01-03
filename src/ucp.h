@@ -9,7 +9,7 @@
 
 // TODO: research the packets sizes a bit more
 #define UCP_MTU 1400
-#define UCP_HEADER_SIZE 16
+#define UCP_HEADER_SIZE 20
 #define UCP_MAX_DATA_SIZE (UCP_MTU - UCP_HEADER_SIZE)
 
 #define UCP_CLOCK_GRANULARITY_MS 20

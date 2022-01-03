@@ -34,47 +34,6 @@ update_poll (ucp_t *self) {
   return uv_poll_start(&(self->io_poll), events, on_uv_poll);
 }
 
-static inline void
-encode_header (char *h, enum UCP_HEADER_TYPE type, uint8_t ext, uint32_t id, uint32_t win, uint32_t seq, uint32_t ack) {
-  // TODO: the header is ALWAYS little endian, make this work on big endian archs also
-
-  uint8_t *b = (uint8_t *) h;
-
-  *(b++) = UCP_MAGIC_BYTE;
-  *(b++) = UCP_VERSION;
-  *(b++) = (uint8_t) type;
-  *(b++) = ext;
-
-  uint32_t *i = (uint32_t *) b;
-
-  *(i++) = id;
-  *(i++) = win;
-  *(i++) = seq;
-  *(i++) = ack;
-}
-
-static inline int
-decode_header (char *h, enum UCP_HEADER_TYPE *type, uint8_t *ext, uint32_t *id, uint32_t *win, uint32_t *seq, uint32_t *ack) {
-  // TODO: the header is ALWAYS little endian, make this work on big endian archs also
-
-  uint8_t *b = (uint8_t *) h;
-
-  if (*(b++) != UCP_MAGIC_BYTE) return 0;
-  if (*(b++) != UCP_VERSION) return 0;
-
-  *type = (enum UCP_HEADER_TYPE) *(b++);
-  *ext = *(b++);
-
-  uint32_t *i = (uint32_t *) b;
-
-  *id = *(i++);
-  *win = *(i++);
-  *seq = *(i++);
-  *ack = *(i++);
-
-  return 1;
-}
-
 static int
 ack_packet (ucp_stream_t *stream, uint32_t seq, int sack) {
   ucp_cirbuf_t *out = &(stream->outgoing);
@@ -173,12 +132,19 @@ static int
 process_packet (ucp_t *self, char *buf, ssize_t buf_len) {
   if (buf_len < UCP_HEADER_SIZE) return 0;
 
-  uint32_t *u = (uint32_t *) buf;
+  uint8_t *b = (uint8_t *) buf;
 
-  uint32_t h = *(u++);
-  uint32_t local_id = *(u++);
-  uint32_t seq = *(u++);
-  uint32_t ack = *(u++);
+  if ((*(b++) != UCP_MAGIC_BYTE) || (*(b++) != UCP_VERSION)) return 0;
+
+  enum UCP_HEADER_TYPE type = (enum UCP_HEADER_TYPE) *(b++);
+  uint8_t ext = *(b++);
+
+  uint32_t *i = (uint32_t *) b;
+
+  uint32_t local_id = *(i++);
+  uint32_t recv_win = *(i++);
+  uint32_t seq = *(i++);
+  uint32_t ack = *i;
 
   buf += UCP_HEADER_SIZE;
   buf_len -= UCP_HEADER_SIZE;
@@ -188,7 +154,7 @@ process_packet (ucp_t *self, char *buf, ssize_t buf_len) {
 
   ucp_cirbuf_t *inc = &(stream->incoming);
 
-  switch (h) {
+  switch (type) {
     case UCP_HEADER_STATE: {
       if (buf_len == 0) break;
       process_sacks(stream, buf, buf_len);
@@ -252,7 +218,7 @@ process_packet (ucp_t *self, char *buf, ssize_t buf_len) {
   }
 
   // if data pkt, send an ack - use deferred acks as well...
-  if (h == UCP_HEADER_DATA) {
+  if (type == UCP_HEADER_DATA) {
     ucp_stream_send_state(stream);
   }
 
@@ -271,7 +237,6 @@ on_uv_poll (uv_poll_t *handle, int status, int events) {
     ssize_t size;
     ucp_outgoing_packet_t *pkt = (ucp_outgoing_packet_t *) ucp_fifo_shift(&(self->send_queue));
     const struct msghdr *h = &(pkt->h);
-    const struct sockaddr_in *d = h->msg_name;
 
     // This was unqueued and therefore no longer valid, free it and restart.
     if (pkt->status != UCP_PACKET_SENDING) {
@@ -629,6 +594,47 @@ ucp_stream_connect (ucp_stream_t *stream, uint32_t remote_id, const struct socka
   stream->remote_addr = *remote_addr;
 }
 
+static inline void
+init_packet (ucp_outgoing_packet_t *pkt, enum UCP_HEADER_TYPE type, ucp_stream_t *stream, const char *buf, size_t buf_len) {
+  memset(&(pkt->h), 0, sizeof(struct msghdr));
+
+  uint8_t *b = (uint8_t *) &(pkt->header);
+
+  // 8 bit magic byte + 8 bit version + 8 bit type + 8 bit extensions
+  *(b++) = UCP_MAGIC_BYTE;
+  *(b++) = UCP_VERSION;
+  *(b++) = (uint8_t) type;
+  *(b++) = 0; // no extensions atm
+
+  uint32_t *i = (uint32_t *) b;
+
+  // TODO: the header is ALWAYS little endian, make this work on big endian archs also
+
+  // 32 bit (le) remote id
+  *(i++) = stream->remote_id;
+  // 32 bit (le) recv window
+  *(i++) = 0xffffffff; // hardcode max recv window
+  // 32 bit (le) seq
+  *(i++) = pkt->seq = stream->seq;
+  // 32 bit (le) ack
+  *(i++) = stream->ack;
+
+  pkt->transmits = 0;
+  pkt->size = (uint16_t) (UCP_HEADER_SIZE + buf_len);
+
+  pkt->h.msg_name = &(stream->remote_addr);
+  pkt->h.msg_namelen = sizeof(struct sockaddr_in);
+
+  pkt->h.msg_iov = (struct iovec *) &(pkt->buf);
+  pkt->h.msg_iovlen = buf_len ? 2 : 1;
+
+  pkt->buf[0].iov_base = &(pkt->header);
+  pkt->buf[0].iov_len = UCP_HEADER_SIZE;
+
+  pkt->buf[1].iov_base = (void *) buf;
+  pkt->buf[1].iov_len = buf_len;
+}
+
 int
 ucp_stream_send_state (ucp_stream_t *stream) {
   uint32_t *sacks = NULL;
@@ -672,36 +678,13 @@ ucp_stream_send_state (ucp_stream_t *stream) {
 
   if (pkt == NULL) pkt = malloc(sizeof(ucp_outgoing_packet_t));
 
-  uint32_t *p = (uint32_t *) &(pkt->header);
+  init_packet(pkt, UCP_HEADER_STATE, stream, payload, payload_len);
 
-  *(p++) = UCP_HEADER_STATE;
-  *(p++) = stream->remote_id;
-  *(p++) = (pkt->seq = stream->seq);
-  *(p++) = stream->ack;
-
-  int err;
-
-  memset(&(pkt->h), 0, sizeof(struct msghdr));
-
-  pkt->transmits = 0;
   pkt->status = UCP_PACKET_SENDING;
-
-  pkt->h.msg_name = &(stream->remote_addr);
-  pkt->h.msg_namelen = sizeof(struct sockaddr_in);
-
-  pkt->h.msg_iov = (struct iovec *) &(pkt->buf);
-  pkt->h.msg_iovlen = payload_len == 0 ? 1 : 2;
-
-  pkt->buf[0].iov_base = &(pkt->header);
-  pkt->buf[0].iov_len = UCP_HEADER_SIZE;
-
-  if (payload_len > 0) {
-    pkt->buf[1].iov_base = payload;
-    pkt->buf[1].iov_len = payload_len;
-  }
-
   pkt->send = NULL;
   pkt->write = NULL;
+
+  int err;
 
   stream->stats_pkts_sent++;
 
@@ -727,34 +710,14 @@ ucp_stream_write (ucp_stream_t *stream, ucp_write_t *req, const char *buf, size_
     ucp_outgoing_packet_t *pkt = malloc(sizeof(ucp_outgoing_packet_t));
 
     size_t buf_partial_len = buf_len < UCP_MAX_DATA_SIZE ? buf_len : UCP_MAX_DATA_SIZE;
-    uint32_t *p = (uint32_t *) &(pkt->header);
 
-    *(p++) = UCP_HEADER_DATA;
-    *(p++) = stream->remote_id;
-    *(p++) = (pkt->seq = stream->seq++);
-    *(p++) = stream->ack;
-
-    memset(&(pkt->h), 0, sizeof(struct msghdr));
+    init_packet(pkt, UCP_HEADER_DATA, stream, buf, buf_partial_len);
 
     pkt->status = UCP_PACKET_WAITING;
-    pkt->transmits = 0;
-    pkt->size = (uint16_t) (UCP_HEADER_SIZE + buf_partial_len);
-
-    pkt->h.msg_name = &(stream->remote_addr);
-    pkt->h.msg_namelen = sizeof(struct sockaddr_in);
-
-    pkt->h.msg_iov = (struct iovec *) &(pkt->buf);
-    pkt->h.msg_iovlen = 2;
-
-    pkt->buf[0].iov_base = &(pkt->header);
-    pkt->buf[0].iov_len = UCP_HEADER_SIZE;
-
-    pkt->buf[1].iov_base = (void *) buf;
-    pkt->buf[1].iov_len = buf_partial_len;
-
     pkt->send = NULL;
     pkt->write = req;
 
+    stream->seq++;
     req->packets++;
 
     buf_len -= buf_partial_len;
