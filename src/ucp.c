@@ -6,6 +6,7 @@
 #include <uv.h>
 #include <stdio.h>
 #include <stdlib.h>
+#include <assert.h>
 
 #define UCP_MIN_WINDOW_SIZE 10
 #define UCP_MAX_CWND_INCREASE_BYTES_PER_RTT 1
@@ -511,10 +512,7 @@ send_data_packet (ucp_stream_t *stream, ucp_outgoing_packet_t *pkt) {
     return 0;
   }
 
-  if (pkt->status != UCP_PACKET_WAITING) {
-    printf("assertion failure!\n");
-    exit(1);
-  }
+  assert(pkt->status == UCP_PACKET_WAITING);
 
   pkt->status = UCP_PACKET_SENDING;
 
@@ -684,14 +682,10 @@ ucp_stream_send_state (ucp_stream_t *stream) {
   pkt->send = NULL;
   pkt->write = NULL;
 
-  int err;
-
   stream->stats_pkts_sent++;
 
   ucp_fifo_push(&(stream->ucp->send_queue), pkt);
-  err = update_poll(stream->ucp);
-
-  return err;
+  return update_poll(stream->ucp);
 }
 
 int
