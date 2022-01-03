@@ -47,9 +47,11 @@ typedef struct {
 
   napi_env env;
   napi_ref ctx;
-  napi_ref on_ack;
   napi_ref on_read;
+  napi_ref on_end;
   napi_ref on_drain;
+  napi_ref on_ack;
+  napi_ref on_close;
 
   uv_timer_t timer;
 } ucp_napi_stream_t;
@@ -96,17 +98,6 @@ on_message (ucp_t *self, const char *buf, size_t buf_len, const struct sockaddr 
 }
 
 static void
-on_ack (ucp_stream_t *stream, ucp_write_t *req, int status, int unordered) {
-  ucp_napi_stream_t *n = (ucp_napi_stream_t *) stream;
-
-  UCP_NAPI_CALLBACK(n, n->on_ack, {
-    napi_value argv[1];
-    napi_create_uint32(env, req->userid, &(argv[0]));
-    NAPI_MAKE_CALLBACK(env, NULL, ctx, callback, 1, argv, NULL)
-  })
-}
-
-static void
 on_read (ucp_stream_t *stream, const char *buf, const size_t buf_len) {
   ucp_napi_stream_t *n = (ucp_napi_stream_t *) stream;
 
@@ -124,12 +115,37 @@ on_read (ucp_stream_t *stream, const char *buf, const size_t buf_len) {
 }
 
 static void
+on_end (ucp_stream_t *stream) {
+  ucp_napi_stream_t *n = (ucp_napi_stream_t *) stream;
+
+  UCP_NAPI_CALLBACK(n, n->on_end, {
+    NAPI_MAKE_CALLBACK(env, NULL, ctx, callback, 0, NULL, NULL)
+  })
+}
+
+static void
 on_drain (ucp_stream_t *stream) {
   ucp_napi_stream_t *n = (ucp_napi_stream_t *) stream;
 
   UCP_NAPI_CALLBACK(n, n->on_drain, {
     NAPI_MAKE_CALLBACK(env, NULL, ctx, callback, 0, NULL, NULL)
   })
+}
+
+static void
+on_ack (ucp_stream_t *stream, ucp_write_t *req, int status, int unordered) {
+  ucp_napi_stream_t *n = (ucp_napi_stream_t *) stream;
+
+  UCP_NAPI_CALLBACK(n, n->on_ack, {
+    napi_value argv[1];
+    napi_create_uint32(env, req->userid, &(argv[0]));
+    NAPI_MAKE_CALLBACK(env, NULL, ctx, callback, 1, argv, NULL)
+  })
+}
+
+static void
+on_close (ucp_stream_t *stream) {
+  printf("I closed!\n");
 }
 
 NAPI_METHOD(ucp_napi_init) {
@@ -236,13 +252,14 @@ NAPI_METHOD(ucp_napi_send) {
 }
 
 NAPI_METHOD(ucp_napi_stream_init) {
-  NAPI_ARGV(6)
+  NAPI_ARGV(8)
   NAPI_ARGV_BUFFER_CAST(ucp_t *, self, 0)
   NAPI_ARGV_BUFFER_CAST(ucp_napi_stream_t *, stream, 1)
 
   stream->read_buf = NULL;
   stream->read_buf_len = 0;
 
+// TODO: move this to the ucp instance
 struct uv_loop_s *loop;
 uv_timer_t *timer = &(stream->timer);
 napi_get_uv_event_loop(env, &loop);
@@ -252,9 +269,11 @@ timer->data = stream;
 
   stream->env = env;
   napi_create_reference(env, argv[2], 1, &(stream->ctx));
-  napi_create_reference(env, argv[3], 1, &(stream->on_ack));
-  napi_create_reference(env, argv[4], 1, &(stream->on_read));
+  napi_create_reference(env, argv[3], 1, &(stream->on_read));
+  napi_create_reference(env, argv[4], 1, &(stream->on_end));
   napi_create_reference(env, argv[5], 1, &(stream->on_drain));
+  napi_create_reference(env, argv[6], 1, &(stream->on_ack));
+  napi_create_reference(env, argv[7], 1, &(stream->on_close));
 
   ucp_stream_t *u = (ucp_stream_t *) stream;
   uint32_t local_id;
@@ -262,9 +281,11 @@ timer->data = stream;
   int err = ucp_stream_init(self, u, &local_id);
   if (err < 0) UCP_NAPI_THROW(err)
 
-  ucp_stream_set_callback(u, UCP_ON_ACK, on_ack);
   ucp_stream_set_callback(u, UCP_ON_READ, on_read);
+  ucp_stream_set_callback(u, UCP_ON_END, on_end);
   ucp_stream_set_callback(u, UCP_ON_DRAIN, on_drain);
+  ucp_stream_set_callback(u, UCP_ON_ACK, on_ack);
+  ucp_stream_set_callback(u, UCP_ON_CLOSE, on_close);
 
   NAPI_RETURN_UINT32(local_id)
 }
@@ -293,12 +314,26 @@ NAPI_METHOD(ucp_napi_stream_write) {
   NAPI_ARGV(5)
   NAPI_ARGV_BUFFER_CAST(ucp_stream_t *, stream, 0)
   NAPI_ARGV_BUFFER_CAST(ucp_write_t *, req, 1)
-  NAPI_ARGV_BUFFER(buf, 2)
-  NAPI_ARGV_UINT32(did, 3)
+  NAPI_ARGV_UINT32(rid, 2)
+  NAPI_ARGV_BUFFER(buf, 3)
 
-  req->userid = did;
+  req->userid = rid;
 
   int err = ucp_stream_write(stream, req, buf, buf_len);
+  if (err < 0) UCP_NAPI_THROW(err)
+
+  NAPI_RETURN_UINT32(err);
+}
+
+NAPI_METHOD(ucp_napi_stream_end) {
+  NAPI_ARGV(5)
+  NAPI_ARGV_BUFFER_CAST(ucp_stream_t *, stream, 0)
+  NAPI_ARGV_BUFFER_CAST(ucp_write_t *, req, 1)
+  NAPI_ARGV_UINT32(rid, 2)
+
+  req->userid = rid;
+
+  int err = ucp_stream_end(stream, req);
   if (err < 0) UCP_NAPI_THROW(err)
 
   NAPI_RETURN_UINT32(err);
@@ -331,4 +366,5 @@ NAPI_INIT() {
   NAPI_EXPORT_FUNCTION(ucp_napi_stream_init)
   NAPI_EXPORT_FUNCTION(ucp_napi_stream_connect)
   NAPI_EXPORT_FUNCTION(ucp_napi_stream_write)
+  NAPI_EXPORT_FUNCTION(ucp_napi_stream_end)
 }
