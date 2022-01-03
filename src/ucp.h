@@ -129,8 +129,8 @@ typedef struct ucp_stream {
   void (*on_read)(struct ucp_stream *stream, const char *buf, size_t buf_len);
   void (*on_end)(struct ucp_stream *stream);
   void (*on_drain)(struct ucp_stream *stream);
-  void (*on_ack)(struct ucp_stream *stream, ucp_write_t *req, int status, int unordered);
-  void (*on_close)(struct ucp_stream *stream, int hard_shutdown);
+  void (*on_ack)(struct ucp_stream *stream, ucp_write_t *req, int failed, int unordered);
+  void (*on_close)(struct ucp_stream *stream, int hard_close);
 
   uint32_t seq;
   uint32_t ack;

@@ -309,8 +309,9 @@ process_packet (ucp_t *self, char *buf, ssize_t buf_len) {
     case UCP_HEADER_DATA:
     case UCP_HEADER_END: {
       if (ucp_cirbuf_get(inc, seq) != NULL) break;
-      // copy over incoming buffer as we CURRENTLY do not own it (stack allocated upstream)
-      // also malloc the packet wrap which needs to be freed at some point obvs
+      // Copy over incoming buffer as we CURRENTLY do not own it (stack allocated upstream)
+      // TODO: if this is the next packet we expect (it usually is!), then there is no need
+      // for the malloc and memcpy - we just need a way to not free it then
       char *ptr = malloc(sizeof(ucp_incoming_packet_t) + buf_len);
 
       ucp_incoming_packet_t *pkt = (ucp_incoming_packet_t *) ptr;
@@ -643,12 +644,20 @@ ucp_stream_set_callback (ucp_stream_t *self, enum UCP_CALLBACK name, void *fn) {
       self->on_read = fn;
       return 0;
     }
-    case UCP_ON_ACK: {
-      self->on_ack = fn;
+    case UCP_ON_END: {
+      self->on_end = fn;
       return 0;
     }
     case UCP_ON_DRAIN: {
       self->on_drain = fn;
+      return 0;
+    }
+    case UCP_ON_ACK: {
+      self->on_ack = fn;
+      return 0;
+    }
+    case UCP_ON_CLOSE: {
+      self->on_close = fn;
       return 0;
     }
     default: {
