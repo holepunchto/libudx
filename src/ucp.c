@@ -627,7 +627,6 @@ ucp_stream_init (ucp_t *self, ucp_stream_t *stream, uint32_t *local_id) {
   stream->on_close = NULL;
 
   // Add the socket to the active set
-  self->streams_len++;
   ucp_cirbuf_set(&(self->streams_by_id), (ucp_cirbuf_val_t *) stream);
 
   // Init stream write/read buffers
