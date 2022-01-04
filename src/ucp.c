@@ -8,8 +8,20 @@
 #include <stdlib.h>
 #include <assert.h>
 
-#define UCP_MIN_WINDOW_SIZE 10
-#define UCP_MAX_CWND_INCREASE_BYTES_PER_RTT 1
+#define UCP_STREAM_ALL_DESTROYED (UCP_STREAM_DESTROYED | UCP_STREAM_DESTROYED_REMOTE)
+#define UCP_STREAM_ALL_ENDED (UCP_STREAM_ENDED | UCP_STREAM_ENDED_REMOTE)
+#define UCP_STREAM_DEAD (UCP_STREAM_ALL_DESTROYED | UCP_STREAM_CLOSED)
+
+#define UCP_STREAM_SHOULD_READ (UCP_STREAM_ENDED_REMOTE | UCP_STREAM_DEAD)
+
+#define UCP_STREAM_SHOULD_END (UCP_STREAM_ENDING | UCP_STREAM_ENDED | UCP_STREAM_DEAD)
+#define UCP_STREAM_END UCP_STREAM_ENDING
+
+#define UCP_STREAM_SHOULD_END_REMOTE (UCP_STREAM_ENDED_REMOTE | UCP_STREAM_DEAD)
+#define UCP_STREAM_END_REMOTE 0
+
+#define UCP_PACKET_CALLBACK (UCP_PACKET_STREAM_SEND | UCP_PACKET_STREAM_DESTROY | UCP_PACKET_SEND)
+#define UCP_PACKET_FREE_ON_SEND (UCP_PACKET_STREAM_STATE | UCP_PACKET_STREAM_DESTROY)
 
 static uint32_t
 random_id () {
@@ -34,7 +46,7 @@ update_poll (ucp_t *self) {
 }
 
 static void
-init_packet (ucp_outgoing_packet_t *pkt, enum UCP_HEADER_TYPE type, ucp_stream_t *stream, const char *buf, size_t buf_len) {
+init_stream_packet (ucp_packet_t *pkt, int type, ucp_stream_t *stream, const char *buf, size_t buf_len) {
   memset(&(pkt->h), 0, sizeof(struct msghdr));
 
   uint8_t *b = (uint8_t *) &(pkt->header);
@@ -80,7 +92,7 @@ send_state_packet (ucp_stream_t *stream) {
   uint32_t start = 0;
   uint32_t end = 0;
 
-  ucp_outgoing_packet_t *pkt = NULL;
+  ucp_packet_t *pkt = NULL;
 
   void *payload = NULL;
   size_t payload_len = 0;
@@ -91,8 +103,8 @@ send_state_packet (ucp_stream_t *stream) {
     if (ucp_cirbuf_get(&(stream->incoming), seq) == NULL) continue;
 
     if (sacks == NULL) {
-      pkt = malloc(sizeof(ucp_outgoing_packet_t) + 1024);
-      payload = (((void *) pkt) + sizeof(ucp_outgoing_packet_t));
+      pkt = malloc(sizeof(ucp_packet_t) + 1024);
+      payload = (((void *) pkt) + sizeof(ucp_packet_t));
       sacks = (uint32_t *) payload;
       start = seq;
       end = seq + 1;
@@ -115,13 +127,12 @@ send_state_packet (ucp_stream_t *stream) {
     payload_len += 8;
   }
 
-  if (pkt == NULL) pkt = malloc(sizeof(ucp_outgoing_packet_t));
+  if (pkt == NULL) pkt = malloc(sizeof(ucp_packet_t));
 
-  init_packet(pkt, UCP_HEADER_STATE, stream, payload, payload_len);
+  init_stream_packet(pkt, UCP_HEADER_STATE, stream, payload, payload_len);
 
   pkt->status = UCP_PACKET_SENDING;
-  pkt->send = NULL;
-  pkt->write = NULL;
+  pkt->type = UCP_PACKET_STREAM_STATE;
 
   stream->stats_pkts_sent++;
 
@@ -130,7 +141,7 @@ send_state_packet (ucp_stream_t *stream) {
 }
 
 static int
-send_data_packet (ucp_stream_t *stream, ucp_outgoing_packet_t *pkt) {
+send_data_packet (ucp_stream_t *stream, ucp_packet_t *pkt) {
   if (stream->inflight + pkt->size > stream->cwnd) {
     return 0;
   }
@@ -159,7 +170,7 @@ flush_waiting_packets (ucp_stream_t *stream) {
   int sent = 0;
 
   while (seq != stream->seq && stream->pkts_waiting > 0) {
-    ucp_outgoing_packet_t *pkt = (ucp_outgoing_packet_t *) ucp_cirbuf_get(&(stream->outgoing), seq++);
+    ucp_packet_t *pkt = (ucp_packet_t *) ucp_cirbuf_get(&(stream->outgoing), seq++);
 
     if (pkt == NULL || pkt->status != UCP_PACKET_WAITING) continue;
 
@@ -180,20 +191,20 @@ flush_waiting_packets (ucp_stream_t *stream) {
 static void
 close_maybe (ucp_stream_t *stream) {
   // if BOTH closed or ANY destroyed
-  if ((stream->state & UCP_ST_ALL_ENDED) != UCP_ST_ALL_ENDED && !(stream->state & UCP_ST_ANY_DESTROYED)) return;
+  if ((stream->status & UCP_STREAM_ALL_ENDED) != UCP_STREAM_ALL_ENDED && !(stream->status & UCP_STREAM_ALL_DESTROYED)) return;
 
-  if (stream->state & UCP_ST_CLOSED) return;
-  stream->state |= UCP_ST_CLOSED;
+  if (stream->status & UCP_STREAM_CLOSED) return;
+  stream->status |= UCP_STREAM_CLOSED;
 
   if (stream->on_close != NULL) {
-    stream->on_close(stream, stream->state & UCP_ST_ANY_DESTROYED ? 1 : 0);
+    stream->on_close(stream, stream->status & UCP_STREAM_ALL_DESTROYED ? 1 : 0);
   }
 }
 
 static int
 ack_packet (ucp_stream_t *stream, uint32_t seq, int sack) {
   ucp_cirbuf_t *out = &(stream->outgoing);
-  ucp_outgoing_packet_t *pkt = (ucp_outgoing_packet_t *) ucp_cirbuf_remove(out, seq);
+  ucp_packet_t *pkt = (ucp_packet_t *) ucp_cirbuf_remove(out, seq);
 
   if (pkt == NULL) return 0;
 
@@ -227,7 +238,7 @@ ack_packet (ucp_stream_t *stream, uint32_t seq, int sack) {
     stream->rto_timeout = ucp_get_milliseconds() + stream->rto;
   }
 
-  ucp_write_t *w = (ucp_write_t *) pkt->write;
+  ucp_write_t *w = (ucp_write_t *) pkt->ctx;
 
   // If this packet was queued for sending we cannot free it now,
   // mark it as acked and free it in the poll / when it's next used
@@ -241,8 +252,9 @@ ack_packet (ucp_stream_t *stream, uint32_t seq, int sack) {
     if (stream->on_ack != NULL) {
       stream->on_ack(stream, w, 0, sack);
     }
-    if ((stream->state & UCP_ST_SHOULD_END) == UCP_ST_END && stream->pkts_waiting == 0 && stream->pkts_inflight == 0) {
-      stream->state |= UCP_ST_ENDED;
+
+    if ((stream->status & UCP_STREAM_SHOULD_END) == UCP_STREAM_END && stream->pkts_waiting == 0 && stream->pkts_inflight == 0) {
+      stream->status |= UCP_STREAM_ENDED;
       close_maybe(stream);
     }
   }
@@ -275,11 +287,12 @@ process_sacks (ucp_stream_t *stream, char *buf, size_t buf_len) {
 static void
 fast_retransmit (ucp_stream_t *stream) {
   ucp_cirbuf_t *out = &(stream->outgoing);
-  ucp_outgoing_packet_t *pkt = (ucp_outgoing_packet_t *) ucp_cirbuf_get(out, stream->remote_acked);
+  ucp_packet_t *pkt = (ucp_packet_t *) ucp_cirbuf_get(out, stream->remote_acked);
 
   if (pkt == NULL || pkt->transmits != 1 || pkt->status != UCP_PACKET_INFLIGHT) return;
 
   pkt->status = UCP_PACKET_WAITING;
+
   stream->inflight -= pkt->size;
   stream->pkts_waiting++;
   stream->pkts_inflight--;
@@ -298,7 +311,7 @@ process_packet (ucp_t *self, char *buf, ssize_t buf_len) {
 
   if ((*(b++) != UCP_MAGIC_BYTE) || (*(b++) != UCP_VERSION)) return 0;
 
-  enum UCP_HEADER_TYPE type = (enum UCP_HEADER_TYPE) *(b++);
+  int type = (int) *(b++);
   uint8_t ext = *(b++);
 
   uint32_t *i = (uint32_t *) b;
@@ -329,15 +342,15 @@ process_packet (ucp_t *self, char *buf, ssize_t buf_len) {
       // Copy over incoming buffer as we CURRENTLY do not own it (stack allocated upstream)
       // TODO: if this is the next packet we expect (it usually is!), then there is no need
       // for the malloc and memcpy - we just need a way to not free it then
-      char *ptr = malloc(sizeof(ucp_incoming_packet_t) + buf_len);
+      char *ptr = malloc(sizeof(ucp_pending_read_t) + buf_len);
 
-      ucp_incoming_packet_t *pkt = (ucp_incoming_packet_t *) ptr;
-      char *cpy = ptr + sizeof(ucp_incoming_packet_t);
+      ucp_pending_read_t *pkt = (ucp_pending_read_t *) ptr;
+      char *cpy = ptr + sizeof(ucp_pending_read_t);
 
       memcpy(cpy, buf, buf_len);
 
       pkt->seq = seq;
-      pkt->ended = type == UCP_HEADER_END;
+      pkt->type = type;
       pkt->buf.iov_base = cpy;
       pkt->buf.iov_len = buf_len;
 
@@ -347,7 +360,7 @@ process_packet (ucp_t *self, char *buf, ssize_t buf_len) {
   }
 
   while (1) {
-    ucp_incoming_packet_t *pkt = (ucp_incoming_packet_t *) ucp_cirbuf_remove(inc, stream->ack);
+    ucp_pending_read_t *pkt = (ucp_pending_read_t *) ucp_cirbuf_remove(inc, stream->ack);
     if (pkt == NULL) break;
 
     stream->ack++;
@@ -355,9 +368,12 @@ process_packet (ucp_t *self, char *buf, ssize_t buf_len) {
     if (pkt->buf.iov_len > 0 && stream->on_read != NULL) {
       stream->on_read(stream, pkt->buf.iov_base, pkt->buf.iov_len);
     }
-    if (pkt->ended && (stream->state & UCP_ST_SHOULD_END_REMOTE) == UCP_ST_END_REMOTE && stream->on_end != NULL) {
-      stream->state |= UCP_ST_ENDED_REMOTE;
-      stream->on_end(stream);
+
+    if (pkt->type == UCP_HEADER_END && (stream->status & UCP_STREAM_SHOULD_END_REMOTE) == UCP_STREAM_END_REMOTE) {
+      stream->status |= UCP_STREAM_ENDED_REMOTE;
+      if (stream->on_end != NULL) {
+        stream->on_end(stream);
+      }
       close_maybe(stream);
     }
 
@@ -401,12 +417,33 @@ process_packet (ucp_t *self, char *buf, ssize_t buf_len) {
 }
 
 static void
+trigger_send_callback (ucp_t *self, ucp_packet_t *pkt) {
+  if (pkt->type == UCP_PACKET_STREAM_SEND) {
+    // TODO
+    return;
+  }
+
+  if (pkt->type == UCP_PACKET_SEND) {
+    if (self->on_send != NULL) {
+      self->on_send(self, pkt->ctx, 0);
+    }
+    return;
+  }
+
+  if (pkt->type == UCP_PACKET_STREAM_DESTROY) {
+    // TODO
+    printf("TODO stream destroy\n");
+    return;
+  }
+}
+
+static void
 on_uv_poll (uv_poll_t *handle, int status, int events) {
   ucp_t *self = handle->data;
 
   if (self->send_queue.len > 0 && events & UV_WRITABLE) {
     ssize_t size;
-    ucp_outgoing_packet_t *pkt = (ucp_outgoing_packet_t *) ucp_fifo_shift(&(self->send_queue));
+    ucp_packet_t *pkt = (ucp_packet_t *) ucp_fifo_shift(&(self->send_queue));
     const struct msghdr *h = &(pkt->h);
 
     // This was unqueued and therefore no longer valid, free it and restart.
@@ -415,23 +452,20 @@ on_uv_poll (uv_poll_t *handle, int status, int events) {
       return;
     }
 
-    pkt->transmits++;
     pkt->status = UCP_PACKET_INFLIGHT;
+    pkt->transmits++;
 
     do {
       pkt->time_sent = ucp_get_milliseconds();
       size = sendmsg(handle->io_watcher.fd, h, 0);
     } while (size == -1 && errno == EINTR);
 
-    if (pkt->write != NULL) {
-      pkt->write->stream->stats_last_seq = pkt->seq;
-    } else if (pkt->send != NULL) {
-      if (self->on_send != NULL) {
-        self->on_send(self, pkt->send, 0);
-        // TODO: watch for re-entry here!
-      }
-    } else {
-      // Fire and forget package - ie an ack, destroy etc
+    if (pkt->type & UCP_PACKET_CALLBACK) {
+      trigger_send_callback(self, pkt);
+      // TODO: watch for re-entry here!
+    }
+
+    if (pkt->type & UCP_PACKET_FREE_ON_SEND) {
       free(pkt);
     }
 
@@ -553,12 +587,15 @@ int
 ucp_send (ucp_t *self, ucp_send_t *req, const char *buf, size_t buf_len, const struct sockaddr *dest) {
   int err;
 
-  ucp_outgoing_packet_t *pkt = &(req->pkt);
+  ucp_packet_t *pkt = &(req->pkt);
 
   req->dest = *dest;
 
-  pkt->transmits = 0;
   pkt->status = UCP_PACKET_SENDING;
+  pkt->type = UCP_PACKET_SEND;
+  pkt->ctx = req;
+
+  pkt->transmits = 0;
 
   memset(&(pkt->h), 0, sizeof(struct msghdr));
 
@@ -570,9 +607,6 @@ ucp_send (ucp_t *self, ucp_send_t *req, const char *buf, size_t buf_len, const s
 
   pkt->buf[0].iov_base = (void *) buf;
   pkt->buf[0].iov_len = buf_len;
-
-  pkt->send = req;
-  pkt->write = NULL;
 
   ucp_fifo_push(&(self->send_queue), pkt);
 
@@ -608,7 +642,7 @@ ucp_stream_init (ucp_t *self, ucp_stream_t *stream, uint32_t *local_id) {
     self->streams = realloc(self->streams, self->streams_max_len * sizeof(ucp_stream_t *));
   }
 
-  stream->state = 0;
+  stream->status = 0;
 
   *local_id = stream->local_id = id;
   stream->remote_id = 0;
@@ -701,7 +735,7 @@ ucp_stream_check_timeouts (ucp_stream_t *stream) {
     // Consider all packet losts - seems to be the simple consensus across different stream impls
     // which we like cause it is nice and simple to implement.
     for (uint32_t seq = stream->remote_acked; seq != stream->seq; seq++) {
-      ucp_outgoing_packet_t *pkt = (ucp_outgoing_packet_t *) ucp_cirbuf_get(&(stream->outgoing), seq);
+      ucp_packet_t *pkt = (ucp_packet_t *) ucp_cirbuf_get(&(stream->outgoing), seq);
 
       if (pkt == NULL || pkt->status != UCP_PACKET_INFLIGHT) continue;
 
@@ -740,15 +774,15 @@ ucp_stream_write (ucp_stream_t *stream, ucp_write_t *req, const char *buf, size_
   }
 
   while (buf_len > 0 || err < 0) {
-    ucp_outgoing_packet_t *pkt = malloc(sizeof(ucp_outgoing_packet_t));
+    ucp_packet_t *pkt = malloc(sizeof(ucp_packet_t));
 
     size_t buf_partial_len = buf_len < UCP_MAX_DATA_SIZE ? buf_len : UCP_MAX_DATA_SIZE;
 
-    init_packet(pkt, UCP_HEADER_DATA, stream, buf, buf_partial_len);
+    init_stream_packet(pkt, UCP_HEADER_DATA, stream, buf, buf_partial_len);
 
     pkt->status = UCP_PACKET_WAITING;
-    pkt->send = NULL;
-    pkt->write = req;
+    pkt->type = UCP_PACKET_STREAM_WRITE;
+    pkt->ctx = req;
 
     stream->seq++;
     req->packets++;
@@ -768,18 +802,18 @@ ucp_stream_write (ucp_stream_t *stream, ucp_write_t *req, const char *buf, size_
 
 int
 ucp_stream_end (ucp_stream_t *stream, ucp_write_t *req) {
-  stream->state |= UCP_ST_ENDING;
+  stream->status |= UCP_STREAM_ENDING;
 
   req->packets = 1;
   req->stream = stream;
 
-  ucp_outgoing_packet_t *pkt = malloc(sizeof(ucp_outgoing_packet_t));
+  ucp_packet_t *pkt = malloc(sizeof(ucp_packet_t));
 
-  init_packet(pkt, UCP_HEADER_END, stream, NULL, 0);
+  init_stream_packet(pkt, UCP_HEADER_END, stream, NULL, 0);
 
   pkt->status = UCP_PACKET_WAITING;
-  pkt->send = NULL;
-  pkt->write = req;
+  pkt->type = UCP_PACKET_STREAM_WRITE;
+  pkt->ctx = req;
 
   stream->seq++;
 
@@ -791,13 +825,13 @@ ucp_stream_end (ucp_stream_t *stream, ucp_write_t *req) {
 
 int
 ucp_stream_destroy (ucp_stream_t *stream) {
-  ucp_outgoing_packet_t *pkt = malloc(sizeof(ucp_outgoing_packet_t));
+  ucp_packet_t *pkt = malloc(sizeof(ucp_packet_t));
 
-  init_packet(pkt, UCP_HEADER_DESTROY, stream, NULL, 0);
+  init_stream_packet(pkt, UCP_HEADER_DESTROY, stream, NULL, 0);
 
   pkt->status = UCP_PACKET_SENDING;
-  pkt->send = NULL;
-  pkt->write = NULL;
+  pkt->type = UCP_PACKET_STREAM_DESTROY;
+  pkt->ctx = stream;
 
   stream->stats_pkts_sent++;
 

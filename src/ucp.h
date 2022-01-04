@@ -17,39 +17,28 @@
 #define UCP_MAGIC_BYTE 255
 #define UCP_VERSION 1
 
-#define UCP_ST_ENDING            0b000001
-#define UCP_ST_ENDED             0b000010
-#define UCP_ST_ENDED_REMOTE      0b000100
-#define UCP_ST_DESTROYED         0b001000
-#define UCP_ST_DESTROYED_REMOTE  0b010000
-#define UCP_ST_CLOSED            0b100000
+#define UCP_STREAM_ENDING           0b000001
+#define UCP_STREAM_ENDED            0b000010
+#define UCP_STREAM_ENDED_REMOTE     0b000100
+#define UCP_STREAM_DESTROYED        0b001000
+#define UCP_STREAM_DESTROYED_REMOTE 0b010000
+#define UCP_STREAM_CLOSED           0b100000
 
-#define UCP_ST_SHOULD_READ       0b111100
-#define UCP_ST_SHOULD_END        0b111011
-#define UCP_ST_SHOULD_END_REMOTE 0b111100
-#define UCP_ST_ANY_DESTROYED     0b011000
-#define UCP_ST_ALL_ENDED         0b000110
+#define UCP_PACKET_WAITING  1
+#define UCP_PACKET_SENDING  2
+#define UCP_PACKET_INFLIGHT 3
+#define UCP_PACKET_ACKED    4
 
-#define UCP_ST_END               0b000001
-#define UCP_ST_END_REMOTE        0b000000
+#define UCP_PACKET_STREAM_STATE   0b00001
+#define UCP_PACKET_STREAM_WRITE   0b00010
+#define UCP_PACKET_STREAM_SEND    0b00100
+#define UCP_PACKET_STREAM_DESTROY 0b01000
+#define UCP_PACKET_SEND           0b10000
 
-// packet types
-
-enum UCP_HEADER_TYPE {
-  UCP_HEADER_STATE = 0,
-  UCP_HEADER_DATA = 1,
-  UCP_HEADER_END = 2,
-  UCP_HEADER_DESTROY = 3,
-};
-
-// packet states
-
-enum UCP_PACKET {
-  UCP_PACKET_WAITING = 1,
-  UCP_PACKET_SENDING = 2,
-  UCP_PACKET_INFLIGHT = 3,
-  UCP_PACKET_ACKED = 4,
-};
+#define UCP_HEADER_STATE   0
+#define UCP_HEADER_DATA    1
+#define UCP_HEADER_END     2
+#define UCP_HEADER_DESTROY 3
 
 enum UCP_CALLBACK {
   UCP_ON_SEND = 1,
@@ -93,28 +82,32 @@ typedef struct ucp {
 
 typedef struct {
   uint32_t seq; // must be the first entry, so its compat with the cirbuf
-  enum UCP_PACKET status;
+
+  int status;
+  int type;
+
   uint8_t transmits;
   uint16_t size;
   uint64_t time_sent;
 
+  void *ctx;
+
   struct msghdr h;
-  struct ucp_write *write;
-  struct ucp_send *send;
 
   // just alloc it in place here, easier to manage
   char header[UCP_HEADER_SIZE];
   struct iovec buf[2];
-} ucp_outgoing_packet_t;
+} ucp_packet_t;
 
 typedef struct {
   uint32_t seq; // must be the first entry, so its compat with the cirbuf
 
-  int ended;
-  struct iovec buf;
-} ucp_incoming_packet_t;
+  int type;
 
-typedef struct ucp_write {
+  struct iovec buf;
+} ucp_pending_read_t;
+
+typedef struct {
   uint32_t packets;
   struct ucp_stream *stream;
 
@@ -122,8 +115,8 @@ typedef struct ucp_write {
   int userid;
 } ucp_write_t;
 
-typedef struct ucp_send {
-  ucp_outgoing_packet_t pkt;
+typedef struct {
+  ucp_packet_t pkt;
   struct sockaddr dest;
 
   void *userdata;
@@ -135,7 +128,7 @@ typedef struct ucp_stream {
   uint32_t remote_id;
 
   int set_id;
-  int state;
+  int status;
 
   ucp_t *ucp;
 
