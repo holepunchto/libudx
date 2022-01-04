@@ -17,6 +17,22 @@
 #define UCP_MAGIC_BYTE 255
 #define UCP_VERSION 1
 
+#define UCP_ST_ENDING            0b000001
+#define UCP_ST_ENDED             0b000010
+#define UCP_ST_ENDED_REMOTE      0b000100
+#define UCP_ST_DESTROYED         0b001000
+#define UCP_ST_DESTROYED_REMOTE  0b010000
+#define UCP_ST_CLOSED            0b100000
+
+#define UCP_ST_SHOULD_READ       0b111100
+#define UCP_ST_SHOULD_END        0b111011
+#define UCP_ST_SHOULD_END_REMOTE 0b111100
+#define UCP_ST_ANY_DESTROYED     0b011000
+#define UCP_ST_ALL_ENDED         0b000110
+
+#define UCP_ST_END               0b000001
+#define UCP_ST_END_REMOTE        0b000000
+
 // packet types
 
 enum UCP_HEADER_TYPE {
@@ -65,7 +81,7 @@ typedef struct ucp {
 
   struct sockaddr_in on_message_addr;
 
-  void (*on_send)(struct ucp *self, struct ucp_send *req, int status);
+  void (*on_send)(struct ucp *self, struct ucp_send *req, int failed);
   void (*on_message)(struct ucp *self, const char *buf, size_t buf_len, const struct sockaddr *from);
 
   uint32_t streams_len;
@@ -117,7 +133,9 @@ typedef struct ucp_send {
 typedef struct ucp_stream {
   uint32_t local_id; // must be first entry, so its compat with the cirbuf
   uint32_t remote_id;
-  uint32_t index;
+
+  int set_id;
+  int state;
 
   ucp_t *ucp;
 

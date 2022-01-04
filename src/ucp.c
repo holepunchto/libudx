@@ -29,8 +29,6 @@ update_poll (ucp_t *self) {
   int events = (self->send_queue.len > 0 ? UV_WRITABLE : 0) | UV_READABLE;
   if (events == self->events) return 0;
 
-  // printf("update io polling flags=%i\n", events);
-
   self->events = events;
   return uv_poll_start(&(self->io_poll), events, on_uv_poll);
 }
@@ -179,6 +177,19 @@ flush_waiting_packets (ucp_stream_t *stream) {
   return 0;
 }
 
+static void
+close_maybe (ucp_stream_t *stream) {
+  // if BOTH closed or ANY destroyed
+  if ((stream->state & UCP_ST_ALL_ENDED) != UCP_ST_ALL_ENDED && !(stream->state & UCP_ST_ANY_DESTROYED)) return;
+
+  if (stream->state & UCP_ST_CLOSED) return;
+  stream->state |= UCP_ST_CLOSED;
+
+  if (stream->on_close != NULL) {
+    stream->on_close(stream, stream->state & UCP_ST_ANY_DESTROYED ? 1 : 0);
+  }
+}
+
 static int
 ack_packet (ucp_stream_t *stream, uint32_t seq, int sack) {
   ucp_cirbuf_t *out = &(stream->outgoing);
@@ -226,8 +237,14 @@ ack_packet (ucp_stream_t *stream, uint32_t seq, int sack) {
     free(pkt);
   }
 
-  if (--(w->packets) == 0 && stream->on_ack != NULL) {
-    stream->on_ack(stream, w, 0, sack);
+  if (--(w->packets) == 0) {
+    if (stream->on_ack != NULL) {
+      stream->on_ack(stream, w, 0, sack);
+    }
+    if ((stream->state & UCP_ST_SHOULD_END) == UCP_ST_END && stream->pkts_waiting == 0 && stream->pkts_inflight == 0) {
+      stream->state |= UCP_ST_ENDED;
+      close_maybe(stream);
+    }
   }
 
   return 1;
@@ -338,8 +355,10 @@ process_packet (ucp_t *self, char *buf, ssize_t buf_len) {
     if (pkt->buf.iov_len > 0 && stream->on_read != NULL) {
       stream->on_read(stream, pkt->buf.iov_base, pkt->buf.iov_len);
     }
-    if (pkt->ended && stream->on_end != NULL) {
+    if (pkt->ended && (stream->state & UCP_ST_SHOULD_END_REMOTE) == UCP_ST_END_REMOTE && stream->on_end != NULL) {
+      stream->state |= UCP_ST_ENDED_REMOTE;
       stream->on_end(stream);
+      close_maybe(stream);
     }
 
     free(pkt);
@@ -370,7 +389,7 @@ process_packet (ucp_t *self, char *buf, ssize_t buf_len) {
   }
 
   // if data pkt, send an ack - use deferred acks as well...
-  if (type == UCP_HEADER_DATA) {
+  if (type == UCP_HEADER_DATA || type == UCP_HEADER_END) {
     send_state_packet(stream);
   }
 
@@ -412,7 +431,7 @@ on_uv_poll (uv_poll_t *handle, int status, int events) {
         // TODO: watch for re-entry here!
       }
     } else {
-      // Fire and forget package - ie and ack etc
+      // Fire and forget package - ie an ack, destroy etc
       free(pkt);
     }
 
@@ -589,12 +608,14 @@ ucp_stream_init (ucp_t *self, ucp_stream_t *stream, uint32_t *local_id) {
     self->streams = realloc(self->streams, self->streams_max_len * sizeof(ucp_stream_t *));
   }
 
+  stream->state = 0;
+
   *local_id = stream->local_id = id;
   stream->remote_id = 0;
-  stream->index = self->streams_len++;
+  stream->set_id = self->streams_len++;
   stream->ucp = self;
 
-  self->streams[stream->index] = stream;
+  self->streams[stream->set_id] = stream;
 
   stream->seq = 0;
   stream->ack = 0;
@@ -747,6 +768,11 @@ ucp_stream_write (ucp_stream_t *stream, ucp_write_t *req, const char *buf, size_
 
 int
 ucp_stream_end (ucp_stream_t *stream, ucp_write_t *req) {
+  stream->state |= UCP_ST_ENDING;
+
+  req->packets = 1;
+  req->stream = stream;
+
   ucp_outgoing_packet_t *pkt = malloc(sizeof(ucp_outgoing_packet_t));
 
   init_packet(pkt, UCP_HEADER_END, stream, NULL, 0);
@@ -755,7 +781,7 @@ ucp_stream_end (ucp_stream_t *stream, ucp_write_t *req) {
   pkt->send = NULL;
   pkt->write = req;
 
-  req->packets = 0;
+  stream->seq++;
 
   ucp_cirbuf_set(&(stream->outgoing), (ucp_cirbuf_val_t *) pkt);
 
@@ -765,5 +791,16 @@ ucp_stream_end (ucp_stream_t *stream, ucp_write_t *req) {
 
 int
 ucp_stream_destroy (ucp_stream_t *stream) {
-  return 0;
+  ucp_outgoing_packet_t *pkt = malloc(sizeof(ucp_outgoing_packet_t));
+
+  init_packet(pkt, UCP_HEADER_DESTROY, stream, NULL, 0);
+
+  pkt->status = UCP_PACKET_SENDING;
+  pkt->send = NULL;
+  pkt->write = NULL;
+
+  stream->stats_pkts_sent++;
+
+  ucp_fifo_push(&(stream->ucp->send_queue), pkt);
+  return update_poll(stream->ucp);
 }
