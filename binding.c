@@ -145,7 +145,13 @@ on_ack (ucp_stream_t *stream, ucp_write_t *req, int status, int unordered) {
 
 static void
 on_close (ucp_stream_t *stream, int hard_close) {
-  printf("I closed!\n");
+  ucp_napi_stream_t *n = (ucp_napi_stream_t *) stream;
+
+  UCP_NAPI_CALLBACK(n, n->on_close, {
+    napi_value argv[1];
+    napi_create_uint32(env, hard_close, &(argv[0]));
+    NAPI_MAKE_CALLBACK(env, NULL, ctx, callback, 1, argv, NULL)
+  })
 }
 
 NAPI_METHOD(ucp_napi_init) {
@@ -309,7 +315,7 @@ NAPI_METHOD(ucp_napi_stream_connect) {
 }
 
 NAPI_METHOD(ucp_napi_stream_write) {
-  NAPI_ARGV(5)
+  NAPI_ARGV(4)
   NAPI_ARGV_BUFFER_CAST(ucp_stream_t *, stream, 0)
   NAPI_ARGV_BUFFER_CAST(ucp_write_t *, req, 1)
   NAPI_ARGV_UINT32(rid, 2)
@@ -324,7 +330,7 @@ NAPI_METHOD(ucp_napi_stream_write) {
 }
 
 NAPI_METHOD(ucp_napi_stream_end) {
-  NAPI_ARGV(5)
+  NAPI_ARGV(3)
   NAPI_ARGV_BUFFER_CAST(ucp_stream_t *, stream, 0)
   NAPI_ARGV_BUFFER_CAST(ucp_write_t *, req, 1)
   NAPI_ARGV_UINT32(rid, 2)
@@ -332,6 +338,16 @@ NAPI_METHOD(ucp_napi_stream_end) {
   req->userid = rid;
 
   int err = ucp_stream_end(stream, req);
+  if (err < 0) UCP_NAPI_THROW(err)
+
+  NAPI_RETURN_UINT32(err);
+}
+
+NAPI_METHOD(ucp_napi_stream_destroy) {
+  NAPI_ARGV(1)
+  NAPI_ARGV_BUFFER_CAST(ucp_stream_t *, stream, 0)
+
+  int err = ucp_stream_destroy(stream);
   if (err < 0) UCP_NAPI_THROW(err)
 
   NAPI_RETURN_UINT32(err);
@@ -365,4 +381,5 @@ NAPI_INIT() {
   NAPI_EXPORT_FUNCTION(ucp_napi_stream_connect)
   NAPI_EXPORT_FUNCTION(ucp_napi_stream_write)
   NAPI_EXPORT_FUNCTION(ucp_napi_stream_end)
+  NAPI_EXPORT_FUNCTION(ucp_napi_stream_destroy)
 }
