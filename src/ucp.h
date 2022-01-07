@@ -17,17 +17,19 @@
 #define UCP_MAGIC_BYTE 255
 #define UCP_VERSION 1
 
-#define UCP_STREAM_ENDING           0b000001
-#define UCP_STREAM_ENDED            0b000010
-#define UCP_STREAM_ENDED_REMOTE     0b000100
-#define UCP_STREAM_DESTROYED        0b001000
-#define UCP_STREAM_DESTROYED_REMOTE 0b010000
-#define UCP_STREAM_CLOSED           0b100000
+#define UCP_STREAM_ENDING           0b0000001
+#define UCP_STREAM_ENDED            0b0000010
+#define UCP_STREAM_ENDED_REMOTE     0b0000100
+#define UCP_STREAM_DESTROYING       0b0001000
+#define UCP_STREAM_DESTROYED        0b0010000
+#define UCP_STREAM_DESTROYED_REMOTE 0b0100000
+#define UCP_STREAM_CLOSED           0b1000000
 
 #define UCP_PACKET_WAITING  1
 #define UCP_PACKET_SENDING  2
 #define UCP_PACKET_INFLIGHT 3
 #define UCP_PACKET_ACKED    4
+#define UCP_PACKET_GC       5
 
 #define UCP_PACKET_STREAM_STATE   0b00001
 #define UCP_PACKET_STREAM_WRITE   0b00010
@@ -39,6 +41,10 @@
 #define UCP_HEADER_DATA    1
 #define UCP_HEADER_END     2
 #define UCP_HEADER_DESTROY 3
+
+#define UCP_ERROR_DESTROYED        -1
+#define UCP_ERROR_DESTROYED_REMOTE -2
+#define UCP_ERROR_TIMEOUT          -3
 
 enum UCP_CALLBACK {
   UCP_ON_SEND = 1,
@@ -85,6 +91,8 @@ typedef struct {
 
   int status;
   int type;
+
+  uint32_t fifo_gc;
 
   uint8_t transmits;
   uint16_t size;

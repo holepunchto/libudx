@@ -10,9 +10,10 @@
 
 #define UCP_STREAM_ALL_DESTROYED (UCP_STREAM_DESTROYED | UCP_STREAM_DESTROYED_REMOTE)
 #define UCP_STREAM_ALL_ENDED (UCP_STREAM_ENDED | UCP_STREAM_ENDED_REMOTE)
-#define UCP_STREAM_DEAD (UCP_STREAM_ALL_DESTROYED | UCP_STREAM_CLOSED)
+#define UCP_STREAM_DEAD (UCP_STREAM_ALL_DESTROYED | UCP_STREAM_DESTROYING | UCP_STREAM_CLOSED)
 
 #define UCP_STREAM_SHOULD_READ (UCP_STREAM_ENDED_REMOTE | UCP_STREAM_DEAD)
+#define UCP_STREAM_READ 0
 
 #define UCP_STREAM_SHOULD_END (UCP_STREAM_ENDING | UCP_STREAM_ENDED | UCP_STREAM_DEAD)
 #define UCP_STREAM_END UCP_STREAM_ENDING
@@ -22,6 +23,8 @@
 
 #define UCP_PACKET_CALLBACK (UCP_PACKET_STREAM_SEND | UCP_PACKET_STREAM_DESTROY | UCP_PACKET_SEND)
 #define UCP_PACKET_FREE_ON_SEND (UCP_PACKET_STREAM_STATE | UCP_PACKET_STREAM_DESTROY)
+
+#define UCP_MAX_TRANSMITS 5
 
 static uint32_t
 random_id () {
@@ -156,8 +159,8 @@ send_data_packet (ucp_stream_t *stream, ucp_packet_t *pkt) {
   if (pkt->transmits > 0) stream->retransmits_waiting--;
 
   stream->stats_pkts_sent++;
+  pkt->fifo_gc = ucp_fifo_push(&(stream->ucp->send_queue), pkt);
 
-  ucp_fifo_push(&(stream->ucp->send_queue), pkt);
   int err = update_poll(stream->ucp);
   return err < 0 ? err : 1;
 }
@@ -188,17 +191,30 @@ flush_waiting_packets (ucp_stream_t *stream) {
   return 0;
 }
 
-static void
-close_maybe (ucp_stream_t *stream) {
-  // if BOTH closed or ANY destroyed
-  if ((stream->status & UCP_STREAM_ALL_ENDED) != UCP_STREAM_ALL_ENDED && !(stream->status & UCP_STREAM_ALL_DESTROYED)) return;
+static int
+close_maybe (ucp_stream_t *stream, int err) {
+  // if BOTH closed or ANY destroyed.
+  if ((stream->status & UCP_STREAM_ALL_ENDED) != UCP_STREAM_ALL_ENDED && !(stream->status & UCP_STREAM_ALL_DESTROYED)) return 0;
+  // if we already destroyed, bail.
+  if (stream->status & UCP_STREAM_CLOSED) return 0;
 
-  if (stream->status & UCP_STREAM_CLOSED) return;
   stream->status |= UCP_STREAM_CLOSED;
 
+  ucp_t *u = stream->ucp;
+  u->streams[stream->set_id] = u->streams[--(u->streams_len)];
+
+  // TODO: Dealloc all remaning state such as
+  // - pending reads
+  // - destroy alloc'ed cirbufs
+  // (anything else from stream init)
+
+  ucp_cirbuf_remove(&(stream->ucp->streams_by_id), stream->local_id);
+
   if (stream->on_close != NULL) {
-    stream->on_close(stream, stream->status & UCP_STREAM_ALL_DESTROYED ? 1 : 0);
+    stream->on_close(stream, err);
   }
+
+  return 1;
 }
 
 static int
@@ -240,22 +256,23 @@ ack_packet (ucp_stream_t *stream, uint32_t seq, int sack) {
 
   ucp_write_t *w = (ucp_write_t *) pkt->ctx;
 
-  // If this packet was queued for sending we cannot free it now,
-  // mark it as acked and free it in the poll / when it's next used
+  // If this packet was queued for sending we need to remove it from the queue.
   if (pkt->status == UCP_PACKET_SENDING) {
-    pkt->status = UCP_PACKET_ACKED;
-  } else {
-    free(pkt);
+    ucp_fifo_remove(&(stream->ucp->send_queue), pkt, pkt->fifo_gc);
   }
+
+  free(pkt);
 
   if (--(w->packets) == 0) {
     if (stream->on_ack != NULL) {
       stream->on_ack(stream, w, 0, sack);
+      if (stream->status & UCP_STREAM_DEAD) return 2;
     }
 
     if ((stream->status & UCP_STREAM_SHOULD_END) == UCP_STREAM_END && stream->pkts_waiting == 0 && stream->pkts_inflight == 0) {
       stream->status |= UCP_STREAM_ENDED;
-      close_maybe(stream);
+      close_maybe(stream, 0);
+      return 2;
     }
   }
 
@@ -273,7 +290,9 @@ process_sacks (ucp_stream_t *stream, char *buf, size_t buf_len) {
     uint32_t len = end - start;
 
     for (uint32_t j = 0; j < len; j++) {
-      if (ack_packet(stream, start + j, 1)) {
+      int a = ack_packet(stream, start + j, 1);
+      if (a == 2) return; // ended
+      if (a == 1) {
         n++;
       }
     }
@@ -303,6 +322,29 @@ fast_retransmit (ucp_stream_t *stream) {
   stream->cwnd = max(UCP_MTU, stream->cwnd / 2);
 }
 
+static void
+clear_outgoing_packets (ucp_stream_t *stream) {
+  // We should make sure all existing packets do not send, and notify the user that they failed
+  for (uint32_t seq = stream->remote_acked; seq != stream->seq; seq++) {
+    ucp_packet_t *pkt = (ucp_packet_t *) ucp_cirbuf_remove(&(stream->outgoing), seq);
+
+    if (pkt == NULL) continue;
+
+    // Make sure to remove it from the fifo, if it was added
+    if (pkt->status == UCP_PACKET_SENDING) {
+      ucp_fifo_remove(&(stream->ucp->send_queue), pkt, pkt->fifo_gc);
+    }
+
+    ucp_write_t *w = (ucp_write_t *) pkt->ctx;
+
+    if (--(w->packets) == 0 && stream->on_ack != NULL) {
+      stream->on_ack(stream, w, 1, 0);
+    }
+
+    free(pkt);
+  }
+}
+
 static int
 process_packet (ucp_t *self, char *buf, ssize_t buf_len) {
   if (buf_len < UCP_HEADER_SIZE) return 0;
@@ -325,7 +367,7 @@ process_packet (ucp_t *self, char *buf, ssize_t buf_len) {
   buf_len -= UCP_HEADER_SIZE;
 
   ucp_stream_t *stream = (ucp_stream_t *) ucp_cirbuf_get(&(self->streams_by_id), local_id);
-  if (stream == NULL) return 0;
+  if (stream == NULL || stream->status & UCP_STREAM_DEAD) return 0;
 
   ucp_cirbuf_t *inc = &(stream->incoming);
 
@@ -339,6 +381,8 @@ process_packet (ucp_t *self, char *buf, ssize_t buf_len) {
     case UCP_HEADER_DATA:
     case UCP_HEADER_END: {
       if (ucp_cirbuf_get(inc, seq) != NULL) break;
+      if ((stream->status & UCP_STREAM_SHOULD_READ) != UCP_STREAM_READ) break;
+
       // Copy over incoming buffer as we CURRENTLY do not own it (stack allocated upstream)
       // TODO: if this is the next packet we expect (it usually is!), then there is no need
       // for the malloc and memcpy - we just need a way to not free it then
@@ -357,9 +401,17 @@ process_packet (ucp_t *self, char *buf, ssize_t buf_len) {
       ucp_cirbuf_set(inc, (ucp_cirbuf_val_t *) pkt);
       break;
     }
+
+    case UCP_HEADER_DESTROY: {
+      stream->status |= UCP_STREAM_DESTROYED_REMOTE;
+      clear_outgoing_packets(stream);
+      close_maybe(stream, UCP_ERROR_DESTROYED_REMOTE);
+      return 1;
+    }
   }
 
-  while (1) {
+  // process the read queue
+  while ((stream->status & UCP_STREAM_SHOULD_READ) == UCP_STREAM_READ) {
     ucp_pending_read_t *pkt = (ucp_pending_read_t *) ucp_cirbuf_remove(inc, stream->ack);
     if (pkt == NULL) break;
 
@@ -367,14 +419,16 @@ process_packet (ucp_t *self, char *buf, ssize_t buf_len) {
 
     if (pkt->buf.iov_len > 0 && stream->on_read != NULL) {
       stream->on_read(stream, pkt->buf.iov_base, pkt->buf.iov_len);
+      if (stream->status & UCP_STREAM_DEAD) return 1;
     }
 
     if (pkt->type == UCP_HEADER_END && (stream->status & UCP_STREAM_SHOULD_END_REMOTE) == UCP_STREAM_END_REMOTE) {
       stream->status |= UCP_STREAM_ENDED_REMOTE;
       if (stream->on_end != NULL) {
         stream->on_end(stream);
+        if (stream->status & UCP_STREAM_DEAD) return 1;
       }
-      close_maybe(stream);
+      close_maybe(stream, 0);
     }
 
     free(pkt);
@@ -401,7 +455,7 @@ process_packet (ucp_t *self, char *buf, ssize_t buf_len) {
   }
 
   while (stream->remote_acked < ack) {
-    ack_packet(stream, stream->remote_acked++, 0);
+    if (ack_packet(stream, stream->remote_acked++, 0) != 1) return 1;
   }
 
   // if data pkt, send an ack - use deferred acks as well...
@@ -431,8 +485,10 @@ trigger_send_callback (ucp_t *self, ucp_packet_t *pkt) {
   }
 
   if (pkt->type == UCP_PACKET_STREAM_DESTROY) {
-    // TODO
-    printf("TODO stream destroy\n");
+    ucp_stream_t *stream = pkt->ctx;
+
+    stream->status |= UCP_STREAM_DESTROYED;
+    close_maybe(stream, UCP_ERROR_DESTROYED);
     return;
   }
 }
@@ -446,12 +502,9 @@ on_uv_poll (uv_poll_t *handle, int status, int events) {
     ucp_packet_t *pkt = (ucp_packet_t *) ucp_fifo_shift(&(self->send_queue));
     const struct msghdr *h = &(pkt->h);
 
-    // This was unqueued and therefore no longer valid, free it and restart.
-    if (pkt->status != UCP_PACKET_SENDING) {
-      free(pkt);
-      return;
-    }
+    if (pkt == NULL) return;
 
+    assert(pkt->status == UCP_PACKET_SENDING);
     pkt->status = UCP_PACKET_INFLIGHT;
     pkt->transmits++;
 
@@ -608,7 +661,7 @@ ucp_send (ucp_t *self, ucp_send_t *req, const char *buf, size_t buf_len, const s
   pkt->buf[0].iov_base = (void *) buf;
   pkt->buf[0].iov_len = buf_len;
 
-  ucp_fifo_push(&(self->send_queue), pkt);
+  pkt->fifo_gc = ucp_fifo_push(&(self->send_queue), pkt);
 
   err = update_poll(self);
 
@@ -739,6 +792,12 @@ ucp_stream_check_timeouts (ucp_stream_t *stream) {
 
       if (pkt == NULL || pkt->status != UCP_PACKET_INFLIGHT) continue;
 
+      if (pkt->transmits >= UCP_MAX_TRANSMITS) {
+        stream->status |= UCP_STREAM_DESTROYED;
+        close_maybe(stream, UCP_ERROR_TIMEOUT);
+        return 0;
+      }
+
       pkt->status = UCP_PACKET_WAITING;
 
       stream->inflight -= pkt->size;
@@ -825,6 +884,10 @@ ucp_stream_end (ucp_stream_t *stream, ucp_write_t *req) {
 
 int
 ucp_stream_destroy (ucp_stream_t *stream) {
+  stream->status |= UCP_STREAM_DESTROYING;
+
+  clear_outgoing_packets(stream);
+
   ucp_packet_t *pkt = malloc(sizeof(ucp_packet_t));
 
   init_stream_packet(pkt, UCP_HEADER_DESTROY, stream, NULL, 0);
@@ -833,7 +896,7 @@ ucp_stream_destroy (ucp_stream_t *stream) {
   pkt->type = UCP_PACKET_STREAM_DESTROY;
   pkt->ctx = stream;
 
-  stream->stats_pkts_sent++;
+  stream->seq++;
 
   ucp_fifo_push(&(stream->ucp->send_queue), pkt);
   return update_poll(stream->ucp);

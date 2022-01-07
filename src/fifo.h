@@ -24,7 +24,10 @@ ucp_fifo_shift (ucp_fifo_t *f);
 void
 ucp_fifo_grow (ucp_fifo_t *f);
 
-void
+uint32_t
 ucp_fifo_push (ucp_fifo_t *f, void *data);
+
+void
+ucp_fifo_remove (ucp_fifo_t *f, void *data, uint32_t pos_hint);
 
 #endif

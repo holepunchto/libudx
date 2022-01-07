@@ -1,5 +1,6 @@
 #include "fifo.h"
 #include <stdlib.h>
+#include <stdio.h>
 
 void
 ucp_fifo_init (ucp_fifo_t *f, uint32_t initial_max_size) {
@@ -42,10 +43,31 @@ ucp_fifo_grow (ucp_fifo_t *f) {
   }
 }
 
-void
+uint32_t
 ucp_fifo_push (ucp_fifo_t *f, void *data) {
   if (f->len == f->max_len) ucp_fifo_grow(f);
 
-  void **t = f->values + ((f->btm + f->len++) & f->mask);
+  uint32_t p = (f->btm + f->len++) & f->mask;
+  void **t = f->values + p;
   *t = data;
+
+  return p;
+}
+
+void
+ucp_fifo_remove (ucp_fifo_t *f, void *data, uint32_t pos_hint) {
+  // check if the pos_hint is correct
+  if (pos_hint < f->max_len && f->values[pos_hint] == data) {
+    f->values[pos_hint] = NULL;
+    return;
+  }
+
+  // hint was wrong, do a linear sweep
+  for (uint32_t i = 0; i < f->len; i++) {
+    uint32_t j = (f->btm + i) & f->mask;
+    if (f->values[j] == data) {
+      f->values[j] = NULL;
+      return;
+    }
+  }
 }
