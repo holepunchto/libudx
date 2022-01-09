@@ -204,6 +204,7 @@ ucp_getsockname (ucp_t *self, struct sockaddr * name, int *name_len);
 int
 ucp_send (ucp_t *self, ucp_send_t *req, const char *buf, size_t buf_len, const struct sockaddr *addr);
 
+// only exposed here as a convenience / debug tool - the ucp instance tools this automatically
 int
 ucp_check_timeouts (ucp_t *self);
 
@@ -216,6 +217,7 @@ ucp_stream_set_callback(ucp_stream_t *stream, enum UCP_CALLBACK name, void *fn);
 void
 ucp_stream_connect (ucp_stream_t *stream, uint32_t remote_id, const struct sockaddr *remote_addr);
 
+// only exposed here as a convenience / debug tool - the ucp instance tools this automatically
 int
 ucp_stream_check_timeouts (ucp_stream_t *stream);
 
