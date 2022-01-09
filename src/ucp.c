@@ -271,7 +271,6 @@ ack_packet (ucp_stream_t *stream, uint32_t seq, int sack) {
 
     if ((stream->status & UCP_STREAM_SHOULD_END) == UCP_STREAM_END && stream->pkts_waiting == 0 && stream->pkts_inflight == 0) {
       stream->status |= UCP_STREAM_ENDED;
-      close_maybe(stream, 0);
       return 2;
     }
   }
@@ -455,7 +454,13 @@ process_packet (ucp_t *self, char *buf, ssize_t buf_len) {
   }
 
   while (stream->remote_acked < ack) {
-    if (ack_packet(stream, stream->remote_acked++, 0) != 1) return 1;
+    int a = ack_packet(stream, stream->remote_acked++, 0);
+    if (a == 1) continue;
+    if (a == 2) { // it ended, so ack that and trigger close
+      send_state_packet(stream);
+      close_maybe(stream, 0);
+    }
+    return 1;
   }
 
   // if data pkt, send an ack - use deferred acks as well...
@@ -671,9 +676,9 @@ ucp_send (ucp_t *self, ucp_send_t *req, const char *buf, size_t buf_len, const s
 int
 ucp_check_timeouts (ucp_t *self) {
   for (uint32_t i = 0; i < self->streams_len; i++) {
-    // TODO: if this results in the stream being removed, we should decrement i
     int err = ucp_stream_check_timeouts(self->streams[i]);
     if (err < 0) return err;
+    if (err == 1) i--; // stream was closed, the index again
   }
   return 0;
 }
@@ -795,7 +800,7 @@ ucp_stream_check_timeouts (ucp_stream_t *stream) {
       if (pkt->transmits >= UCP_MAX_TRANSMITS) {
         stream->status |= UCP_STREAM_DESTROYED;
         close_maybe(stream, UCP_ERROR_TIMEOUT);
-        return 0;
+        return 1;
       }
 
       pkt->status = UCP_PACKET_WAITING;
@@ -811,7 +816,8 @@ ucp_stream_check_timeouts (ucp_stream_t *stream) {
     printf("pkt loss! stream is congested, scaling back (requeued the full window)\n");
   }
 
-  return flush_waiting_packets(stream);
+  int err = flush_waiting_packets(stream);
+  return err < 0 ? err : 0;
 }
 
 void
