@@ -49,11 +49,11 @@
 enum UCP_CALLBACK {
   UCP_ON_SEND = 1,
   UCP_ON_MESSAGE = 2,
-  UCP_ON_READ = 3,
-  UCP_ON_END = 4,
-  UCP_ON_DRAIN = 5,
-  UCP_ON_ACK = 6,
-  UCP_ON_CLOSE = 7,
+  UCP_STREAM_ON_DATA = 3,
+  UCP_STREAM_ON_END = 4,
+  UCP_STREAM_ON_DRAIN = 5,
+  UCP_STREAM_ON_ACK = 6,
+  UCP_STREAM_ON_CLOSE = 7,
 };
 
 // declare these upfront to avoid circular deps.

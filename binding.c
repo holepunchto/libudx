@@ -49,7 +49,7 @@ typedef struct {
 
   napi_env env;
   napi_ref ctx;
-  napi_ref on_read;
+  napi_ref on_data;
   napi_ref on_end;
   napi_ref on_drain;
   napi_ref on_ack;
@@ -98,7 +98,7 @@ on_message (ucp_t *self, const char *buf, size_t buf_len, const struct sockaddr 
 }
 
 static void
-on_read (ucp_stream_t *stream, const char *buf, const size_t buf_len) {
+on_data (ucp_stream_t *stream, const char *buf, const size_t buf_len) {
   ucp_napi_stream_t *n = (ucp_napi_stream_t *) stream;
 
   memcpy(n->read_buf, buf, buf_len);
@@ -106,7 +106,7 @@ on_read (ucp_stream_t *stream, const char *buf, const size_t buf_len) {
   n->read_buf += buf_len;
   n->read_buf_len -= buf_len;
 
-  UCP_NAPI_CALLBACK(n, n->on_read, {
+  UCP_NAPI_CALLBACK(n, n->on_data, {
     napi_value ret;
     napi_value argv[1];
     napi_create_uint32(env, buf_len, &(argv[0]));
@@ -273,7 +273,7 @@ NAPI_METHOD(ucp_napi_stream_init) {
 
   stream->env = env;
   napi_create_reference(env, argv[2], 1, &(stream->ctx));
-  napi_create_reference(env, argv[3], 1, &(stream->on_read));
+  napi_create_reference(env, argv[3], 1, &(stream->on_data));
   napi_create_reference(env, argv[4], 1, &(stream->on_end));
   napi_create_reference(env, argv[5], 1, &(stream->on_drain));
   napi_create_reference(env, argv[6], 1, &(stream->on_ack));
@@ -285,11 +285,11 @@ NAPI_METHOD(ucp_napi_stream_init) {
   int err = ucp_stream_init(self, u, &local_id);
   if (err < 0) UCP_NAPI_THROW(err)
 
-  ucp_stream_set_callback(u, UCP_ON_READ, on_read);
-  ucp_stream_set_callback(u, UCP_ON_END, on_end);
-  ucp_stream_set_callback(u, UCP_ON_DRAIN, on_drain);
-  ucp_stream_set_callback(u, UCP_ON_ACK, on_ack);
-  ucp_stream_set_callback(u, UCP_ON_CLOSE, on_close);
+  ucp_stream_set_callback(u, UCP_STREAM_ON_DATA, on_data);
+  ucp_stream_set_callback(u, UCP_STREAM_ON_END, on_end);
+  ucp_stream_set_callback(u, UCP_STREAM_ON_DRAIN, on_drain);
+  ucp_stream_set_callback(u, UCP_STREAM_ON_ACK, on_ack);
+  ucp_stream_set_callback(u, UCP_STREAM_ON_CLOSE, on_close);
 
   NAPI_RETURN_UINT32(local_id)
 }

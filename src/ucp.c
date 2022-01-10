@@ -457,6 +457,8 @@ process_packet (ucp_t *self, char *buf, ssize_t buf_len) {
     int a = ack_packet(stream, stream->remote_acked++, 0);
     if (a == 1) continue;
     if (a == 2) { // it ended, so ack that and trigger close
+      // TODO: make this work as well, if the ack packet is lost, ie
+      // have some internal (capped) queue of "gracefully closed" streams
       send_state_packet(stream);
       close_maybe(stream, 0);
     }
@@ -752,23 +754,23 @@ ucp_stream_init (ucp_t *self, ucp_stream_t *stream, uint32_t *local_id) {
 int
 ucp_stream_set_callback (ucp_stream_t *self, enum UCP_CALLBACK name, void *fn) {
   switch (name) {
-    case UCP_ON_READ: {
+    case UCP_STREAM_ON_DATA: {
       self->on_read = fn;
       return 0;
     }
-    case UCP_ON_END: {
+    case UCP_STREAM_ON_END: {
       self->on_end = fn;
       return 0;
     }
-    case UCP_ON_DRAIN: {
+    case UCP_STREAM_ON_DRAIN: {
       self->on_drain = fn;
       return 0;
     }
-    case UCP_ON_ACK: {
+    case UCP_STREAM_ON_ACK: {
       self->on_ack = fn;
       return 0;
     }
-    case UCP_ON_CLOSE: {
+    case UCP_STREAM_ON_CLOSE: {
       self->on_close = fn;
       return 0;
     }
