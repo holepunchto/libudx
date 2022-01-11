@@ -4,7 +4,7 @@ const UCP = require('../')
 test('basic stream', async function (t) {
   t.plan(8)
 
-  const [a, b] = makeTwoStreams()
+  const [a, b] = makeTwoStreams(t)
 
   a
     .on('data', function (data) {
@@ -40,7 +40,7 @@ test('basic stream', async function (t) {
   a.end()
 })
 
-function makeTwoStreams () {
+function makeTwoStreams (t) {
   const a = new UCP()
   const b = new UCP()
 
@@ -52,6 +52,11 @@ function makeTwoStreams () {
 
   aStream.connect(bStream.id, b.address().port, '127.0.0.1')
   bStream.connect(aStream.id, a.address().port, '127.0.0.1')
+
+  t.teardown(() => {
+    a.close()
+    b.close()
+  })
 
   return [aStream, bStream]
 }
