@@ -17,20 +17,23 @@
 #define UCP_MAGIC_BYTE 255
 #define UCP_VERSION 1
 
-#define UCP_STREAM_ENDING           0b00000001
-#define UCP_STREAM_ENDING_REMOTE    0b00000010
-#define UCP_STREAM_ENDED            0b00000100
-#define UCP_STREAM_ENDED_REMOTE     0b00001000
-#define UCP_STREAM_DESTROYING       0b00010000
-#define UCP_STREAM_DESTROYED        0b00100000
-#define UCP_STREAM_DESTROYED_REMOTE 0b01000000
-#define UCP_STREAM_CLOSED           0b10000000
+#define UCP_SOCKET_READING 0b01
+#define UCP_SOCKET_BOUND   0b10
+#define UCP_SOCKET_PAUSED  0b10 // ~READING truncated to bits
+
+#define UCP_STREAM_CONNECTED        0b000000001
+#define UCP_STREAM_ENDING           0b000000010
+#define UCP_STREAM_ENDING_REMOTE    0b000000100
+#define UCP_STREAM_ENDED            0b000001000
+#define UCP_STREAM_ENDED_REMOTE     0b000010000
+#define UCP_STREAM_DESTROYING       0b000100000
+#define UCP_STREAM_DESTROYED        0b001000000
+#define UCP_STREAM_DESTROYED_REMOTE 0b010000000
+#define UCP_STREAM_CLOSED           0b100000000
 
 #define UCP_PACKET_WAITING  1
 #define UCP_PACKET_SENDING  2
 #define UCP_PACKET_INFLIGHT 3
-#define UCP_PACKET_ACKED    4
-#define UCP_PACKET_GC       5
 
 #define UCP_PACKET_STREAM_STATE   0b00001
 #define UCP_PACKET_STREAM_WRITE   0b00010
@@ -51,11 +54,12 @@
 enum UCP_CALLBACK {
   UCP_ON_SEND = 1,
   UCP_ON_MESSAGE = 2,
-  UCP_STREAM_ON_DATA = 3,
-  UCP_STREAM_ON_END = 4,
-  UCP_STREAM_ON_DRAIN = 5,
-  UCP_STREAM_ON_ACK = 6,
-  UCP_STREAM_ON_CLOSE = 7,
+  UCP_ON_CLOSE = 3,
+  UCP_STREAM_ON_DATA = 4,
+  UCP_STREAM_ON_END = 5,
+  UCP_STREAM_ON_DRAIN = 6,
+  UCP_STREAM_ON_ACK = 7,
+  UCP_STREAM_ON_CLOSE = 8,
 };
 
 // declare these upfront to avoid circular deps.
@@ -70,8 +74,12 @@ typedef struct ucp {
   uv_poll_t io_poll;
   uv_loop_t *loop;
   ucp_fifo_t send_queue;
+  uv_timer_t timer;
 
+  int status;
+  int readers;
   int events;
+  int pending_closes;
 
   void *userdata;
   int userid;
@@ -207,6 +215,15 @@ ucp_getsockname (ucp_t *self, struct sockaddr * name, int *name_len);
 
 int
 ucp_send (ucp_t *self, ucp_send_t *req, const char *buf, size_t buf_len, const struct sockaddr *addr);
+
+int
+ucp_read_start (ucp_t *self);
+
+int
+ucp_read_stop (ucp_t *self);
+
+int
+ucp_close (ucp_t *self);
 
 // only exposed here as a convenience / debug tool - the ucp instance tools this automatically
 int

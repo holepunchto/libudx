@@ -41,9 +41,24 @@ max (a, b) {
 static void
 on_uv_poll (uv_poll_t *handle, int status, int events);
 
+static void
+on_uv_close (uv_handle_t *handle) {
+  ucp_t *self = (ucp_t *) handle->data;
+
+  if (--self->pending_closes == 0 && self->on_close != NULL) {
+    self->on_close(self);
+  }
+}
+
+static void
+on_uv_interval (uv_timer_t *req) {
+  ucp_t *ucp = req->data;
+  ucp_check_timeouts(ucp);
+}
+
 static int
 update_poll (ucp_t *self) {
-  int events = (self->send_queue.len > 0 ? UV_WRITABLE : 0) | UV_READABLE;
+  int events = (self->send_queue.len > 0 ? UV_WRITABLE : 0) | (self->readers ? UV_READABLE : 0);
   if (events == self->events) return 0;
 
   self->events = events;
@@ -212,6 +227,12 @@ close_maybe (ucp_stream_t *stream, int err) {
 
   ucp_cirbuf_remove(&(stream->ucp->streams_by_id), stream->local_id);
   // TODO: move the instance to a TIME_WAIT state, so we can handle retransmits
+
+  if (stream->status & UCP_STREAM_CONNECTED) {
+    // TODO: move this to read_stop
+    stream->ucp->readers--;
+    update_poll(stream->ucp);
+  }
 
   if (stream->on_close != NULL) {
     stream->on_close(stream, err);
@@ -557,7 +578,6 @@ on_uv_poll (uv_poll_t *handle, int status, int events) {
 
     if (size > 0 && !process_packet(self, b, size) && self->on_message != NULL) {
       self->on_message(self, b, size, h.msg_name);
-      // TODO: watch for re-entry here!
     }
 
     return;
@@ -568,21 +588,36 @@ on_uv_poll (uv_poll_t *handle, int status, int events) {
 
 int
 ucp_init (ucp_t *self, uv_loop_t *loop) {
-  int err;
+  self->status = 0;
+  self->readers = 0;
+  self->events = 0;
 
   self->streams_len = 0;
   self->streams_max_len = 16;
-  self->events = 0;
+  self->streams = malloc(self->streams_max_len * sizeof(ucp_stream_t *));
+
   self->loop = loop;
+
   self->on_message = NULL;
   self->on_send = NULL;
+  self->on_close = NULL;
 
-  self->streams = malloc(self->streams_max_len * sizeof(ucp_stream_t *));
   ucp_fifo_init(&(self->send_queue), 16);
   ucp_cirbuf_init(&(self->streams_by_id), 1);
 
-  err = uv_udp_init(loop, &(self->handle));
-  return err;
+  uv_udp_t *handle = &(self->handle);
+  uv_timer_t *timer = (uv_timer_t *) &(self->timer);
+
+  // Asserting all the errors here as it massively simplifies error handling.
+  // In practice these will never fail.
+
+  assert(uv_timer_init(loop, timer) == 0);
+  assert(uv_udp_init(loop, handle) == 0);
+
+  timer->data = self;
+  handle->data = self;
+
+  return 0;
 }
 
 int
@@ -594,6 +629,10 @@ ucp_set_callback (ucp_t *self, enum UCP_CALLBACK name, void *fn) {
     }
     case UCP_ON_MESSAGE: {
       self->on_message = fn;
+      return 0;
+    }
+    case UCP_ON_CLOSE: {
+      self->on_close = fn;
       return 0;
     }
     default: {
@@ -619,25 +658,25 @@ ucp_set_ttl(ucp_t *self, int ttl) {
 
 int
 ucp_bind (ucp_t *self, const struct sockaddr *addr) {
-  int err;
-
   uv_udp_t *handle = &(self->handle);
   uv_poll_t *poll = &(self->io_poll);
   uv_os_fd_t fd;
 
-  err = uv_udp_bind(handle, addr, 0);
+  // This might actually fail in practice, so
+  int err = uv_udp_bind(handle, addr, 0);
   if (err) return err;
 
-  err = uv_fileno((const uv_handle_t *) handle, &fd);
-  if (err) return err;
+  // Asserting all the errors here as it massively simplifies error handling
+  // and in practice non of these will fail, as all our handles are valid and alive.
 
-  err = uv_poll_init(self->loop, poll, fd);
-  if (err) return err;
+  assert(uv_fileno((const uv_handle_t *) handle, &fd) == 0);
+  assert(uv_poll_init(self->loop, poll, fd) == 0);
+  assert(uv_timer_start(&(self->timer), on_uv_interval, UCP_CLOCK_GRANULARITY_MS, UCP_CLOCK_GRANULARITY_MS) == 0);
 
+  self->status |= UCP_SOCKET_BOUND;
   poll->data = self;
 
-  err = update_poll(self);
-  return err;
+  return 0;
 }
 
 int
@@ -647,8 +686,6 @@ ucp_getsockname (ucp_t *self, struct sockaddr * name, int *name_len) {
 
 int
 ucp_send (ucp_t *self, ucp_send_t *req, const char *buf, size_t buf_len, const struct sockaddr *dest) {
-  int err;
-
   ucp_packet_t *pkt = &(req->pkt);
 
   req->dest = *dest;
@@ -672,9 +709,27 @@ ucp_send (ucp_t *self, ucp_send_t *req, const char *buf, size_t buf_len, const s
 
   pkt->fifo_gc = ucp_fifo_push(&(self->send_queue), pkt);
 
-  err = update_poll(self);
+  return update_poll(self);
+}
 
-  return err;
+int
+ucp_read_start (ucp_t *self) {
+  if (self->status & UCP_SOCKET_READING) return 0;
+
+  self->status |= UCP_SOCKET_READING;
+  self->readers++;
+
+  return update_poll(self);
+}
+
+int
+ucp_read_stop (ucp_t *self) {
+  if ((self->status & UCP_SOCKET_READING) == 0) return 0;
+
+  self->status ^= UCP_SOCKET_PAUSED;
+  self->readers--;
+
+  return update_poll(self);
 }
 
 int
@@ -684,6 +739,25 @@ ucp_check_timeouts (ucp_t *self) {
     if (err < 0) return err;
     if (err == 1) i--; // stream was closed, the index again
   }
+  return 0;
+}
+
+int
+ucp_close (ucp_t *self) {
+  if (self->streams_len > 0) return UV_EBUSY;
+
+  self->pending_closes = 2;
+  uv_timer_stop(&(self->timer));
+
+  if (self->status & UCP_SOCKET_BOUND) {
+    self->pending_closes++;
+    uv_poll_stop(&(self->io_poll));
+    uv_close((uv_handle_t *) &(self->io_poll), on_uv_close);
+  }
+
+  uv_close((uv_handle_t *) &(self->handle), on_uv_close);
+  uv_close((uv_handle_t *) &(self->timer), on_uv_close);
+
   return 0;
 }
 
@@ -826,8 +900,18 @@ ucp_stream_check_timeouts (ucp_stream_t *stream) {
 
 void
 ucp_stream_connect (ucp_stream_t *stream, uint32_t remote_id, const struct sockaddr *remote_addr) {
+  int already_connected = stream->status & UCP_STREAM_CONNECTED;
+
+  stream->status |= UCP_STREAM_CONNECTED;
+
   stream->remote_id = remote_id;
   stream->remote_addr = *remote_addr;
+
+  if (already_connected == 0) {
+    // TODO: move this to read_start once we have that
+    stream->ucp->readers++;
+    update_poll(stream->ucp);
+  }
 }
 
 int
@@ -894,6 +978,12 @@ ucp_stream_end (ucp_stream_t *stream, ucp_write_t *req) {
 
 int
 ucp_stream_destroy (ucp_stream_t *stream) {
+  if ((stream->status & UCP_STREAM_CONNECTED) == 0) {
+    stream->status |= UCP_STREAM_DESTROYED;
+    close_maybe(stream, UCP_ERROR_DESTROYED);
+    return 0;
+  }
+
   stream->status |= UCP_STREAM_DESTROYING;
 
   clear_outgoing_packets(stream);
@@ -909,5 +999,7 @@ ucp_stream_destroy (ucp_stream_t *stream) {
   stream->seq++;
 
   ucp_fifo_push(&(stream->ucp->send_queue), pkt);
-  return update_poll(stream->ucp);
+
+  int err = update_poll(stream->ucp);
+  return err < 0 ? err : 1;
 }
