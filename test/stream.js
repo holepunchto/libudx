@@ -1,40 +1,44 @@
 const test = require('brittle')
 const UCP = require('../')
 
-test('basic stream', async function (t) {
+test('tiny echo stream', async function (t) {
   t.plan(8)
 
   const [a, b] = makeTwoStreams(t)
 
-  a
-    .on('data', function (data) {
-      t.alike(data, Buffer.from('echo: hello world'), 'a received echoed data')
-    })
-    .on('end', function () {
-      t.pass('a ended')
-    })
-    .on('finish', function () {
-      t.pass('a finished')
-    })
-    .on('close', function () {
-      t.pass('a closed')
-    })
+  a.on('data', function (data) {
+    t.alike(data, Buffer.from('echo: hello world'), 'a received echoed data')
+  })
 
-  b
-    .on('data', function (data) {
-      t.alike(data, Buffer.from('hello world'), 'b received data')
-      b.write(Buffer.concat([Buffer.from('echo: '), data]))
-    })
-    .on('end', function () {
-      t.pass('b ended')
-      b.end()
-    })
-    .on('finish', function () {
-      t.pass('b finished')
-    })
-    .on('close', function () {
-      t.pass('b closed')
-    })
+  a.on('end', function () {
+    t.pass('a ended')
+  })
+
+  a.on('finish', function () {
+    t.pass('a finished')
+  })
+
+  a.on('close', function () {
+    t.pass('a closed')
+  })
+
+  b.on('data', function (data) {
+    t.alike(data, Buffer.from('hello world'), 'b received data')
+    b.write(Buffer.concat([Buffer.from('echo: '), data]))
+  })
+
+  b.on('end', function () {
+    t.pass('b ended')
+    b.end()
+  })
+
+  b.on('finish', function () {
+    t.pass('b finished')
+  })
+
+  b.on('close', function () {
+    t.pass('b closed')
+  })
 
   a.write(Buffer.from('hello world'))
   a.end()
