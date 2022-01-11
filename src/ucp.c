@@ -18,11 +18,13 @@
 #define UCP_STREAM_SHOULD_END (UCP_STREAM_ENDING | UCP_STREAM_ENDED | UCP_STREAM_DEAD)
 #define UCP_STREAM_END UCP_STREAM_ENDING
 
-#define UCP_STREAM_SHOULD_END_REMOTE (UCP_STREAM_ENDED_REMOTE | UCP_STREAM_DEAD)
-#define UCP_STREAM_END_REMOTE 0
+#define UCP_STREAM_SHOULD_END_REMOTE (UCP_STREAM_ENDED_REMOTE | UCP_STREAM_DEAD | UCP_STREAM_ENDING_REMOTE)
+#define UCP_STREAM_END_REMOTE UCP_STREAM_ENDING_REMOTE
 
 #define UCP_PACKET_CALLBACK (UCP_PACKET_STREAM_SEND | UCP_PACKET_STREAM_DESTROY | UCP_PACKET_SEND)
 #define UCP_PACKET_FREE_ON_SEND (UCP_PACKET_STREAM_STATE | UCP_PACKET_STREAM_DESTROY)
+
+#define UCP_HEADER_DATA_OR_END (UCP_HEADER_DATA | UCP_HEADER_END)
 
 #define UCP_MAX_TRANSMITS 5
 
@@ -58,7 +60,7 @@ init_stream_packet (ucp_packet_t *pkt, int type, ucp_stream_t *stream, const cha
   *(b++) = UCP_MAGIC_BYTE;
   *(b++) = UCP_VERSION;
   *(b++) = (uint8_t) type;
-  *(b++) = 0; // no extensions atm
+  *(b++) = 0; // data offset
 
   uint32_t *i = (uint32_t *) b;
 
@@ -132,7 +134,7 @@ send_state_packet (ucp_stream_t *stream) {
 
   if (pkt == NULL) pkt = malloc(sizeof(ucp_packet_t));
 
-  init_stream_packet(pkt, UCP_HEADER_STATE, stream, payload, payload_len);
+  init_stream_packet(pkt, payload ? UCP_HEADER_SACK : 0, stream, payload, payload_len);
 
   pkt->status = UCP_PACKET_SENDING;
   pkt->type = UCP_PACKET_STREAM_STATE;
@@ -209,6 +211,7 @@ close_maybe (ucp_stream_t *stream, int err) {
   // (anything else from stream init)
 
   ucp_cirbuf_remove(&(stream->ucp->streams_by_id), stream->local_id);
+  // TODO: move the instance to a TIME_WAIT state, so we can handle retransmits
 
   if (stream->on_close != NULL) {
     stream->on_close(stream, err);
@@ -353,7 +356,7 @@ process_packet (ucp_t *self, char *buf, ssize_t buf_len) {
   if ((*(b++) != UCP_MAGIC_BYTE) || (*(b++) != UCP_VERSION)) return 0;
 
   int type = (int) *(b++);
-  uint8_t ext = *(b++);
+  uint8_t data_offset = *(b++);
 
   uint32_t *i = (uint32_t *) b;
 
@@ -370,43 +373,44 @@ process_packet (ucp_t *self, char *buf, ssize_t buf_len) {
 
   ucp_cirbuf_t *inc = &(stream->incoming);
 
-  switch (type) {
-    case UCP_HEADER_STATE: {
-      if (buf_len == 0) break;
-      process_sacks(stream, buf, buf_len);
-      break;
+  if (type & UCP_HEADER_SACK) {
+    process_sacks(stream, buf, buf_len);
+  }
+
+  if (type & UCP_HEADER_DATA_OR_END && ucp_cirbuf_get(inc, seq) == NULL && (stream->status & UCP_STREAM_SHOULD_READ) == UCP_STREAM_READ) {
+    // Copy over incoming buffer as we CURRENTLY do not own it (stack allocated upstream)
+    // TODO: if this is the next packet we expect (it usually is!), then there is no need
+    // for the malloc and memcpy - we just need a way to not free it then
+
+    if (data_offset) {
+      if (data_offset > buf_len) return 0;
+      buf += data_offset;
     }
 
-    case UCP_HEADER_DATA:
-    case UCP_HEADER_END: {
-      if (ucp_cirbuf_get(inc, seq) != NULL) break;
-      if ((stream->status & UCP_STREAM_SHOULD_READ) != UCP_STREAM_READ) break;
+    char *ptr = malloc(sizeof(ucp_pending_read_t) + buf_len);
 
-      // Copy over incoming buffer as we CURRENTLY do not own it (stack allocated upstream)
-      // TODO: if this is the next packet we expect (it usually is!), then there is no need
-      // for the malloc and memcpy - we just need a way to not free it then
-      char *ptr = malloc(sizeof(ucp_pending_read_t) + buf_len);
+    ucp_pending_read_t *pkt = (ucp_pending_read_t *) ptr;
+    char *cpy = ptr + sizeof(ucp_pending_read_t);
 
-      ucp_pending_read_t *pkt = (ucp_pending_read_t *) ptr;
-      char *cpy = ptr + sizeof(ucp_pending_read_t);
+    memcpy(cpy, buf, buf_len);
 
-      memcpy(cpy, buf, buf_len);
+    pkt->seq = seq;
+    pkt->buf.iov_base = cpy;
+    pkt->buf.iov_len = buf_len;
 
-      pkt->seq = seq;
-      pkt->type = type;
-      pkt->buf.iov_base = cpy;
-      pkt->buf.iov_len = buf_len;
+    ucp_cirbuf_set(inc, (ucp_cirbuf_val_t *) pkt);
+  }
 
-      ucp_cirbuf_set(inc, (ucp_cirbuf_val_t *) pkt);
-      break;
-    }
+  if (type & UCP_HEADER_END) {
+    stream->status |= UCP_STREAM_ENDING_REMOTE;
+    stream->remote_ended = seq;
+  }
 
-    case UCP_HEADER_DESTROY: {
-      stream->status |= UCP_STREAM_DESTROYED_REMOTE;
-      clear_outgoing_packets(stream);
-      close_maybe(stream, UCP_ERROR_DESTROYED_REMOTE);
-      return 1;
-    }
+  if (type & UCP_HEADER_DESTROY) {
+    stream->status |= UCP_STREAM_DESTROYED_REMOTE;
+    clear_outgoing_packets(stream);
+    close_maybe(stream, UCP_ERROR_DESTROYED_REMOTE);
+    return 1;
   }
 
   // process the read queue
@@ -418,16 +422,6 @@ process_packet (ucp_t *self, char *buf, ssize_t buf_len) {
 
     if (pkt->buf.iov_len > 0 && stream->on_read != NULL) {
       stream->on_read(stream, pkt->buf.iov_base, pkt->buf.iov_len);
-      if (stream->status & UCP_STREAM_DEAD) return 1;
-    }
-
-    if (pkt->type == UCP_HEADER_END && (stream->status & UCP_STREAM_SHOULD_END_REMOTE) == UCP_STREAM_END_REMOTE) {
-      stream->status |= UCP_STREAM_ENDED_REMOTE;
-      if (stream->on_end != NULL) {
-        stream->on_end(stream);
-        if (stream->status & UCP_STREAM_DEAD) return 1;
-      }
-      close_maybe(stream, 0);
     }
 
     free(pkt);
@@ -466,12 +460,20 @@ process_packet (ucp_t *self, char *buf, ssize_t buf_len) {
   }
 
   // if data pkt, send an ack - use deferred acks as well...
-  if (type == UCP_HEADER_DATA || type == UCP_HEADER_END) {
+  if (type & UCP_HEADER_DATA_OR_END) {
     send_state_packet(stream);
   }
 
   if (stream->pkts_waiting > 0) {
     ucp_stream_check_timeouts(stream);
+  }
+
+  if ((stream->status & UCP_STREAM_SHOULD_END_REMOTE) == UCP_STREAM_END_REMOTE && stream->remote_ended <= stream->ack) {
+    stream->status |= UCP_STREAM_ENDED_REMOTE;
+    if (stream->on_end != NULL) {
+      stream->on_end(stream);
+    }
+    close_maybe(stream, 0);
   }
 
   return 1;

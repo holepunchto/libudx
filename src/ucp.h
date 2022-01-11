@@ -17,13 +17,14 @@
 #define UCP_MAGIC_BYTE 255
 #define UCP_VERSION 1
 
-#define UCP_STREAM_ENDING           0b0000001
-#define UCP_STREAM_ENDED            0b0000010
-#define UCP_STREAM_ENDED_REMOTE     0b0000100
-#define UCP_STREAM_DESTROYING       0b0001000
-#define UCP_STREAM_DESTROYED        0b0010000
-#define UCP_STREAM_DESTROYED_REMOTE 0b0100000
-#define UCP_STREAM_CLOSED           0b1000000
+#define UCP_STREAM_ENDING           0b00000001
+#define UCP_STREAM_ENDING_REMOTE    0b00000010
+#define UCP_STREAM_ENDED            0b00000100
+#define UCP_STREAM_ENDED_REMOTE     0b00001000
+#define UCP_STREAM_DESTROYING       0b00010000
+#define UCP_STREAM_DESTROYED        0b00100000
+#define UCP_STREAM_DESTROYED_REMOTE 0b01000000
+#define UCP_STREAM_CLOSED           0b10000000
 
 #define UCP_PACKET_WAITING  1
 #define UCP_PACKET_SENDING  2
@@ -37,10 +38,11 @@
 #define UCP_PACKET_STREAM_DESTROY 0b01000
 #define UCP_PACKET_SEND           0b10000
 
-#define UCP_HEADER_STATE   0
-#define UCP_HEADER_DATA    1
-#define UCP_HEADER_END     2
-#define UCP_HEADER_DESTROY 3
+#define UCP_HEADER_DATA    0b00001
+#define UCP_HEADER_END     0b00010
+#define UCP_HEADER_SACK    0b00100
+#define UCP_HEADER_MESSAGE 0b01000
+#define UCP_HEADER_DESTROY 0b10000
 
 #define UCP_ERROR_DESTROYED        -1
 #define UCP_ERROR_DESTROYED_REMOTE -2
@@ -78,6 +80,7 @@ typedef struct ucp {
 
   void (*on_send)(struct ucp *self, struct ucp_send *req, int failed);
   void (*on_message)(struct ucp *self, const char *buf, size_t buf_len, const struct sockaddr *from);
+  void (*on_close)(struct ucp *self);
 
   uint32_t streams_len;
   uint32_t streams_max_len;
@@ -154,6 +157,7 @@ typedef struct ucp_stream {
   uint32_t seq;
   uint32_t ack;
   uint32_t remote_acked;
+  uint32_t remote_ended;
 
   uint32_t srtt;
   uint32_t rttvar;
