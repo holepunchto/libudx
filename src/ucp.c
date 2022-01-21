@@ -293,6 +293,9 @@ ack_packet (ucp_stream_t *stream, uint32_t seq, int sack) {
       if (stream->status & UCP_STREAM_DEAD) return 2;
     }
 
+    // TODO: the end condition needs work here to be more "stateless"
+    // ie if the remote has acked all our writes, then instead of waiting for retransmits, we should
+    // clear those and mark as local ended NOW.
     if ((stream->status & UCP_STREAM_SHOULD_END) == UCP_STREAM_END && stream->pkts_waiting == 0 && stream->pkts_inflight == 0) {
       stream->status |= UCP_STREAM_ENDED;
       return 2;
@@ -461,7 +464,7 @@ process_packet (ucp_t *self, char *buf, ssize_t buf_len) {
       stream->cwnd += max((UCP_MTU * UCP_MTU) / stream->cwnd, 1);
     }
     stream->dup_acks = 0;
-  } else {
+  } else if ((type & UCP_HEADER_DATA_OR_END) == 0) {
     stream->dup_acks++;
     if (stream->dup_acks >= 3) {
       fast_retransmit(stream);
@@ -485,16 +488,16 @@ process_packet (ucp_t *self, char *buf, ssize_t buf_len) {
     send_state_packet(stream);
   }
 
-  if (stream->pkts_waiting > 0) {
-    ucp_stream_check_timeouts(stream);
-  }
-
   if ((stream->status & UCP_STREAM_SHOULD_END_REMOTE) == UCP_STREAM_END_REMOTE && stream->remote_ended <= stream->ack) {
     stream->status |= UCP_STREAM_ENDED_REMOTE;
     if (stream->on_end != NULL) {
       stream->on_end(stream);
     }
-    close_maybe(stream, 0);
+    if (close_maybe(stream, 0)) return 1;
+  }
+
+  if (stream->pkts_waiting > 0) {
+    ucp_stream_check_timeouts(stream);
   }
 
   return 1;
@@ -757,6 +760,15 @@ ucp_close (ucp_t *self) {
 
   uv_close((uv_handle_t *) &(self->handle), on_uv_close);
   uv_close((uv_handle_t *) &(self->timer), on_uv_close);
+
+  while (1) {
+    ucp_packet_t *pkt = ucp_fifo_shift(&self->send_queue);
+    if (pkt == NULL) break;
+
+    if (pkt->type == UCP_PACKET_SEND && self->on_send != NULL) {
+      self->on_send(self, pkt->ctx, UCP_ERROR_DESTROYED);
+    }
+  }
 
   return 0;
 }
