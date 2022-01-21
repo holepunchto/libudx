@@ -9,6 +9,9 @@
     return NULL; \
   }
 
+#define UCP_NAPI_INTERACTIVE 0
+#define UCP_NAPI_NON_INTERACTIVE 1
+
 #define UCP_NAPI_CALLBACK(self, fn, src) \
   napi_env env = self->env; \
   napi_handle_scope scope; \
@@ -27,7 +30,8 @@
     napi_fatal_exception(env, fatal_exception); \
     printf("oh no add that realloc\n"); \
   } else { \
-    napi_get_buffer_info(env, ret, (void **) &(self->read_buf), &(self->read_buf_len)); \
+    napi_get_buffer_info(env, ret, (void **) &(self->read_buf), &(self->read_buf_free)); \
+    self->read_buf_head = self->read_buf; \
   }
 
 typedef struct {
@@ -44,7 +48,10 @@ typedef struct {
   ucp_stream_t stream;
 
   char *read_buf;
-  size_t read_buf_len;
+  char *read_buf_head;
+  size_t read_buf_free;
+
+  int mode;
 
   napi_env env;
   napi_ref ctx;
@@ -63,13 +70,14 @@ parse_address (struct sockaddr *name, char *ip, int *port) {
 }
 
 static void
-on_ucp_send (ucp_t *self, ucp_send_t *req, int status) {
+on_ucp_send (ucp_t *self, ucp_send_t *req, int failed) {
   ucp_napi_t *n = (ucp_napi_t *) self;
 
   UCP_NAPI_CALLBACK(n, n->on_send, {
-    napi_value argv[1];
+    napi_value argv[2];
     napi_create_int32(env, req->userid, &(argv[0]));
-    NAPI_MAKE_CALLBACK(env, NULL, ctx, callback, 1, argv, NULL)
+    napi_create_int32(env, failed, &(argv[1]));
+    NAPI_MAKE_CALLBACK(env, NULL, ctx, callback, 2, argv, NULL)
   })
 }
 
@@ -103,15 +111,21 @@ static void
 on_ucp_stream_data (ucp_stream_t *stream, const char *buf, const size_t buf_len) {
   ucp_napi_stream_t *n = (ucp_napi_stream_t *) stream;
 
-  memcpy(n->read_buf, buf, buf_len);
+  memcpy(n->read_buf_head, buf, buf_len);
 
-  n->read_buf += buf_len;
-  n->read_buf_len -= buf_len;
+  n->read_buf_head += buf_len;
+  n->read_buf_free -= buf_len;
+
+  if (n->mode == UCP_NAPI_NON_INTERACTIVE && n->read_buf_free >= UCP_MTU) {
+    return;
+  }
+
+  size_t read = n->read_buf_head - n->read_buf;
 
   UCP_NAPI_CALLBACK(n, n->on_data, {
     napi_value ret;
     napi_value argv[1];
-    napi_create_uint32(env, buf_len, &(argv[0]));
+    napi_create_uint32(env, read, &(argv[0]));
     UCP_NAPI_MAKE_ALLOC_CALLBACK(n, env, NULL, ctx, callback, 1, argv, ret)
   })
 }
@@ -120,8 +134,12 @@ static void
 on_ucp_stream_end (ucp_stream_t *stream) {
   ucp_napi_stream_t *n = (ucp_napi_stream_t *) stream;
 
+  size_t read = n->read_buf_head - n->read_buf;
+
   UCP_NAPI_CALLBACK(n, n->on_end, {
-    NAPI_MAKE_CALLBACK(env, NULL, ctx, callback, 0, NULL, NULL)
+    napi_value argv[1];
+    napi_create_uint32(env, read, &(argv[0]));
+    NAPI_MAKE_CALLBACK(env, NULL, ctx, callback, 1, argv, NULL)
   })
 }
 
@@ -283,8 +301,11 @@ NAPI_METHOD(ucp_napi_stream_init) {
   NAPI_ARGV_BUFFER_CAST(ucp_t *, self, 0)
   NAPI_ARGV_BUFFER_CAST(ucp_napi_stream_t *, stream, 1)
 
+  stream->mode = UCP_NAPI_INTERACTIVE;
+
   stream->read_buf = NULL;
-  stream->read_buf_len = 0;
+  stream->read_buf_head = NULL;
+  stream->read_buf_free = 0;
 
   stream->env = env;
   napi_create_reference(env, argv[2], 1, &(stream->ctx));
@@ -309,6 +330,16 @@ NAPI_METHOD(ucp_napi_stream_init) {
   NAPI_RETURN_UINT32(local_id)
 }
 
+NAPI_METHOD(ucp_napi_stream_set_mode) {
+  NAPI_ARGV(2)
+  NAPI_ARGV_BUFFER_CAST(ucp_napi_stream_t *, stream, 0)
+  NAPI_ARGV_UINT32(mode, 1)
+
+  stream->mode = mode;
+
+  return NULL;
+}
+
 NAPI_METHOD(ucp_napi_stream_connect) {
   NAPI_ARGV(5)
   NAPI_ARGV_BUFFER_CAST(ucp_napi_stream_t *, stream, 0)
@@ -322,7 +353,8 @@ NAPI_METHOD(ucp_napi_stream_connect) {
   if (err < 0) UCP_NAPI_THROW(err)
 
   stream->read_buf = read_buf;
-  stream->read_buf_len = read_buf_len;
+  stream->read_buf_head = read_buf;
+  stream->read_buf_free = read_buf_len;
 
   ucp_stream_connect((ucp_stream_t *) stream, remote_id, (const struct sockaddr *) &addr);
 
@@ -394,6 +426,7 @@ NAPI_INIT() {
   NAPI_EXPORT_FUNCTION(ucp_napi_close)
 
   NAPI_EXPORT_FUNCTION(ucp_napi_stream_init)
+  NAPI_EXPORT_FUNCTION(ucp_napi_stream_set_mode)
   NAPI_EXPORT_FUNCTION(ucp_napi_stream_connect)
   NAPI_EXPORT_FUNCTION(ucp_napi_stream_write)
   NAPI_EXPORT_FUNCTION(ucp_napi_stream_end)
