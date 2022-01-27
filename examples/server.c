@@ -3,13 +3,13 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <time.h>
-#include "../src/ucp.h"
+#include "../src/udx.h"
 #include "../src/fifo.h"
 #include "../src/cirbuf.h"
 
-static ucp_t server;
-static ucp_stream_t server_sock;
-static ucp_send_t sreq;
+static udx_t server;
+static udx_stream_t server_sock;
+static udx_send_t sreq;
 static uv_timer_t timer;
 static uint32_t sbuf;
 
@@ -19,20 +19,20 @@ static size_t ticks = 0;
 
 static void
 on_uv_interval (uv_timer_t *req) {
-  // ucp_stream_send_state(&server_sock);
-  // ucp_stream_check_timeouts(&server_sock);
+  // udx_stream_send_state(&server_sock);
+  // udx_stream_check_timeouts(&server_sock);
 
   if ((ticks++ & 63) == 0) {
     printf("on read, total recv=%zu total reads=%zu ack=%u pkts_sent=%zu\n", rcvd, reads, server_sock.ack, server_sock.stats_pkts_sent);
 
-    ucp_stream_t *sock = &server_sock;
+    udx_stream_t *sock = &server_sock;
 
     int sacks = 0;
     int max = 32;
 
     for (uint32_t i = 0; i < max; i++) {
       uint32_t seq = sock->ack + 1 + i;
-      if (ucp_cirbuf_get(&(sock->incoming), seq) != NULL) {
+      if (udx_cirbuf_get(&(sock->incoming), seq) != NULL) {
         sacks++;
         max += 32;
       }
@@ -43,25 +43,25 @@ on_uv_interval (uv_timer_t *req) {
 }
 
 static void
-on_read (ucp_stream_t *stream, char *buf, size_t read) {
+on_read (udx_stream_t *stream, char *buf, size_t read) {
   rcvd += read;
   reads++;
 }
 
 static void
-on_message (ucp_t *self, char *buf, ssize_t nread, const struct sockaddr_in *from) {
+on_message (udx_t *self, char *buf, ssize_t nread, const struct sockaddr_in *from) {
   if (nread < 4) return;
   uint32_t id = *((uint32_t *) buf);
   if (id == 0) return;
 
-  ucp_set_callback(&server, UCP_ON_MESSAGE, NULL);
+  udx_set_callback(&server, UDX_ON_MESSAGE, NULL);
 
   printf("remote socket id: %u\n", id);
 
-  ucp_stream_connect(&server_sock, id, (const struct sockaddr *) from);
+  udx_stream_connect(&server_sock, id, (const struct sockaddr *) from);
 
   sbuf = server_sock.local_id;
-  ucp_send(&server, &sreq, (char *) &sbuf, 4, (const struct sockaddr *) from);
+  udx_send(&server, &sreq, (char *) &sbuf, 4, (const struct sockaddr *) from);
   uv_timer_start(&timer, on_uv_interval, 20, 20);
 }
 
@@ -74,21 +74,21 @@ main () {
 
   struct sockaddr_in addr;
 
-  ucp_init(&server, loop);
+  udx_init(&server, loop);
   uv_timer_init(loop, &timer);
 
   int b = 2 * 1024 * 1024;
-  ucp_send_buffer_size(&server, &b);
-  ucp_recv_buffer_size(&server, &b);
+  udx_send_buffer_size(&server, &b);
+  udx_recv_buffer_size(&server, &b);
 
   uv_ip4_addr("0.0.0.0", 10101, &addr);
-  ucp_bind(&server, (const struct sockaddr *) &addr);
-  ucp_set_callback(&server, UCP_ON_MESSAGE, on_message);
+  udx_bind(&server, (const struct sockaddr *) &addr);
+  udx_set_callback(&server, UDX_ON_MESSAGE, on_message);
 
   int id;
 
-  ucp_stream_init(&server, &server_sock, &id);
-  ucp_stream_set_callback(&server_sock, UCP_ON_READ, on_read);
+  udx_stream_init(&server, &server_sock, &id);
+  udx_stream_set_callback(&server_sock, UDX_ON_READ, on_read);
 
   printf("local socket id: %u\n", server_sock.local_id);
 

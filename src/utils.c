@@ -10,7 +10,7 @@
 #include <mach/mach_time.h>
 
 uint64_t
-ucp_get_microseconds () {
+udx_get_microseconds () {
   // http://developer.apple.com/mac/library/qa/qa2004/qa1398.html
   // http://www.macresearch.org/tutorial_performance_and_time
   static mach_timebase_info_data_t sTimebaseInfo;
@@ -31,7 +31,7 @@ ucp_get_microseconds () {
 #include <unistd.h>
 
 #if ! (defined(_POSIX_TIMERS) && _POSIX_TIMERS > 0 && defined(CLOCK_MONOTONIC))
-  #warning "Using non-monotonic function gettimeofday() in ucp_get_microseconds()"
+  #warning "Using non-monotonic function gettimeofday() in udx_get_microseconds()"
 #endif
 
 /* Unfortunately, #ifdef CLOCK_MONOTONIC is not enough to make sure that
@@ -39,7 +39,7 @@ ucp_get_microseconds () {
    kernel (think OpenWRT). -- jch */
 
 uint64_t
-ucp_get_microseconds () {
+udx_get_microseconds () {
   struct timeval tv;
 
   #if defined(_POSIX_TIMERS) && _POSIX_TIMERS > 0 && defined(CLOCK_MONOTONIC)
@@ -65,6 +65,6 @@ ucp_get_microseconds () {
 #endif
 
 uint64_t
-ucp_get_milliseconds () {
-  return ucp_get_microseconds() / 1000;
+udx_get_milliseconds () {
+  return udx_get_microseconds() / 1000;
 }

@@ -1,5 +1,5 @@
-#ifndef UCP_FIFO_H
-#define UCP_FIFO_H
+#ifndef UDX_FIFO_H
+#define UDX_FIFO_H
 
 #include <stdlib.h>
 #include <stdint.h>
@@ -10,24 +10,24 @@ typedef struct {
   uint32_t max_len;
   uint32_t mask;
   void **values;
-} ucp_fifo_t;
+} udx_fifo_t;
 
 void
-ucp_fifo_init (ucp_fifo_t *f, uint32_t initial_max_size);
+udx_fifo_init (udx_fifo_t *f, uint32_t initial_max_size);
 
 void
-ucp_fifo_destroy (ucp_fifo_t *f);
+udx_fifo_destroy (udx_fifo_t *f);
 
 void *
-ucp_fifo_shift (ucp_fifo_t *f);
+udx_fifo_shift (udx_fifo_t *f);
 
 void
-ucp_fifo_grow (ucp_fifo_t *f);
+udx_fifo_grow (udx_fifo_t *f);
 
 uint32_t
-ucp_fifo_push (ucp_fifo_t *f, void *data);
+udx_fifo_push (udx_fifo_t *f, void *data);
 
 void
-ucp_fifo_remove (ucp_fifo_t *f, void *data, uint32_t pos_hint);
+udx_fifo_remove (udx_fifo_t *f, void *data, uint32_t pos_hint);
 
 #endif

@@ -7,7 +7,7 @@
     "sources": [
       "./src/cirbuf.c",
       "./src/fifo.c",
-      "./src/ucp.c",
+      "./src/udx.c",
       "./src/utils.c",
       "./binding.c",
     ],
