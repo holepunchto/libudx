@@ -1,14 +1,14 @@
 {
-  "name": "libucp",
+  "name": "udx-native",
   "version": "0.0.0",
-  "description": "UDP Control Protocol",
+  "description": "udx is reliable, multiplex, and congestion controlled streams over udp",
   "main": "lib/socket.js",
   "scripts": {
     "test": "standard && brittle test/*.js"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/mafintosh/libucp.git"
+    "url": "git+https://github.com/mafintosh/libudx.git"
   },
   "keywords": [
     "tcp",
@@ -20,9 +20,9 @@
   "license": "MIT",
   "gypfile": true,
   "bugs": {
-    "url": "https://github.com/mafintosh/libucp/issues"
+    "url": "https://github.com/mafintosh/libudx/issues"
   },
-  "homepage": "https://github.com/mafintosh/libucp#readme",
+  "homepage": "https://github.com/mafintosh/libudx#readme",
   "dependencies": {
     "napi-macros": "^2.0.0",
     "node-gyp-build": "^4.3.0",
