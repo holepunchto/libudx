@@ -225,7 +225,7 @@ udx_read_stop (udx_t *self);
 int
 udx_close (udx_t *self);
 
-// only exposed here as a convenience / debug tool - the udx instance tools this automatically
+// only exposed here as a convenience / debug tool - the udx instance uses this automatically
 int
 udx_check_timeouts (udx_t *self);
 
@@ -238,7 +238,7 @@ udx_stream_set_callback(udx_stream_t *stream, enum UDX_CALLBACK name, void *fn);
 void
 udx_stream_connect (udx_stream_t *stream, uint32_t remote_id, const struct sockaddr *remote_addr);
 
-// only exposed here as a convenience / debug tool - the udx instance tools this automatically
+// only exposed here as a convenience / debug tool - the udx instance uses this automatically
 int
 udx_stream_check_timeouts (udx_stream_t *stream);
 
