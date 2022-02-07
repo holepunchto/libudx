@@ -1,11 +1,12 @@
 #ifndef UDX_H
 #define UDX_H
 
-#include "fifo.h"
-#include "cirbuf.h"
 #include <stdint.h>
 #include <string.h>
 #include <uv.h>
+
+#include "udx/fifo.h"
+#include "udx/cirbuf.h"
 
 // TODO: research the packets sizes a bit more
 #define UDX_MTU 1400

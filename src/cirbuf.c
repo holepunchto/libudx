@@ -1,5 +1,6 @@
-#include "cirbuf.h"
 #include <stdlib.h>
+
+#include "udx/cirbuf.h"
 
 void
 udx_cirbuf_init (udx_cirbuf_t *c, uint32_t initial_size) {

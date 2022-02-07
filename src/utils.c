@@ -4,6 +4,7 @@
 #include <stdint.h>
 #include <time.h>
 #include <sys/time.h>
+
 #include "utils.h"
 
 #if defined(__APPLE__)

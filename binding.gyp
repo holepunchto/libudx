@@ -1,8 +1,9 @@
 {
   "targets": [{
-    "target_name": "ucp",
+    "target_name": "udx",
     "include_dirs": [
       "<!(node -e \"require('napi-macros')\")",
+      "include",
     ],
     "sources": [
       "./src/cirbuf.c",
