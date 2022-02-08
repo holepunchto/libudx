@@ -4,7 +4,7 @@
 #include <stdint.h>
 #include <time.h>
 
-#include <udx.h>
+#include "../include/udx.h"
 
 static char *buf;
 static size_t buf_len = 1300;

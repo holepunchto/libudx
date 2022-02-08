@@ -4,7 +4,7 @@
 #include <stdint.h>
 #include <time.h>
 
-#include <udx.h>
+#include "../include/udx.h"
 
 #define PARALLEL_WRITES 3000
 

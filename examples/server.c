@@ -4,7 +4,7 @@
 #include <stdint.h>
 #include <time.h>
 
-#include <udx.h>
+#include "../include/udx.h"
 
 static udx_t server;
 static udx_stream_t server_sock;
