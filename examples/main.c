@@ -29,8 +29,6 @@ on_read (udx_stream_t *stream, char *buf, size_t read) {
   if (rt == 0) {
     exit(0);
   }
-
-  udx_stream_send_state(stream);
 }
 
 static void
@@ -100,8 +98,8 @@ main () {
   uv_ip4_addr("127.0.0.1", 7654, &addr);
   udx_stream_connect(&server_sock, client_sock.local_id, (const struct sockaddr *) &addr);
 
-  udx_stream_set_callback(&server_sock, UDX_ON_READ, on_read);
-  udx_stream_set_callback(&client_sock, UDX_ON_ACK, on_write);
+  udx_stream_set_callback(&server_sock, UDX_STREAM_ON_DATA, on_read);
+  udx_stream_set_callback(&client_sock, UDX_STREAM_ON_ACK, on_write);
 
   for (int i = 0; i < 1000; i++) {
     udx_write_t *req = (udx_write_t *) malloc(sizeof(udx_write_t));
