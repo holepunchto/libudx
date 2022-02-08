@@ -6,7 +6,7 @@ libudx.a: \
 	src/udx.o \
 	src/utils.o
 	rm -f $@
-	$(AR) rcs $@ $^
+	$(AR) -rcs $@ $^
 
 src/cirbuf.o: include/udx/cirbuf.h
 src/fifo.o: include/udx/fifo.h
