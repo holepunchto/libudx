@@ -3,10 +3,8 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <time.h>
-#include "../src/udx.h"
-#include "../src/fifo.h"
-#include "../src/cirbuf.h"
-#include "../src/utils.h"
+
+#include <udx.h>
 
 static char *buf;
 static size_t buf_len = 1300;
