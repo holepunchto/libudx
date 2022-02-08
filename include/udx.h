@@ -5,6 +5,10 @@
 #include <string.h>
 #include <uv.h>
 
+#ifdef __cplusplus
+extern "C" {
+#endif
+
 #include "udx/fifo.h"
 #include "udx/cirbuf.h"
 #include "udx/utils.h"
@@ -253,4 +257,7 @@ udx_stream_end (udx_stream_t *stream, udx_write_t *req);
 int
 udx_stream_destroy (udx_stream_t *stream);
 
+#ifdef __cplusplus
+}
 #endif
+#endif // UDX_H
