@@ -1,7 +1,7 @@
 #include <stdlib.h>
 #include <stdio.h>
 
-#include "udx/fifo.h"
+#include "../include/udx/fifo.h"
 
 void
 udx_fifo_init (udx_fifo_t *f, uint32_t initial_max_size) {

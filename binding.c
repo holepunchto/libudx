@@ -2,7 +2,7 @@
 #include <napi-macros.h>
 #include <uv.h>
 
-#include "udx.h"
+#include "include/udx.h"
 
 #define UDX_NAPI_THROW(err) \
   { \

@@ -1,5 +1,3 @@
-CFLAGS += -Iinclude
-
 libudx.a: libudx.a(src/cirbuf.o src/fifo.o src/udx.o src/utils.o)
 
 src/cirbuf.o: include/udx/cirbuf.h
