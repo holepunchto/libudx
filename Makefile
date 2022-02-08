@@ -13,5 +13,5 @@ src/fifo.o: include/udx/fifo.h
 src/udx.o: include/udx.h
 src/utils.o: include/udx/utils.h
 
-examples/%: LDFLAGS += -L. -ludx
+examples/%: LDFLAGS += -L. -ludx -luv
 examples/%: libudx.a examples/%.o
