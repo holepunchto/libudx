@@ -4,10 +4,6 @@
 #include <assert.h>
 
 #include "udx.h"
-#include "udx/fifo.h"
-#include "udx/cirbuf.h"
-
-#include "utils.h"
 
 #define UDX_STREAM_ALL_DESTROYED (UDX_STREAM_DESTROYED | UDX_STREAM_DESTROYED_REMOTE)
 #define UDX_STREAM_ALL_ENDED (UDX_STREAM_ENDED | UDX_STREAM_ENDED_REMOTE)

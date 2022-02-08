@@ -7,6 +7,7 @@
 
 #include "udx/fifo.h"
 #include "udx/cirbuf.h"
+#include "udx/utils.h"
 
 // TODO: research the packets sizes a bit more
 #define UDX_MTU 1400
