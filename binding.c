@@ -156,7 +156,7 @@ on_udx_stream_drain (udx_stream_t *stream) {
 }
 
 static void
-on_udx_stream_ack (udx_stream_t *stream, udx_write_t *req, int status, int unordered) {
+on_udx_stream_ack (udx_stream_t *stream, udx_stream_write_t *req, int status, int unordered) {
   udx_napi_stream_t *n = (udx_napi_stream_t *) stream;
 
   UDX_NAPI_CALLBACK(n, n->on_ack, {
@@ -409,7 +409,7 @@ NAPI_METHOD(udx_napi_stream_send) {
 NAPI_METHOD(udx_napi_stream_write) {
   NAPI_ARGV(4)
   NAPI_ARGV_BUFFER_CAST(udx_stream_t *, stream, 0)
-  NAPI_ARGV_BUFFER_CAST(udx_write_t *, req, 1)
+  NAPI_ARGV_BUFFER_CAST(udx_stream_write_t *, req, 1)
   NAPI_ARGV_UINT32(rid, 2)
   NAPI_ARGV_BUFFER(buf, 3)
 
@@ -424,7 +424,7 @@ NAPI_METHOD(udx_napi_stream_write) {
 NAPI_METHOD(udx_napi_stream_end) {
   NAPI_ARGV(3)
   NAPI_ARGV_BUFFER_CAST(udx_stream_t *, stream, 0)
-  NAPI_ARGV_BUFFER_CAST(udx_write_t *, req, 1)
+  NAPI_ARGV_BUFFER_CAST(udx_stream_write_t *, req, 1)
   NAPI_ARGV_UINT32(rid, 2)
 
   req->data = (void *)((uintptr_t) rid);
@@ -460,7 +460,7 @@ NAPI_INIT() {
   NAPI_EXPORT_SIZEOF(udx_napi_stream_t)
 
   NAPI_EXPORT_SIZEOF(udx_send_t)
-  NAPI_EXPORT_SIZEOF(udx_write_t)
+  NAPI_EXPORT_SIZEOF(udx_stream_write_t)
   NAPI_EXPORT_SIZEOF(udx_stream_send_t)
 
   NAPI_EXPORT_FUNCTION(udx_napi_init)

@@ -275,7 +275,7 @@ ack_packet (udx_stream_t *stream, uint32_t seq, int sack) {
     stream->rto_timeout = udx_get_milliseconds() + stream->rto;
   }
 
-  udx_write_t *w = (udx_write_t *) pkt->ctx;
+  udx_stream_write_t *w = (udx_stream_write_t *) pkt->ctx;
 
   // If this packet was queued for sending we need to remove it from the queue.
   if (pkt->status == UDX_PACKET_SENDING) {
@@ -358,7 +358,7 @@ clear_outgoing_packets (udx_stream_t *stream) {
       udx_fifo_remove(&(stream->udx->send_queue), pkt, pkt->fifo_gc);
     }
 
-    udx_write_t *w = (udx_write_t *) pkt->ctx;
+    udx_stream_write_t *w = (udx_stream_write_t *) pkt->ctx;
 
     if (--(w->packets) == 0 && stream->on_ack != NULL) {
       stream->on_ack(stream, w, 1, 0);
@@ -960,7 +960,7 @@ udx_stream_send (udx_stream_t *stream, udx_stream_send_t *req, const char *buf, 
 }
 
 int
-udx_stream_write (udx_stream_t *stream, udx_write_t *req, const char *buf, size_t buf_len) {
+udx_stream_write (udx_stream_t *stream, udx_stream_write_t *req, const char *buf, size_t buf_len) {
   int err = 0;
 
   req->packets = 0;
@@ -999,7 +999,7 @@ udx_stream_write (udx_stream_t *stream, udx_write_t *req, const char *buf, size_
 }
 
 int
-udx_stream_end (udx_stream_t *stream, udx_write_t *req) {
+udx_stream_end (udx_stream_t *stream, udx_stream_write_t *req) {
   stream->status |= UDX_STREAM_ENDING;
 
   req->packets = 1;

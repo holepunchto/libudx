@@ -59,8 +59,8 @@ extern "C" {
 
 // declare these upfront to avoid circular deps.
 
-struct udx_write;
 struct udx_send;
+struct udx_stream_write;
 struct udx_stream_send;
 struct udx_stream;
 
@@ -120,19 +120,19 @@ typedef struct {
   struct iovec buf;
 } udx_pending_read_t;
 
-typedef struct udx_write {
-  uint32_t packets;
-  struct udx_stream *stream;
-
-  void *data;
-} udx_write_t;
-
 typedef struct udx_send {
   udx_packet_t pkt;
   struct sockaddr dest;
 
   void *data;
 } udx_send_t;
+
+typedef struct udx_stream_write {
+  uint32_t packets;
+  struct udx_stream *stream;
+
+  void *data;
+} udx_stream_write_t;
 
 typedef struct udx_stream_send {
   udx_packet_t pkt;
@@ -157,7 +157,7 @@ typedef struct udx_stream {
   void (*on_data)(struct udx_stream *stream, const char *buf, size_t buf_len);
   void (*on_end)(struct udx_stream *stream);
   void (*on_drain)(struct udx_stream *stream);
-  void (*on_ack)(struct udx_stream *stream, udx_write_t *req, int failed, int unordered);
+  void (*on_ack)(struct udx_stream *stream, struct udx_stream_write *req, int failed, int unordered);
   void (*on_send)(struct udx_stream *stream, struct udx_stream_send *req, int failed);
   void (*on_message)(struct udx_stream *stream, const char *buf, size_t buf_len);
   void (*on_close)(struct udx_stream *stream, int hard_close);
@@ -204,7 +204,7 @@ typedef void (*udx_stream_end_cb)(udx_stream_t *stream);
 
 typedef void (*udx_stream_drain_cb)(udx_stream_t *stream);
 
-typedef void (*udx_stream_ack_cb)(udx_stream_t *stream, udx_write_t *req, int failed, int unordered);
+typedef void (*udx_stream_ack_cb)(udx_stream_t *stream, udx_stream_write_t *req, int failed, int unordered);
 
 typedef void (*udx_stream_send_cb)(udx_stream_t *stream, udx_stream_send_t *req, int failed);
 
@@ -290,10 +290,10 @@ int
 udx_stream_send (udx_stream_t *stream, udx_stream_send_t *req, const char *buf, size_t buf_len);
 
 int
-udx_stream_write (udx_stream_t *stream, udx_write_t *req, const char *buf, size_t buf_len);
+udx_stream_write (udx_stream_t *stream, udx_stream_write_t *req, const char *buf, size_t buf_len);
 
 int
-udx_stream_end (udx_stream_t *stream, udx_write_t *req);
+udx_stream_end (udx_stream_t *stream, udx_stream_write_t *req);
 
 int
 udx_stream_destroy (udx_stream_t *stream);
