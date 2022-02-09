@@ -76,7 +76,7 @@ on_udx_send (udx_t *self, udx_send_t *req, int failed) {
 
   UDX_NAPI_CALLBACK(n, n->on_send, {
     napi_value argv[2];
-    napi_create_int32(env, req->userid, &(argv[0]));
+    napi_create_int32(env, (uintptr_t) req->data, &(argv[0]));
     napi_create_int32(env, failed, &(argv[1]));
     NAPI_MAKE_CALLBACK(env, NULL, ctx, callback, 2, argv, NULL)
   })
@@ -159,7 +159,7 @@ on_udx_stream_ack (udx_stream_t *stream, udx_write_t *req, int status, int unord
 
   UDX_NAPI_CALLBACK(n, n->on_ack, {
     napi_value argv[1];
-    napi_create_uint32(env, req->userid, &(argv[0]));
+    napi_create_uint32(env, (uintptr_t) req->data, &(argv[0]));
     NAPI_MAKE_CALLBACK(env, NULL, ctx, callback, 1, argv, NULL)
   })
 }
@@ -274,7 +274,7 @@ NAPI_METHOD(udx_napi_send) {
   NAPI_ARGV_UINT32(port, 4)
   NAPI_ARGV_UTF8(ip, 17, 5)
 
-  req->userid = rid;
+  req->data = (void *)((uintptr_t) rid);
 
   struct sockaddr_in addr;
 
@@ -369,7 +369,7 @@ NAPI_METHOD(udx_napi_stream_write) {
   NAPI_ARGV_UINT32(rid, 2)
   NAPI_ARGV_BUFFER(buf, 3)
 
-  req->userid = rid;
+  req->data = (void *)((uintptr_t) rid);
 
   int err = udx_stream_write(stream, req, buf, buf_len);
   if (err < 0) UDX_NAPI_THROW(err)
@@ -383,7 +383,7 @@ NAPI_METHOD(udx_napi_stream_end) {
   NAPI_ARGV_BUFFER_CAST(udx_write_t *, req, 1)
   NAPI_ARGV_UINT32(rid, 2)
 
-  req->userid = rid;
+  req->data = (void *)((uintptr_t) rid);
 
   int err = udx_stream_end(stream, req);
   if (err < 0) UDX_NAPI_THROW(err)
