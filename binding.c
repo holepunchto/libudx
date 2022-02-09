@@ -1,7 +1,8 @@
 #include <node_api.h>
 #include <napi-macros.h>
 #include <uv.h>
-#include "src/udx.h"
+
+#include "include/udx.h"
 
 #define UDX_NAPI_THROW(err) \
   { \

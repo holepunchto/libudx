@@ -1,11 +1,17 @@
 #ifndef UDX_H
 #define UDX_H
 
-#include "fifo.h"
-#include "cirbuf.h"
 #include <stdint.h>
 #include <string.h>
 #include <uv.h>
+
+#ifdef __cplusplus
+extern "C" {
+#endif
+
+#include "udx/fifo.h"
+#include "udx/cirbuf.h"
+#include "udx/utils.h"
 
 // TODO: research the packets sizes a bit more
 #define UDX_MTU 1400
@@ -251,4 +257,7 @@ udx_stream_end (udx_stream_t *stream, udx_write_t *req);
 int
 udx_stream_destroy (udx_stream_t *stream);
 
+#ifdef __cplusplus
+}
 #endif
+#endif // UDX_H

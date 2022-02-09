@@ -3,9 +3,8 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <time.h>
-#include "../src/udx.h"
-#include "../src/fifo.h"
-#include "../src/cirbuf.h"
+
+#include "../include/udx.h"
 
 static udx_t server;
 static udx_stream_t server_sock;
@@ -88,7 +87,7 @@ main () {
   int id;
 
   udx_stream_init(&server, &server_sock, &id);
-  udx_stream_set_callback(&server_sock, UDX_ON_READ, on_read);
+  udx_stream_set_callback(&server_sock, UDX_STREAM_ON_DATA, on_read);
 
   printf("local socket id: %u\n", server_sock.local_id);
 

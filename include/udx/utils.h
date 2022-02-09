@@ -9,4 +9,4 @@ udx_get_microseconds ();
 uint64_t
 udx_get_milliseconds ();
 
-#endif
+#endif // UDX_UTILS_H
