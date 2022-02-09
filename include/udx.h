@@ -75,8 +75,7 @@ typedef struct udx {
   int events;
   int pending_closes;
 
-  void *userdata;
-  int userid;
+  void *data;
 
   struct sockaddr_in on_message_addr;
 
@@ -124,16 +123,14 @@ typedef struct udx_write {
   uint32_t packets;
   struct udx_stream *stream;
 
-  void *userdata;
-  int userid;
+  void *data;
 } udx_write_t;
 
 typedef struct udx_send {
   udx_packet_t pkt;
   struct sockaddr dest;
 
-  void *userdata;
-  int userid;
+  void *data;
 } udx_send_t;
 
 typedef struct udx_stream {
@@ -147,8 +144,7 @@ typedef struct udx_stream {
 
   struct sockaddr remote_addr;
 
-  void *userdata;
-  int userid;
+  void *data;
 
   void (*on_data)(struct udx_stream *stream, const char *buf, size_t buf_len);
   void (*on_end)(struct udx_stream *stream);
