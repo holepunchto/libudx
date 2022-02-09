@@ -1,12 +1,9 @@
-#include "udx.h"
-#include "fifo.h"
-#include "cirbuf.h"
-#include "utils.h"
-
 #include <uv.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <assert.h>
+
+#include "../include/udx.h"
 
 #define UDX_STREAM_ALL_DESTROYED (UDX_STREAM_DESTROYED | UDX_STREAM_DESTROYED_REMOTE)
 #define UDX_STREAM_ALL_ENDED (UDX_STREAM_ENDED | UDX_STREAM_ENDED_REMOTE)
@@ -457,8 +454,8 @@ process_packet (udx_t *self, char *buf, ssize_t buf_len) {
 
     stream->ack++;
 
-    if (pkt->buf.iov_len > 0 && stream->on_read != NULL) {
-      stream->on_read(stream, pkt->buf.iov_base, pkt->buf.iov_len);
+    if (pkt->buf.iov_len > 0 && stream->on_data != NULL) {
+      stream->on_data(stream, pkt->buf.iov_base, pkt->buf.iov_len);
     }
 
     free(pkt);
@@ -641,25 +638,19 @@ udx_init (udx_t *self, uv_loop_t *loop) {
   return 0;
 }
 
-int
-udx_set_callback (udx_t *self, enum UDX_CALLBACK name, void *fn) {
-  switch (name) {
-    case UDX_ON_SEND: {
-      self->on_send = fn;
-      return 0;
-    }
-    case UDX_ON_MESSAGE: {
-      self->on_message = fn;
-      return 0;
-    }
-    case UDX_ON_CLOSE: {
-      self->on_close = fn;
-      return 0;
-    }
-    default: {
-      return -1;
-    }
-  }
+void
+udx_set_on_send(udx_t *self, udx_send_cb cb) {
+  self->on_send = cb;
+}
+
+void
+udx_set_on_message(udx_t *self, udx_message_cb cb) {
+  self->on_message = cb;
+}
+
+void
+udx_set_on_close(udx_t *self, udx_close_cb cb) {
+  self->on_close = cb;
 }
 
 int
@@ -841,7 +832,7 @@ udx_stream_init (udx_t *self, udx_stream_t *stream, uint32_t *local_id) {
   stream->stats_fast_rt = 0;
   stream->stats_last_seq = 0;
 
-  stream->on_read = NULL;
+  stream->on_data = NULL;
   stream->on_end = NULL;
   stream->on_drain = NULL;
   stream->on_ack = NULL;
@@ -859,43 +850,39 @@ udx_stream_init (udx_t *self, udx_stream_t *stream, uint32_t *local_id) {
   return 0;
 }
 
-int
-udx_stream_set_callback (udx_stream_t *self, enum UDX_CALLBACK name, void *fn) {
-  switch (name) {
-    case UDX_STREAM_ON_DATA: {
-      self->on_read = fn;
-      return 0;
-    }
-    case UDX_STREAM_ON_END: {
-      self->on_end = fn;
-      return 0;
-    }
-    case UDX_STREAM_ON_DRAIN: {
-      self->on_drain = fn;
-      return 0;
-    }
-    case UDX_STREAM_ON_ACK: {
-      self->on_ack = fn;
-      return 0;
-    }
-    case UDX_STREAM_ON_SEND: {
-      self->on_send = fn;
-      return 0;
-    }
-    case UDX_STREAM_ON_MESSAGE: {
-      self->on_message = fn;
-      return 0;
-    }
-    case UDX_STREAM_ON_CLOSE: {
-      self->on_close = fn;
-      return 0;
-    }
-    default: {
-      return UV_EINVAL;
-    }
-  }
+void
+udx_stream_set_on_data(udx_stream_t *stream, udx_stream_data_cb cb) {
+  stream->on_data = cb;
+}
 
-  return UV_EINVAL;
+void
+udx_stream_set_on_end(udx_stream_t *stream, udx_stream_end_cb cb) {
+  stream->on_end = cb;
+}
+
+void
+udx_stream_set_on_drain(udx_stream_t *stream, udx_stream_drain_cb cb) {
+  stream->on_drain = cb;
+}
+
+void
+udx_stream_set_on_ack(udx_stream_t *stream, udx_stream_ack_cb cb) {
+  stream->on_ack = cb;
+}
+
+void
+udx_stream_set_on_send(udx_stream_t *stream, udx_stream_send_cb cb) {
+  stream->on_send = cb;
+}
+
+void
+udx_stream_set_on_message(udx_stream_t *stream, udx_stream_message_cb cb) {
+  stream->on_message = cb;
+}
+
+void
+udx_stream_set_on_close(udx_stream_t *stream, udx_stream_close_cb cb) {
+  stream->on_close = cb;
 }
 
 int

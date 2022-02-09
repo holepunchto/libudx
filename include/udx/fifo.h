@@ -30,4 +30,4 @@ udx_fifo_push (udx_fifo_t *f, void *data);
 void
 udx_fifo_remove (udx_fifo_t *f, void *data, uint32_t pos_hint);
 
-#endif
+#endif // UDX_FIFO_H

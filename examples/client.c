@@ -3,10 +3,8 @@
 #include <stdlib.h>
 #include <stdint.h>
 #include <time.h>
-#include "../src/udx.h"
-#include "../src/fifo.h"
-#include "../src/cirbuf.h"
-#include "../src/utils.h"
+
+#include "../include/udx.h"
 
 #define PARALLEL_WRITES 3000
 
@@ -145,7 +143,7 @@ main (int argc, char **argv) {
   uv_ip4_addr(argc == 1 ? "127.0.0.1" : argv[1], 10101, &addr);
   udx_send(&client, &sreq, (char *) &sbuf, 4, (const struct sockaddr *) &addr);
 
-  udx_stream_set_callback(&client_sock, UDX_ON_ACK, on_write);
+  udx_stream_set_callback(&client_sock, UDX_STREAM_ON_ACK, on_write);
 
   // printf("server stream id is: %u\n", server_sock.local_id);
 

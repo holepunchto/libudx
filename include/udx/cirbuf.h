@@ -32,4 +32,4 @@ udx_cirbuf_get_stored (udx_cirbuf_t *c, uint32_t seq);
 udx_cirbuf_val_t *
 udx_cirbuf_remove (udx_cirbuf_t *c, uint32_t seq);
 
-#endif
+#endif // UDX_CIRBUF_H
