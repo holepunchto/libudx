@@ -193,9 +193,9 @@ NAPI_METHOD(udx_napi_init) {
   int err = udx_init(udx, loop);
   if (err < 0) UDX_NAPI_THROW(err)
 
-  udx_set_callback(udx, UDX_ON_SEND, on_udx_send);
-  udx_set_callback(udx, UDX_ON_MESSAGE, on_udx_message);
-  udx_set_callback(udx, UDX_ON_CLOSE, on_udx_close);
+  udx_set_on_send(udx, on_udx_send);
+  udx_set_on_message(udx, on_udx_message);
+  udx_set_on_close(udx, on_udx_close);
 
   return NULL;
 }
@@ -322,11 +322,11 @@ NAPI_METHOD(udx_napi_stream_init) {
   int err = udx_stream_init(self, u, &local_id);
   if (err < 0) UDX_NAPI_THROW(err)
 
-  udx_stream_set_callback(u, UDX_STREAM_ON_DATA, on_udx_stream_data);
-  udx_stream_set_callback(u, UDX_STREAM_ON_END, on_udx_stream_end);
-  udx_stream_set_callback(u, UDX_STREAM_ON_DRAIN, on_udx_stream_drain);
-  udx_stream_set_callback(u, UDX_STREAM_ON_ACK, on_udx_stream_ack);
-  udx_stream_set_callback(u, UDX_STREAM_ON_CLOSE, on_udx_stream_close);
+  udx_stream_set_on_data(u, on_udx_stream_data);
+  udx_stream_set_on_end(u, on_udx_stream_end);
+  udx_stream_set_on_drain(u, on_udx_stream_drain);
+  udx_stream_set_on_ack(u, on_udx_stream_ack);
+  udx_stream_set_on_close(u, on_udx_stream_close);
 
   NAPI_RETURN_UINT32(local_id)
 }
