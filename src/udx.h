@@ -59,7 +59,9 @@ enum UDX_CALLBACK {
   UDX_STREAM_ON_END = 5,
   UDX_STREAM_ON_DRAIN = 6,
   UDX_STREAM_ON_ACK = 7,
-  UDX_STREAM_ON_CLOSE = 8,
+  UDX_STREAM_ON_SEND = 8,
+  UDX_STREAM_ON_MESSAGE = 9,
+  UDX_STREAM_ON_CLOSE = 10,
 };
 
 // declare these upfront to avoid circular deps.
@@ -67,6 +69,7 @@ enum UDX_CALLBACK {
 struct udx_send;
 struct udx_write;
 struct udx_send;
+struct udx_stream_send;
 struct udx_stream;
 
 typedef struct udx {
@@ -126,7 +129,7 @@ typedef struct {
   struct iovec buf;
 } udx_pending_read_t;
 
-typedef struct {
+typedef struct udx_write {
   uint32_t packets;
   struct udx_stream *stream;
 
@@ -134,13 +137,21 @@ typedef struct {
   int userid;
 } udx_write_t;
 
-typedef struct {
+typedef struct udx_send {
   udx_packet_t pkt;
   struct sockaddr dest;
 
   void *userdata;
   int userid;
 } udx_send_t;
+
+typedef struct udx_stream_send {
+  udx_packet_t pkt;
+  struct udx_stream *stream;
+
+  void *userdata;
+  int userid;
+} udx_stream_send_t;
 
 typedef struct udx_stream {
   uint32_t local_id; // must be first entry, so its compat with the cirbuf
@@ -160,6 +171,8 @@ typedef struct udx_stream {
   void (*on_end)(struct udx_stream *stream);
   void (*on_drain)(struct udx_stream *stream);
   void (*on_ack)(struct udx_stream *stream, udx_write_t *req, int failed, int unordered);
+  void (*on_send)(struct udx_stream *stream, struct udx_stream_send *req, int failed);
+  void (*on_message)(struct udx_stream *stream, const char *buf, size_t buf_len);
   void (*on_close)(struct udx_stream *stream, int hard_close);
 
   uint32_t seq;
@@ -241,6 +254,9 @@ udx_stream_connect (udx_stream_t *stream, uint32_t remote_id, const struct socka
 // only exposed here as a convenience / debug tool - the udx instance uses this automatically
 int
 udx_stream_check_timeouts (udx_stream_t *stream);
+
+int
+udx_stream_send (udx_stream_t *stream, udx_stream_send_t *req, const char *buf, size_t buf_len);
 
 int
 udx_stream_write (udx_stream_t *stream, udx_write_t *req, const char *buf, size_t buf_len);

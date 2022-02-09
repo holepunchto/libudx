@@ -127,6 +127,44 @@ test('only one side writes', async function (t) {
   a.end()
 })
 
+test('unordered messages', async function (t) {
+  t.plan(1)
+
+  const [a, b] = makeTwoStreams(t)
+  const expected = []
+
+  b.on('message', function (buf) {
+    b.send(Buffer.from('echo: ' + buf.toString()))
+  })
+
+  a.on('error', function () {
+    t.comment('a errored')
+  })
+
+  b.on('error', function () {
+    t.comment('b errored')
+  })
+
+  a.on('message', function (buf) {
+    expected.push(buf.toString())
+
+    if (expected.length === 3) {
+      t.alike(expected.sort(), [
+        'echo: a',
+        'echo: bc',
+        'echo: d'
+      ])
+    }
+
+    // TODO: .end() here triggers a bug, investigate
+    b.destroy()
+  })
+
+  a.send(Buffer.from('a'))
+  a.send(Buffer.from('bc'))
+  a.send(Buffer.from('d'))
+})
+
 writeALot(1)
 
 writeALot(1024)

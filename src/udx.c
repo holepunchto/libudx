@@ -409,6 +409,7 @@ process_packet (udx_t *self, char *buf, ssize_t buf_len) {
     if (data_offset) {
       if (data_offset > buf_len) return 0;
       buf += data_offset;
+      buf_len -= data_offset;
     }
 
     char *ptr = malloc(sizeof(udx_pending_read_t) + buf_len);
@@ -428,6 +429,18 @@ process_packet (udx_t *self, char *buf, ssize_t buf_len) {
   if (type & UDX_HEADER_END) {
     stream->status |= UDX_STREAM_ENDING_REMOTE;
     stream->remote_ended = seq;
+  }
+
+  if (type & UDX_HEADER_MESSAGE) {
+    if (data_offset) {
+      if (data_offset > buf_len) return 0;
+      buf += data_offset;
+      buf_len -= data_offset;
+    }
+
+    if (stream->on_message != NULL) {
+      stream->on_message(stream, buf, buf_len);
+    }
   }
 
   if (type & UDX_HEADER_DESTROY) {
@@ -505,14 +518,19 @@ process_packet (udx_t *self, char *buf, ssize_t buf_len) {
 
 static void
 trigger_send_callback (udx_t *self, udx_packet_t *pkt) {
-  if (pkt->type == UDX_PACKET_STREAM_SEND) {
-    // TODO
-    return;
-  }
-
   if (pkt->type == UDX_PACKET_SEND) {
     if (self->on_send != NULL) {
       self->on_send(self, pkt->ctx, 0);
+    }
+    return;
+  }
+
+  if (pkt->type == UDX_PACKET_STREAM_SEND) {
+    udx_stream_send_t *req = pkt->ctx;
+    udx_stream_t *stream = req->stream;
+
+    if (stream->on_send != NULL) {
+      stream->on_send(stream, req, 0);
     }
     return;
   }
@@ -827,6 +845,8 @@ udx_stream_init (udx_t *self, udx_stream_t *stream, uint32_t *local_id) {
   stream->on_end = NULL;
   stream->on_drain = NULL;
   stream->on_ack = NULL;
+  stream->on_send = NULL;
+  stream->on_message = NULL;
   stream->on_close = NULL;
 
   // Add the socket to the active set
@@ -856,6 +876,14 @@ udx_stream_set_callback (udx_stream_t *self, enum UDX_CALLBACK name, void *fn) {
     }
     case UDX_STREAM_ON_ACK: {
       self->on_ack = fn;
+      return 0;
+    }
+    case UDX_STREAM_ON_SEND: {
+      self->on_send = fn;
+      return 0;
+    }
+    case UDX_STREAM_ON_MESSAGE: {
+      self->on_message = fn;
       return 0;
     }
     case UDX_STREAM_ON_CLOSE: {
@@ -924,6 +952,24 @@ udx_stream_connect (udx_stream_t *stream, uint32_t remote_id, const struct socka
     stream->udx->readers++;
     update_poll(stream->udx);
   }
+}
+
+int
+udx_stream_send (udx_stream_t *stream, udx_stream_send_t *req, const char *buf, size_t buf_len) {
+  udx_t *self = stream->udx;
+  udx_packet_t *pkt = &(req->pkt);
+
+  init_stream_packet(pkt, UDX_HEADER_MESSAGE, stream, buf, buf_len);
+
+  pkt->status = UDX_PACKET_SENDING;
+  pkt->type = UDX_PACKET_STREAM_SEND;
+  pkt->ctx = req;
+  pkt->transmits = 0;
+
+  req->stream = stream;
+
+  pkt->fifo_gc = udx_fifo_push(&(self->send_queue), pkt);
+  return update_poll(self);
 }
 
 int
