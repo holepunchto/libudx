@@ -561,12 +561,14 @@ on_uv_poll (uv_poll_t *handle, int status, int events) {
       size = sendmsg(handle->io_watcher.fd, h, 0);
     } while (size == -1 && errno == EINTR);
 
-    if (pkt->type & UDX_PACKET_CALLBACK) {
+    int type = pkt->type;
+
+    if (type & UDX_PACKET_CALLBACK) {
       trigger_send_callback(self, pkt);
       // TODO: watch for re-entry here!
     }
 
-    if (pkt->type & UDX_PACKET_FREE_ON_SEND) {
+    if (type & UDX_PACKET_FREE_ON_SEND) {
       free(pkt);
     }
 
