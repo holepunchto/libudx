@@ -10,7 +10,6 @@ pub fn build(b: *std.build.Builder) void {
     udx.linkLibC();
     udx.linkSystemLibrary("libuv");
     udx.addSystemIncludeDir("/usr/include");
-    udx.addLibPath("/usr/lib");
     udx.addCSourceFiles(&.{
         "src/cirbuf.c",
         "src/fifo.c",
