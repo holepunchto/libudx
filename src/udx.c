@@ -516,8 +516,10 @@ process_packet (udx_t *self, char *buf, ssize_t buf_len) {
 static void
 trigger_send_callback (udx_t *self, udx_packet_t *pkt) {
   if (pkt->type == UDX_PACKET_SEND) {
-    if (self->on_send != NULL) {
-      self->on_send(self, pkt->ctx, 0);
+    udx_send_t *req = pkt->ctx;
+
+    if (req->on_send != NULL) {
+      req->on_send(self, req, 0);
     }
     return;
   }
@@ -607,7 +609,7 @@ on_uv_poll (uv_poll_t *handle, int status, int events) {
 }
 
 int
-udx_init (udx_t *self, uv_loop_t *loop) {
+udx_init (uv_loop_t *loop, udx_t *self) {
   self->status = 0;
   self->readers = 0;
   self->events = 0;
@@ -619,7 +621,6 @@ udx_init (udx_t *self, uv_loop_t *loop) {
   self->loop = loop;
 
   self->on_message = NULL;
-  self->on_send = NULL;
   self->on_close = NULL;
 
   udx_fifo_init(&(self->send_queue), 16);
@@ -638,21 +639,6 @@ udx_init (udx_t *self, uv_loop_t *loop) {
   handle->data = self;
 
   return 0;
-}
-
-void
-udx_set_on_send(udx_t *self, udx_send_cb cb) {
-  self->on_send = cb;
-}
-
-void
-udx_set_on_message(udx_t *self, udx_message_cb cb) {
-  self->on_message = cb;
-}
-
-void
-udx_set_on_close(udx_t *self, udx_close_cb cb) {
-  self->on_close = cb;
 }
 
 int
@@ -699,10 +685,11 @@ udx_getsockname (udx_t *self, struct sockaddr * name, int *name_len) {
 }
 
 int
-udx_send (udx_t *self, udx_send_t *req, const char *buf, size_t buf_len, const struct sockaddr *dest) {
+udx_send (udx_send_t *req, udx_t *self, const char *buf, size_t buf_len, const struct sockaddr *dest, udx_send_cb cb) {
   udx_packet_t *pkt = &(req->pkt);
 
   req->dest = *dest;
+  req->on_send = cb;
 
   pkt->status = UDX_PACKET_SENDING;
   pkt->type = UDX_PACKET_SEND;
@@ -727,9 +714,10 @@ udx_send (udx_t *self, udx_send_t *req, const char *buf, size_t buf_len, const s
 }
 
 int
-udx_read_start (udx_t *self) {
+udx_read_start (udx_t *self, udx_message_cb cb) {
   if (self->status & UDX_SOCKET_READING) return 0;
 
+  self->on_message = cb;
   self->status |= UDX_SOCKET_READING;
   self->readers++;
 
@@ -740,6 +728,7 @@ int
 udx_read_stop (udx_t *self) {
   if ((self->status & UDX_SOCKET_READING) == 0) return 0;
 
+  self->on_message = NULL;
   self->status ^= UDX_SOCKET_PAUSED;
   self->readers--;
 
@@ -757,9 +746,10 @@ udx_check_timeouts (udx_t *self) {
 }
 
 int
-udx_close (udx_t *self) {
+udx_close (udx_t *self, udx_close_cb cb) {
   if (self->streams_len > 0) return UV_EBUSY;
 
+  self->on_close = cb;
   self->pending_closes = 2;
   uv_timer_stop(&(self->timer));
 
@@ -776,8 +766,12 @@ udx_close (udx_t *self) {
     udx_packet_t *pkt = udx_fifo_shift(&self->send_queue);
     if (pkt == NULL) break;
 
-    if (pkt->type == UDX_PACKET_SEND && self->on_send != NULL) {
-      self->on_send(self, pkt->ctx, UDX_ERROR_DESTROYED);
+    if (pkt->type == UDX_PACKET_SEND) {
+      udx_send_t *req = pkt->ctx;
+      
+      if (req->on_send != NULL) {
+        req->on_send(self, req, UDX_ERROR_DESTROYED);
+      }
     }
   }
 

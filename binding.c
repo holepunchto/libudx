@@ -215,12 +215,8 @@ NAPI_METHOD(udx_napi_init) {
   struct uv_loop_s *loop;
   napi_get_uv_event_loop(env, &loop);
 
-  int err = udx_init(udx, loop);
+  int err = udx_init(loop, udx);
   if (err < 0) UDX_NAPI_THROW(err)
-
-  udx_set_on_send(udx, on_udx_send);
-  udx_set_on_message(udx, on_udx_message);
-  udx_set_on_close(udx, on_udx_close);
 
   return NULL;
 }
@@ -251,7 +247,7 @@ NAPI_METHOD(udx_napi_bind) {
   int local_port = ntohs(name_in->sin_port);
 
   // wont error in practice
-  err = udx_read_start(self);
+  err = udx_read_start(self, on_udx_message);
   if (err < 0) UDX_NAPI_THROW(err)
 
   NAPI_RETURN_UINT32(local_port)
@@ -306,7 +302,7 @@ NAPI_METHOD(udx_napi_send) {
   int err = uv_ip4_addr((char *) &ip, port, &addr);
   if (err < 0) UDX_NAPI_THROW(err)
 
-  err = udx_send(self, req, buf, buf_len, (const struct sockaddr *) &addr);
+  err = udx_send(req, self, buf, buf_len, (const struct sockaddr *) &addr, on_udx_send);
   if (err < 0) UDX_NAPI_THROW(err)
 
   return NULL;
@@ -316,7 +312,7 @@ NAPI_METHOD(udx_napi_close) {
   NAPI_ARGV(1)
   NAPI_ARGV_BUFFER_CAST(udx_t *, self, 0)
 
-  int err = udx_close(self);
+  int err = udx_close(self, on_udx_close);
   if (err < 0) UDX_NAPI_THROW(err)
 
   return NULL;
