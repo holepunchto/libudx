@@ -8,7 +8,6 @@
       './src/cirbuf.c',
       './src/fifo.c',
       './src/udx.c',
-      './src/utils.c',
       './binding.c',
     ],
     'xcode_settings': {
