@@ -77,8 +77,6 @@ typedef struct udx {
 
   void *data;
 
-  struct sockaddr_in on_message_addr;
-
   void (*on_send)(struct udx *self, struct udx_send *req, int failed);
   void (*on_message)(struct udx *self, const char *buf, size_t buf_len, const struct sockaddr *from);
   void (*on_close)(struct udx *self);
