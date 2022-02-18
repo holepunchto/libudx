@@ -1,6 +1,3 @@
-#include <uv.h>
-#include <stdio.h>
-#include <stdlib.h>
 #include <assert.h>
 
 #include "../include/udx.h"
@@ -28,6 +25,16 @@
 static uint32_t
 random_id () {
   return 0x10000 * (rand() & 0xffff) + (rand() & 0xffff);
+}
+
+static uint64_t
+get_microseconds () {
+  return uv_hrtime() / 1000;
+}
+
+static uint64_t
+get_milliseconds () {
+  return get_microseconds() / 1000;
 }
 
 static uint32_t
@@ -251,7 +258,7 @@ ack_packet (udx_stream_t *stream, uint32_t seq, int sack) {
   }
 
   if (pkt->transmits == 1) {
-    const uint32_t rtt = (uint32_t) (udx_get_milliseconds() - pkt->time_sent);
+    const uint32_t rtt = (uint32_t) (get_milliseconds() - pkt->time_sent);
 
     // First round trip time sample
     if (stream->srtt == 0) {
@@ -272,7 +279,7 @@ ack_packet (udx_stream_t *stream, uint32_t seq, int sack) {
   }
 
   if (!sack) { // Reset rto timer when new data is ack'ed (inorder)
-    stream->rto_timeout = udx_get_milliseconds() + stream->rto;
+    stream->rto_timeout = get_milliseconds() + stream->rto;
   }
 
   udx_stream_write_t *w = (udx_stream_write_t *) pkt->ctx;
@@ -557,7 +564,7 @@ on_uv_poll (uv_poll_t *handle, int status, int events) {
     pkt->transmits++;
 
     do {
-      pkt->time_sent = udx_get_milliseconds();
+      pkt->time_sent = get_milliseconds();
       size = sendmsg(handle->io_watcher.fd, h, 0);
     } while (size == -1 && errno == EINTR);
 
@@ -817,7 +824,7 @@ udx_stream_init (udx_t *self, udx_stream_t *stream, uint32_t *local_id) {
   stream->srtt = 0;
   stream->rttvar = 0;
   stream->rto = 1000;
-  stream->rto_timeout = udx_get_milliseconds() + stream->rto;
+  stream->rto_timeout = get_milliseconds() + stream->rto;
 
   stream->pkts_waiting = 0;
   stream->pkts_inflight = 0;
@@ -891,7 +898,7 @@ int
 udx_stream_check_timeouts (udx_stream_t *stream) {
   if (stream->remote_acked == stream->seq) return 0;
 
-  const uint64_t now = stream->inflight ? udx_get_milliseconds() : 0;
+  const uint64_t now = stream->inflight ? get_milliseconds() : 0;
 
   if (now > stream->rto_timeout) {
     // Ensure it backs off until data is acked...
@@ -970,7 +977,7 @@ udx_stream_write (udx_stream_t *stream, udx_stream_write_t *req, const char *buf
 
   // if this is the first inflight packet, we should "restart" rto timer
   if (stream->inflight == 0) {
-    stream->rto_timeout = udx_get_milliseconds() + stream->rto;
+    stream->rto_timeout = get_milliseconds() + stream->rto;
   }
 
   while (buf_len > 0 || err < 0) {
