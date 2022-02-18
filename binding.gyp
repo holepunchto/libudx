@@ -8,6 +8,7 @@
       './src/cirbuf.c',
       './src/fifo.c',
       './src/udx.c',
+      './src/io_posix.c',
       './binding.c',
     ],
     'xcode_settings': {

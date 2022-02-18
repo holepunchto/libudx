@@ -2,6 +2,7 @@
 #include <string.h>
 
 #include "../include/udx.h"
+#include "io.h"
 
 #define UDX_STREAM_ALL_DESTROYED (UDX_STREAM_DESTROYED | UDX_STREAM_DESTROYED_REMOTE)
 #define UDX_STREAM_ALL_ENDED (UDX_STREAM_ENDED | UDX_STREAM_ENDED_REMOTE)
@@ -72,8 +73,6 @@ update_poll (udx_t *self) {
 
 static void
 init_stream_packet (udx_packet_t *pkt, int type, udx_stream_t *stream, const char *buf, size_t buf_len) {
-  memset(&(pkt->h), 0, sizeof(struct msghdr));
-
   uint8_t *b = (uint8_t *) &(pkt->header);
 
   // 8 bit magic byte + 8 bit version + 8 bit type + 8 bit extensions
@@ -97,18 +96,13 @@ init_stream_packet (udx_packet_t *pkt, int type, udx_stream_t *stream, const cha
 
   pkt->transmits = 0;
   pkt->size = (uint16_t) (UDX_HEADER_SIZE + buf_len);
+  pkt->dest = stream->remote_addr;
 
-  pkt->h.msg_name = &(stream->remote_addr);
-  pkt->h.msg_namelen = sizeof(struct sockaddr_in);
+  pkt->buf[0].base = &(pkt->header);
+  pkt->buf[0].len = UDX_HEADER_SIZE;
 
-  pkt->h.msg_iov = (struct iovec *) &(pkt->buf);
-  pkt->h.msg_iovlen = buf_len ? 2 : 1;
-
-  pkt->buf[0].iov_base = &(pkt->header);
-  pkt->buf[0].iov_len = UDX_HEADER_SIZE;
-
-  pkt->buf[1].iov_base = (void *) buf;
-  pkt->buf[1].iov_len = buf_len;
+  pkt->buf[1].base = (void *) buf;
+  pkt->buf[1].len = buf_len;
 }
 
 static int
@@ -425,8 +419,8 @@ process_packet (udx_t *self, char *buf, ssize_t buf_len) {
     memcpy(cpy, buf, buf_len);
 
     pkt->seq = seq;
-    pkt->buf.iov_base = cpy;
-    pkt->buf.iov_len = buf_len;
+    pkt->buf.base = cpy;
+    pkt->buf.len = buf_len;
 
     udx_cirbuf_set(inc, (udx_cirbuf_val_t *) pkt);
   }
@@ -462,8 +456,8 @@ process_packet (udx_t *self, char *buf, ssize_t buf_len) {
 
     stream->ack++;
 
-    if (pkt->buf.iov_len > 0 && stream->on_data != NULL) {
-      stream->on_data(stream, pkt->buf.iov_base, pkt->buf.iov_len);
+    if (pkt->buf.len > 0 && stream->on_data != NULL) {
+      stream->on_data(stream, pkt->buf.base, pkt->buf.len);
     }
 
     free(pkt);
@@ -554,9 +548,7 @@ on_uv_poll (uv_poll_t *handle, int status, int events) {
   udx_t *self = handle->data;
 
   if (self->send_queue.len > 0 && events & UV_WRITABLE) {
-    ssize_t size;
     udx_packet_t *pkt = (udx_packet_t *) udx_fifo_shift(&(self->send_queue));
-    const struct msghdr *h = &(pkt->h);
 
     if (pkt == NULL) return;
 
@@ -564,10 +556,7 @@ on_uv_poll (uv_poll_t *handle, int status, int events) {
     pkt->status = UDX_PACKET_INFLIGHT;
     pkt->transmits++;
 
-    do {
-      pkt->time_sent = get_milliseconds();
-      size = sendmsg(handle->io_watcher.fd, h, 0);
-    } while (size == -1 && errno == EINTR);
+    udx__sendmsg(self, pkt);
 
     int type = pkt->type;
 
@@ -587,25 +576,17 @@ on_uv_poll (uv_poll_t *handle, int status, int events) {
   }
 
   if (events & UV_READABLE) {
-    ssize_t size;
-    struct msghdr h;
-    struct iovec buf;
+    struct sockaddr addr;
+    uv_buf_t buf;
 
     char b[2048];
-    buf.iov_base = &b;
-    buf.iov_len = 2048;
+    buf.base = &b;
+    buf.len = 2048;
 
-    h.msg_name = &(self->on_message_addr);
-    h.msg_namelen = sizeof(struct sockaddr_in);
-    h.msg_iov = &buf;
-    h.msg_iovlen = 1;
-
-    do {
-      size = recvmsg(handle->io_watcher.fd, &h, 0);
-    } while (size == -1 && errno == EINTR);
+    ssize_t size = udx__recvmsg(self, &buf, &addr);
 
     if (size > 0 && !process_packet(self, b, size) && self->on_message != NULL) {
-      self->on_message(self, b, size, h.msg_name);
+      self->on_message(self, b, size, &addr);
     }
 
     return;
@@ -710,24 +691,18 @@ int
 udx_send (udx_t *self, udx_send_t *req, const char *buf, size_t buf_len, const struct sockaddr *dest) {
   udx_packet_t *pkt = &(req->pkt);
 
-  req->dest = *dest;
-
   pkt->status = UDX_PACKET_SENDING;
   pkt->type = UDX_PACKET_SEND;
   pkt->ctx = req;
+  pkt->dest = *dest;
 
   pkt->transmits = 0;
 
-  memset(&(pkt->h), 0, sizeof(struct msghdr));
+  pkt->buf[0].base = (void *) buf;
+  pkt->buf[0].len = buf_len;
 
-  pkt->h.msg_name = &(req->dest);
-  pkt->h.msg_namelen = sizeof(struct sockaddr_in);
-
-  pkt->h.msg_iov = (struct iovec *) &(pkt->buf);
-  pkt->h.msg_iovlen = 1;
-
-  pkt->buf[0].iov_base = (void *) buf;
-  pkt->buf[0].iov_len = buf_len;
+  pkt->buf[1].base = NULL;
+  pkt->buf[1].len = 0;
 
   pkt->fifo_gc = udx_fifo_push(&(self->send_queue), pkt);
 

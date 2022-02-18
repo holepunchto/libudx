@@ -104,11 +104,11 @@ typedef struct {
 
   void *ctx;
 
-  struct msghdr h;
+  struct sockaddr dest;
 
   // just alloc it in place here, easier to manage
   char header[UDX_HEADER_SIZE];
-  struct iovec buf[2];
+  uv_buf_t buf[2];
 } udx_packet_t;
 
 typedef struct {
@@ -116,12 +116,11 @@ typedef struct {
 
   int type;
 
-  struct iovec buf;
+  uv_buf_t buf;
 } udx_pending_read_t;
 
 typedef struct udx_send {
   udx_packet_t pkt;
-  struct sockaddr dest;
 
   void *data;
 } udx_send_t;
