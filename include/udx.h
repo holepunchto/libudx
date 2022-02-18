@@ -107,7 +107,7 @@ typedef struct {
   // just alloc it in place here, easier to manage
   char header[UDX_HEADER_SIZE];
   uv_buf_t bufs[2];
-  int bufslen;
+  int bufs_len;
 } udx_packet_t;
 
 typedef struct {

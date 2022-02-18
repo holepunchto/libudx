@@ -11,7 +11,7 @@ udx__sendmsg(udx_t *self, udx_packet_t *pkt) {
   h.msg_namelen = sizeof(pkt->dest);
 
   h.msg_iov = (struct iovec *) &(pkt->bufs);
-  h.msg_iovlen = pkt->bufslen;
+  h.msg_iovlen = pkt->bufs_len;
 
   do {
     pkt->time_sent = uv_hrtime() / 1e6;
