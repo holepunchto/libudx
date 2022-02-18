@@ -98,11 +98,13 @@ init_stream_packet (udx_packet_t *pkt, int type, udx_stream_t *stream, const cha
   pkt->size = (uint16_t) (UDX_HEADER_SIZE + buf_len);
   pkt->dest = stream->remote_addr;
 
-  pkt->buf[0].base = &(pkt->header);
-  pkt->buf[0].len = UDX_HEADER_SIZE;
+  pkt->bufslen = 2;
 
-  pkt->buf[1].base = (void *) buf;
-  pkt->buf[1].len = buf_len;
+  pkt->bufs[0].base = &(pkt->header);
+  pkt->bufs[0].len = UDX_HEADER_SIZE;
+
+  pkt->bufs[1].base = (void *) buf;
+  pkt->bufs[1].len = buf_len;
 }
 
 static int
@@ -698,11 +700,10 @@ udx_send (udx_t *self, udx_send_t *req, const char *buf, size_t buf_len, const s
 
   pkt->transmits = 0;
 
-  pkt->buf[0].base = (void *) buf;
-  pkt->buf[0].len = buf_len;
+  pkt->bufslen = 1;
 
-  pkt->buf[1].base = NULL;
-  pkt->buf[1].len = 0;
+  pkt->bufs[0].base = (void *) buf;
+  pkt->bufs[0].len = buf_len;
 
   pkt->fifo_gc = udx_fifo_push(&(self->send_queue), pkt);
 
