@@ -2,6 +2,7 @@
 #define UDX_H
 
 #include <stdlib.h>
+#include <stdint.h>
 #include <uv.h>
 
 #ifdef __cplusplus

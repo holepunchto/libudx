@@ -2,6 +2,7 @@
 #define UDX_CIRBUF_H
 
 #include <stdlib.h>
+#include <stdint.h>
 
 typedef struct {
   uint32_t seq;
