@@ -28,8 +28,8 @@ udx__recvmsg(udx_t *self, uv_buf_t *buf, struct sockaddr *addr) {
 
   memset(&h, 0, sizeof(h));
 
-  h.msg_name = &(self->on_message_addr);
-  h.msg_namelen = sizeof(self->on_message_addr);
+  h.msg_name = addr;
+  h.msg_namelen = sizeof(*addr);
 
   h.msg_iov = (struct iovec *) buf;
   h.msg_iovlen = 1;
@@ -37,8 +37,6 @@ udx__recvmsg(udx_t *self, uv_buf_t *buf, struct sockaddr *addr) {
   do {
     size = recvmsg(self->io_poll.io_watcher.fd, &h, 0);
   } while (size == -1 && errno == EINTR);
-
-  *addr = *(struct sockaddr *) h.msg_name;
 
   return size;
 }
