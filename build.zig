@@ -10,13 +10,12 @@ pub fn build(b: *std.build.Builder) void {
     udx.linkLibC();
     udx.linkSystemLibrary("libuv");
     udx.addSystemIncludeDir("/usr/include");
-    udx.addCSourceFiles(&.{
-        "src/cirbuf.c",
-        "src/fifo.c",
-        "src/udx.c",
-        "src/utils.c",
-    }, &.{
-        "-Wall",
-    });
+
+    udx.addCSourceFiles(&.{ "src/cirbuf.c", "src/fifo.c", "src/udx.c" }, &.{"-Wall"});
+
+    if (target.isLinux() or target.isDarwin()) {
+        udx.addCSourceFiles(&.{"src/io_posix.c"}, &.{"-Wall"});
+    }
+
     udx.install();
 }
