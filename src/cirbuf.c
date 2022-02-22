@@ -1,5 +1,3 @@
-#include <stdlib.h>
-
 #include "../include/udx/cirbuf.h"
 
 void
