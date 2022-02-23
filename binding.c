@@ -1,5 +1,6 @@
 #include <node_api.h>
 #include <napi-macros.h>
+#include <string.h>
 #include <uv.h>
 
 #include "include/udx.h"
