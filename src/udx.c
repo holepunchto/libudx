@@ -26,7 +26,9 @@
 
 static uint32_t
 random_id () {
-  return 0x10000 * (rand() & 0xffff) + (rand() & 0xffff);
+  uint32_t id;
+  uv_random(NULL, NULL, &id, sizeof(id), 0, NULL);
+  return id;
 }
 
 static uint64_t
