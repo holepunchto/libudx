@@ -19,6 +19,12 @@ target_sources(
     src/udx.c
 )
 
+target_include_directories(
+  udx
+  INTERFACE
+    include
+)
+
 if (UNIX)
   target_sources(
     udx
