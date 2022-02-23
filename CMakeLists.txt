@@ -33,11 +33,7 @@ target_link_libraries(
     uv
 )
 
-install(
-  TARGETS udx
-  LIBRARY DESTINATION lib
-  ARCHIVE DESTINATION lib
-)
+install(TARGETS udx)
 
 install(
   DIRECTORY include/
