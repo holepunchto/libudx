@@ -2,6 +2,9 @@
 #include <string.h>
 
 #include "../include/udx.h"
+
+#include "cirbuf.h"
+#include "fifo.h"
 #include "io.h"
 
 #define UDX_STREAM_ALL_DESTROYED (UDX_STREAM_DESTROYED | UDX_STREAM_DESTROYED_REMOTE)
@@ -123,7 +126,7 @@ send_state_packet (udx_stream_t *stream) {
   uint32_t max = 512;
   for (uint32_t i = 0; i < max && payload_len < 400; i++) {
     uint32_t seq = stream->ack + 1 + i;
-    if (udx_cirbuf_get(&(stream->incoming), seq) == NULL) continue;
+    if (udx__cirbuf_get(&(stream->incoming), seq) == NULL) continue;
 
     if (sacks == NULL) {
       pkt = malloc(sizeof(udx_packet_t) + 1024);
@@ -159,7 +162,7 @@ send_state_packet (udx_stream_t *stream) {
 
   stream->stats_pkts_sent++;
 
-  udx_fifo_push(&(stream->udx->send_queue), pkt);
+  udx__fifo_push(&(stream->udx->send_queue), pkt);
   return update_poll(stream->udx);
 }
 
@@ -179,7 +182,7 @@ send_data_packet (udx_stream_t *stream, udx_packet_t *pkt) {
   if (pkt->transmits > 0) stream->retransmits_waiting--;
 
   stream->stats_pkts_sent++;
-  pkt->fifo_gc = udx_fifo_push(&(stream->udx->send_queue), pkt);
+  pkt->fifo_gc = udx__fifo_push(&(stream->udx->send_queue), pkt);
 
   int err = update_poll(stream->udx);
   return err < 0 ? err : 1;
@@ -193,7 +196,7 @@ flush_waiting_packets (udx_stream_t *stream) {
   int sent = 0;
 
   while (seq != stream->seq && stream->pkts_waiting > 0) {
-    udx_packet_t *pkt = (udx_packet_t *) udx_cirbuf_get(&(stream->outgoing), seq++);
+    udx_packet_t *pkt = (udx_packet_t *) udx__cirbuf_get(&(stream->outgoing), seq++);
 
     if (pkt == NULL || pkt->status != UDX_PACKET_WAITING) continue;
 
@@ -228,7 +231,7 @@ close_maybe (udx_stream_t *stream, int err) {
   // - destroy alloc'ed cirbufs
   // (anything else from stream init)
 
-  udx_cirbuf_remove(&(stream->udx->streams_by_id), stream->local_id);
+  udx__cirbuf_remove(&(stream->udx->streams_by_id), stream->local_id);
   // TODO: move the instance to a TIME_WAIT state, so we can handle retransmits
 
   if (stream->status & UDX_STREAM_CONNECTED) {
@@ -247,7 +250,7 @@ close_maybe (udx_stream_t *stream, int err) {
 static int
 ack_packet (udx_stream_t *stream, uint32_t seq, int sack) {
   udx_cirbuf_t *out = &(stream->outgoing);
-  udx_packet_t *pkt = (udx_packet_t *) udx_cirbuf_remove(out, seq);
+  udx_packet_t *pkt = (udx_packet_t *) udx__cirbuf_remove(out, seq);
 
   if (pkt == NULL) return 0;
 
@@ -285,7 +288,7 @@ ack_packet (udx_stream_t *stream, uint32_t seq, int sack) {
 
   // If this packet was queued for sending we need to remove it from the queue.
   if (pkt->status == UDX_PACKET_SENDING) {
-    udx_fifo_remove(&(stream->udx->send_queue), pkt, pkt->fifo_gc);
+    udx__fifo_remove(&(stream->udx->send_queue), pkt, pkt->fifo_gc);
   }
 
   free(pkt);
@@ -335,7 +338,7 @@ process_sacks (udx_stream_t *stream, char *buf, size_t buf_len) {
 static void
 fast_retransmit (udx_stream_t *stream) {
   udx_cirbuf_t *out = &(stream->outgoing);
-  udx_packet_t *pkt = (udx_packet_t *) udx_cirbuf_get(out, stream->remote_acked);
+  udx_packet_t *pkt = (udx_packet_t *) udx__cirbuf_get(out, stream->remote_acked);
 
   if (pkt == NULL || pkt->transmits != 1 || pkt->status != UDX_PACKET_INFLIGHT) return;
 
@@ -355,13 +358,13 @@ static void
 clear_outgoing_packets (udx_stream_t *stream) {
   // We should make sure all existing packets do not send, and notify the user that they failed
   for (uint32_t seq = stream->remote_acked; seq != stream->seq; seq++) {
-    udx_packet_t *pkt = (udx_packet_t *) udx_cirbuf_remove(&(stream->outgoing), seq);
+    udx_packet_t *pkt = (udx_packet_t *) udx__cirbuf_remove(&(stream->outgoing), seq);
 
     if (pkt == NULL) continue;
 
     // Make sure to remove it from the fifo, if it was added
     if (pkt->status == UDX_PACKET_SENDING) {
-      udx_fifo_remove(&(stream->udx->send_queue), pkt, pkt->fifo_gc);
+      udx__fifo_remove(&(stream->udx->send_queue), pkt, pkt->fifo_gc);
     }
 
     udx_stream_write_t *w = (udx_stream_write_t *) pkt->ctx;
@@ -395,7 +398,7 @@ process_packet (udx_t *self, char *buf, ssize_t buf_len) {
   buf += UDX_HEADER_SIZE;
   buf_len -= UDX_HEADER_SIZE;
 
-  udx_stream_t *stream = (udx_stream_t *) udx_cirbuf_get(&(self->streams_by_id), local_id);
+  udx_stream_t *stream = (udx_stream_t *) udx__cirbuf_get(&(self->streams_by_id), local_id);
   if (stream == NULL || stream->status & UDX_STREAM_DEAD) return 0;
 
   udx_cirbuf_t *inc = &(stream->incoming);
@@ -404,7 +407,7 @@ process_packet (udx_t *self, char *buf, ssize_t buf_len) {
     process_sacks(stream, buf, buf_len);
   }
 
-  if (type & UDX_HEADER_DATA_OR_END && udx_cirbuf_get(inc, seq) == NULL && (stream->status & UDX_STREAM_SHOULD_READ) == UDX_STREAM_READ) {
+  if (type & UDX_HEADER_DATA_OR_END && udx__cirbuf_get(inc, seq) == NULL && (stream->status & UDX_STREAM_SHOULD_READ) == UDX_STREAM_READ) {
     // Copy over incoming buffer as we CURRENTLY do not own it (stack allocated upstream)
     // TODO: if this is the next packet we expect (it usually is!), then there is no need
     // for the malloc and memcpy - we just need a way to not free it then
@@ -426,7 +429,7 @@ process_packet (udx_t *self, char *buf, ssize_t buf_len) {
     pkt->buf.base = cpy;
     pkt->buf.len = buf_len;
 
-    udx_cirbuf_set(inc, (udx_cirbuf_val_t *) pkt);
+    udx__cirbuf_set(inc, (udx_cirbuf_val_t *) pkt);
   }
 
   if (type & UDX_HEADER_END) {
@@ -455,7 +458,7 @@ process_packet (udx_t *self, char *buf, ssize_t buf_len) {
 
   // process the read queue
   while ((stream->status & UDX_STREAM_SHOULD_READ) == UDX_STREAM_READ) {
-    udx_pending_read_t *pkt = (udx_pending_read_t *) udx_cirbuf_remove(inc, stream->ack);
+    udx_pending_read_t *pkt = (udx_pending_read_t *) udx__cirbuf_remove(inc, stream->ack);
     if (pkt == NULL) break;
 
     stream->ack++;
@@ -552,7 +555,7 @@ on_uv_poll (uv_poll_t *handle, int status, int events) {
   udx_t *self = handle->data;
 
   if (self->send_queue.len > 0 && events & UV_WRITABLE) {
-    udx_packet_t *pkt = (udx_packet_t *) udx_fifo_shift(&(self->send_queue));
+    udx_packet_t *pkt = (udx_packet_t *) udx__fifo_shift(&(self->send_queue));
 
     if (pkt == NULL) return;
 
@@ -615,8 +618,8 @@ udx_init (udx_t *self, uv_loop_t *loop) {
   self->on_send = NULL;
   self->on_close = NULL;
 
-  udx_fifo_init(&(self->send_queue), 16);
-  udx_cirbuf_init(&(self->streams_by_id), 1);
+  udx__fifo_init(&(self->send_queue), 16);
+  udx__cirbuf_init(&(self->streams_by_id), 1);
 
   uv_udp_t *handle = &(self->handle);
   uv_timer_t *timer = (uv_timer_t *) &(self->timer);
@@ -707,7 +710,7 @@ udx_send (udx_t *self, udx_send_t *req, const char *buf, size_t buf_len, const s
   pkt->bufs[0].base = (void *) buf;
   pkt->bufs[0].len = buf_len;
 
-  pkt->fifo_gc = udx_fifo_push(&(self->send_queue), pkt);
+  pkt->fifo_gc = udx__fifo_push(&(self->send_queue), pkt);
 
   return update_poll(self);
 }
@@ -759,7 +762,7 @@ udx_close (udx_t *self) {
   uv_close((uv_handle_t *) &(self->timer), on_uv_close);
 
   while (1) {
-    udx_packet_t *pkt = udx_fifo_shift(&self->send_queue);
+    udx_packet_t *pkt = udx__fifo_shift(&self->send_queue);
     if (pkt == NULL) break;
 
     if (pkt->type == UDX_PACKET_SEND && self->on_send != NULL) {
@@ -778,7 +781,7 @@ udx_stream_init (udx_t *self, udx_stream_t *stream, uint32_t *local_id) {
   uint32_t id;
   while (1) {
     id = random_id();
-    udx_cirbuf_val_t *v = udx_cirbuf_get_stored(&(self->streams_by_id), id);
+    udx_cirbuf_val_t *v = udx__cirbuf_get_stored(&(self->streams_by_id), id);
     if (v == NULL) break;
   }
 
@@ -829,11 +832,11 @@ udx_stream_init (udx_t *self, udx_stream_t *stream, uint32_t *local_id) {
   stream->on_close = NULL;
 
   // Add the socket to the active set
-  udx_cirbuf_set(&(self->streams_by_id), (udx_cirbuf_val_t *) stream);
+  udx__cirbuf_set(&(self->streams_by_id), (udx_cirbuf_val_t *) stream);
 
   // Init stream write/read buffers
-  udx_cirbuf_init(&(stream->outgoing), 16);
-  udx_cirbuf_init(&(stream->incoming), 16);
+  udx__cirbuf_init(&(stream->outgoing), 16);
+  udx__cirbuf_init(&(stream->incoming), 16);
 
   return 0;
 }
@@ -886,7 +889,7 @@ udx_stream_check_timeouts (udx_stream_t *stream) {
     // Consider all packet losts - seems to be the simple consensus across different stream impls
     // which we like cause it is nice and simple to implement.
     for (uint32_t seq = stream->remote_acked; seq != stream->seq; seq++) {
-      udx_packet_t *pkt = (udx_packet_t *) udx_cirbuf_get(&(stream->outgoing), seq);
+      udx_packet_t *pkt = (udx_packet_t *) udx__cirbuf_get(&(stream->outgoing), seq);
 
       if (pkt == NULL || pkt->status != UDX_PACKET_INFLIGHT) continue;
 
@@ -943,7 +946,7 @@ udx_stream_send (udx_stream_t *stream, udx_stream_send_t *req, const char *buf, 
 
   req->stream = stream;
 
-  pkt->fifo_gc = udx_fifo_push(&(self->send_queue), pkt);
+  pkt->fifo_gc = udx__fifo_push(&(self->send_queue), pkt);
   return update_poll(self);
 }
 
@@ -976,7 +979,7 @@ udx_stream_write (udx_stream_t *stream, udx_stream_write_t *req, const char *buf
     buf_len -= buf_partial_len;
     buf += buf_partial_len;
 
-    udx_cirbuf_set(&(stream->outgoing), (udx_cirbuf_val_t *) pkt);
+    udx__cirbuf_set(&(stream->outgoing), (udx_cirbuf_val_t *) pkt);
 
     // If we are not the first packet in the queue, wait to send us until the queue is flushed...
     if (stream->pkts_waiting++ > 0) continue;
@@ -1003,7 +1006,7 @@ udx_stream_end (udx_stream_t *stream, udx_stream_write_t *req) {
 
   stream->seq++;
 
-  udx_cirbuf_set(&(stream->outgoing), (udx_cirbuf_val_t *) pkt);
+  udx__cirbuf_set(&(stream->outgoing), (udx_cirbuf_val_t *) pkt);
 
   if (stream->pkts_waiting++ > 0) return 0;
   return send_data_packet(stream, pkt);
@@ -1031,7 +1034,7 @@ udx_stream_destroy (udx_stream_t *stream) {
 
   stream->seq++;
 
-  udx_fifo_push(&(stream->udx->send_queue), pkt);
+  udx__fifo_push(&(stream->udx->send_queue), pkt);
 
   int err = update_poll(stream->udx);
   return err < 0 ? err : 1;

@@ -9,9 +9,6 @@
 extern "C" {
 #endif
 
-#include "udx/fifo.h"
-#include "udx/cirbuf.h"
-
 // TODO: research the packets sizes a bit more
 #define UDX_MTU 1400
 #define UDX_HEADER_SIZE 20
@@ -55,6 +52,24 @@ extern "C" {
 #define UDX_ERROR_DESTROYED        -1
 #define UDX_ERROR_DESTROYED_REMOTE -2
 #define UDX_ERROR_TIMEOUT          -3
+
+typedef struct {
+  uint32_t seq;
+} udx_cirbuf_val_t;
+
+typedef struct {
+  uint32_t size;
+  uint32_t mask;
+  udx_cirbuf_val_t **values;
+} udx_cirbuf_t;
+
+typedef struct {
+  uint32_t btm;
+  uint32_t len;
+  uint32_t max_len;
+  uint32_t mask;
+  void **values;
+} udx_fifo_t;
 
 // declare these upfront to avoid circular deps.
 

@@ -16,10 +16,10 @@ target_sources(
   udx
   INTERFACE
     include/udx.h
-    include/udx/cirbuf.h
-    include/udx/fifo.h
   PRIVATE
+    src/cirbuf.h
     src/cirbuf.c
+    src/fifo.h
     src/fifo.c
     src/io.h
     src/udx.c
@@ -27,8 +27,9 @@ target_sources(
 
 target_include_directories(
   udx
-  INTERFACE
+  PUBLIC
     include
+    $<TARGET_PROPERTY:uv,INCLUDE_DIRECTORIES>
 )
 
 if (UNIX)
@@ -38,12 +39,6 @@ if (UNIX)
       src/io_posix.c
   )
 endif()
-
-target_link_libraries(
-  udx
-  PUBLIC
-    uv
-)
 
 add_library(udx_shared SHARED $<TARGET_OBJECTS:udx>)
 
@@ -69,8 +64,4 @@ set_target_properties(
 
 install(TARGETS udx_shared udx_static)
 
-install(
-  DIRECTORY include/
-  DESTINATION include
-  FILES_MATCHING PATTERN "*.h"
-)
+install(FILES include/udx.h DESTINATION include)
