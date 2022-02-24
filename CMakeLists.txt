@@ -4,7 +4,13 @@ project(udx C)
 
 add_subdirectory(vendor/libuv EXCLUDE_FROM_ALL)
 
-add_library(udx STATIC)
+add_library(udx OBJECT)
+
+set_target_properties(
+  udx
+  PROPERTIES
+  POSITION_INDEPENDENT_CODE 1
+)
 
 target_sources(
   udx
@@ -35,11 +41,33 @@ endif()
 
 target_link_libraries(
   udx
-  PRIVATE
+  PUBLIC
     uv
 )
 
-install(TARGETS udx)
+add_library(udx_shared SHARED $<TARGET_OBJECTS:udx>)
+
+set_target_properties(
+  udx_shared
+  PROPERTIES
+  OUTPUT_NAME udx
+)
+
+target_link_libraries(
+  udx_shared
+  PUBLIC
+    uv
+)
+
+add_library(udx_static STATIC $<TARGET_OBJECTS:udx>)
+
+set_target_properties(
+  udx_static
+  PROPERTIES
+  OUTPUT_NAME udx
+)
+
+install(TARGETS udx_shared udx_static)
 
 install(
   DIRECTORY include/
