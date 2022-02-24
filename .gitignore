@@ -3,6 +3,3 @@ sandbox
 build
 coverage
 package-lock.json
-
-*.o
-*.a

@@ -5,13 +5,12 @@
 extern "C" {
 #endif
 
+#include <stdlib.h>
 #include <stdint.h>
-#include <string.h>
 #include <uv.h>
 
 #include "udx/fifo.h"
 #include "udx/cirbuf.h"
-#include "udx/utils.h"
 
 // TODO: research the packets sizes a bit more
 #define UDX_MTU 1400
@@ -89,8 +88,6 @@ struct udx {
 
   void *data;
 
-  struct sockaddr_in on_message_addr;
-
   udx_message_cb on_message;
   udx_close_cb on_close;
 
@@ -115,11 +112,12 @@ typedef struct {
 
   void *ctx;
 
-  struct msghdr h;
+  struct sockaddr dest;
 
   // just alloc it in place here, easier to manage
   char header[UDX_HEADER_SIZE];
-  struct iovec buf[2];
+  int bufs_len;
+  uv_buf_t bufs[2];
 } udx_packet_t;
 
 typedef struct {
@@ -127,12 +125,11 @@ typedef struct {
 
   int type;
 
-  struct iovec buf;
+  uv_buf_t buf;
 } udx_pending_read_t;
 
 struct udx_send {
   udx_packet_t pkt;
-  struct sockaddr dest;
 
   udx_send_cb on_send;
 

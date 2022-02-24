@@ -1,9 +1,8 @@
-#include <uv.h>
-#include <stdio.h>
-#include <stdlib.h>
 #include <assert.h>
+#include <string.h>
 
 #include "../include/udx.h"
+#include "io.h"
 
 #define UDX_STREAM_ALL_DESTROYED (UDX_STREAM_DESTROYED | UDX_STREAM_DESTROYED_REMOTE)
 #define UDX_STREAM_ALL_ENDED (UDX_STREAM_ENDED | UDX_STREAM_ENDED_REMOTE)
@@ -27,7 +26,19 @@
 
 static uint32_t
 random_id () {
-  return 0x10000 * (rand() & 0xffff) + (rand() & 0xffff);
+  uint32_t id;
+  uv_random(NULL, NULL, &id, sizeof(id), 0, NULL);
+  return id;
+}
+
+static uint64_t
+get_microseconds () {
+  return uv_hrtime() / 1000;
+}
+
+static uint64_t
+get_milliseconds () {
+  return get_microseconds() / 1000;
 }
 
 static uint32_t
@@ -64,8 +75,6 @@ update_poll (udx_t *self) {
 
 static void
 init_stream_packet (udx_packet_t *pkt, int type, udx_stream_t *stream, const char *buf, size_t buf_len) {
-  memset(&(pkt->h), 0, sizeof(struct msghdr));
-
   uint8_t *b = (uint8_t *) &(pkt->header);
 
   // 8 bit magic byte + 8 bit version + 8 bit type + 8 bit extensions
@@ -89,18 +98,15 @@ init_stream_packet (udx_packet_t *pkt, int type, udx_stream_t *stream, const cha
 
   pkt->transmits = 0;
   pkt->size = (uint16_t) (UDX_HEADER_SIZE + buf_len);
+  pkt->dest = stream->remote_addr;
 
-  pkt->h.msg_name = &(stream->remote_addr);
-  pkt->h.msg_namelen = sizeof(struct sockaddr_in);
+  pkt->bufs_len = 2;
 
-  pkt->h.msg_iov = (struct iovec *) &(pkt->buf);
-  pkt->h.msg_iovlen = buf_len ? 2 : 1;
+  pkt->bufs[0].base = &(pkt->header);
+  pkt->bufs[0].len = UDX_HEADER_SIZE;
 
-  pkt->buf[0].iov_base = &(pkt->header);
-  pkt->buf[0].iov_len = UDX_HEADER_SIZE;
-
-  pkt->buf[1].iov_base = (void *) buf;
-  pkt->buf[1].iov_len = buf_len;
+  pkt->bufs[1].base = (void *) buf;
+  pkt->bufs[1].len = buf_len;
 }
 
 static int
@@ -251,7 +257,7 @@ ack_packet (udx_stream_t *stream, uint32_t seq, int sack) {
   }
 
   if (pkt->transmits == 1) {
-    const uint32_t rtt = (uint32_t) (udx_get_milliseconds() - pkt->time_sent);
+    const uint32_t rtt = (uint32_t) (get_milliseconds() - pkt->time_sent);
 
     // First round trip time sample
     if (stream->srtt == 0) {
@@ -272,7 +278,7 @@ ack_packet (udx_stream_t *stream, uint32_t seq, int sack) {
   }
 
   if (!sack) { // Reset rto timer when new data is ack'ed (inorder)
-    stream->rto_timeout = udx_get_milliseconds() + stream->rto;
+    stream->rto_timeout = get_milliseconds() + stream->rto;
   }
 
   udx_stream_write_t *w = (udx_stream_write_t *) pkt->ctx;
@@ -417,8 +423,8 @@ process_packet (udx_t *self, char *buf, ssize_t buf_len) {
     memcpy(cpy, buf, buf_len);
 
     pkt->seq = seq;
-    pkt->buf.iov_base = cpy;
-    pkt->buf.iov_len = buf_len;
+    pkt->buf.base = cpy;
+    pkt->buf.len = buf_len;
 
     udx_cirbuf_set(inc, (udx_cirbuf_val_t *) pkt);
   }
@@ -454,8 +460,8 @@ process_packet (udx_t *self, char *buf, ssize_t buf_len) {
 
     stream->ack++;
 
-    if (pkt->buf.iov_len > 0 && stream->on_data != NULL) {
-      stream->on_data(stream, pkt->buf.iov_base, pkt->buf.iov_len);
+    if (pkt->buf.len > 0 && stream->on_data != NULL) {
+      stream->on_data(stream, pkt->buf.base, pkt->buf.len);
     }
 
     free(pkt);
@@ -548,9 +554,7 @@ on_uv_poll (uv_poll_t *handle, int status, int events) {
   udx_t *self = handle->data;
 
   if (self->send_queue.len > 0 && events & UV_WRITABLE) {
-    ssize_t size;
     udx_packet_t *pkt = (udx_packet_t *) udx_fifo_shift(&(self->send_queue));
-    const struct msghdr *h = &(pkt->h);
 
     if (pkt == NULL) return;
 
@@ -558,10 +562,7 @@ on_uv_poll (uv_poll_t *handle, int status, int events) {
     pkt->status = UDX_PACKET_INFLIGHT;
     pkt->transmits++;
 
-    do {
-      pkt->time_sent = udx_get_milliseconds();
-      size = sendmsg(handle->io_watcher.fd, h, 0);
-    } while (size == -1 && errno == EINTR);
+    udx__sendmsg(self, pkt);
 
     int type = pkt->type;
 
@@ -581,25 +582,17 @@ on_uv_poll (uv_poll_t *handle, int status, int events) {
   }
 
   if (events & UV_READABLE) {
-    ssize_t size;
-    struct msghdr h;
-    struct iovec buf;
+    struct sockaddr addr;
+    uv_buf_t buf;
 
     char b[2048];
-    buf.iov_base = &b;
-    buf.iov_len = 2048;
+    buf.base = &b;
+    buf.len = 2048;
 
-    h.msg_name = &(self->on_message_addr);
-    h.msg_namelen = sizeof(struct sockaddr_in);
-    h.msg_iov = &buf;
-    h.msg_iovlen = 1;
-
-    do {
-      size = recvmsg(handle->io_watcher.fd, &h, 0);
-    } while (size == -1 && errno == EINTR);
+    ssize_t size = udx__recvmsg(self, &buf, &addr);
 
     if (size > 0 && !process_packet(self, b, size) && self->on_message != NULL) {
-      self->on_message(self, b, size, h.msg_name);
+      self->on_message(self, b, size, &addr);
     }
 
     return;
@@ -688,25 +681,18 @@ int
 udx_send (udx_send_t *req, udx_t *self, const char *buf, size_t buf_len, const struct sockaddr *dest, udx_send_cb cb) {
   udx_packet_t *pkt = &(req->pkt);
 
-  req->dest = *dest;
-  req->on_send = cb;
-
   pkt->status = UDX_PACKET_SENDING;
   pkt->type = UDX_PACKET_SEND;
   pkt->ctx = req;
+  pkt->dest = *dest;
+  req->on_send = cb;
 
   pkt->transmits = 0;
 
-  memset(&(pkt->h), 0, sizeof(struct msghdr));
+  pkt->bufs_len = 1;
 
-  pkt->h.msg_name = &(req->dest);
-  pkt->h.msg_namelen = sizeof(struct sockaddr_in);
-
-  pkt->h.msg_iov = (struct iovec *) &(pkt->buf);
-  pkt->h.msg_iovlen = 1;
-
-  pkt->buf[0].iov_base = (void *) buf;
-  pkt->buf[0].iov_len = buf_len;
+  pkt->bufs[0].base = (void *) buf;
+  pkt->bufs[0].len = buf_len;
 
   pkt->fifo_gc = udx_fifo_push(&(self->send_queue), pkt);
 
@@ -811,7 +797,7 @@ udx_stream_init (udx_t *self, udx_stream_t *stream, uint32_t *local_id) {
   stream->srtt = 0;
   stream->rttvar = 0;
   stream->rto = 1000;
-  stream->rto_timeout = udx_get_milliseconds() + stream->rto;
+  stream->rto_timeout = get_milliseconds() + stream->rto;
 
   stream->pkts_waiting = 0;
   stream->pkts_inflight = 0;
@@ -885,7 +871,7 @@ int
 udx_stream_check_timeouts (udx_stream_t *stream) {
   if (stream->remote_acked == stream->seq) return 0;
 
-  const uint64_t now = stream->inflight ? udx_get_milliseconds() : 0;
+  const uint64_t now = stream->inflight ? get_milliseconds() : 0;
 
   if (now > stream->rto_timeout) {
     // Ensure it backs off until data is acked...
@@ -964,7 +950,7 @@ udx_stream_write (udx_stream_t *stream, udx_stream_write_t *req, const char *buf
 
   // if this is the first inflight packet, we should "restart" rto timer
   if (stream->inflight == 0) {
-    stream->rto_timeout = udx_get_milliseconds() + stream->rto;
+    stream->rto_timeout = get_milliseconds() + stream->rto;
   }
 
   while (buf_len > 0 || err < 0) {
