@@ -50,7 +50,7 @@ test('simple message', async function (t) {
   a.send(Buffer.from('hello'), 0, 5, a.address().port, '127.0.0.1')
 })
 
-test('echo sockets (1000 messages)', async function (t) {
+test('echo sockets (250 messages)', async function (t) {
   t.plan(3)
 
   const a = new Socket()
@@ -69,10 +69,10 @@ test('echo sockets (1000 messages)', async function (t) {
   b.on('message', function (buf) {
     recv.push(buf)
 
-    if (recv.length === 1000) {
+    if (recv.length === 250) {
       t.alike(send, recv)
-      t.is(echoed, 1000)
-      t.is(flushed, 1000)
+      t.is(echoed, 250)
+      t.is(flushed, 250)
       a.close()
       b.close()
     }
@@ -80,7 +80,7 @@ test('echo sockets (1000 messages)', async function (t) {
 
   a.bind()
 
-  while (send.length < 1000) {
+  while (send.length < 250) {
     const buf = Buffer.from('a message')
     send.push(buf)
     b.send(buf, 0, buf.byteLength, a.address().port, '127.0.0.1', function () {
