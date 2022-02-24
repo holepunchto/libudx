@@ -1,5 +1,6 @@
 #include <node_api.h>
 #include <napi-macros.h>
+#include <string.h>
 #include <uv.h>
 
 #include "include/udx.h"
@@ -446,10 +447,6 @@ NAPI_METHOD(udx_napi_stream_destroy) {
 }
 
 NAPI_INIT() {
-  // TODO: do NOT do this!! either find a better way to get random nums
-  // or seed with something more random
-  srand(time(0));
-
   NAPI_EXPORT_OFFSETOF(udx_stream_t, inflight)
   NAPI_EXPORT_OFFSETOF(udx_stream_t, cwnd)
   NAPI_EXPORT_OFFSETOF(udx_stream_t, srtt)
