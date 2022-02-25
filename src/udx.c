@@ -619,13 +619,16 @@ udx_init (udx_t *self, uv_loop_t *loop) {
   udx_cirbuf_init(&(self->streams_by_id), 1);
 
   uv_udp_t *handle = &(self->handle);
-  uv_timer_t *timer = (uv_timer_t *) &(self->timer);
+  uv_timer_t *timer = &(self->timer);
 
   // Asserting all the errors here as it massively simplifies error handling.
   // In practice these will never fail.
 
-  assert(uv_timer_init(loop, timer) == 0);
-  assert(uv_udp_init(loop, handle) == 0);
+  int err = uv_timer_init(loop, timer);
+  assert(err == 0);
+
+  err = uv_udp_init(loop, handle);
+  assert(err == 0);
 
   timer->data = self;
   handle->data = self;
@@ -676,9 +679,14 @@ udx_bind (udx_t *self, const struct sockaddr *addr) {
   // Asserting all the errors here as it massively simplifies error handling
   // and in practice non of these will fail, as all our handles are valid and alive.
 
-  assert(uv_fileno((const uv_handle_t *) handle, &fd) == 0);
-  assert(uv_poll_init(self->loop, poll, fd) == 0);
-  assert(uv_timer_start(&(self->timer), on_uv_interval, UDX_CLOCK_GRANULARITY_MS, UDX_CLOCK_GRANULARITY_MS) == 0);
+  err = uv_fileno((const uv_handle_t *) handle, &fd);
+  assert(err == 0);
+
+  err = uv_poll_init(self->loop, poll, fd);
+  assert(err == 0);
+
+  err = uv_timer_start(&(self->timer), on_uv_interval, UDX_CLOCK_GRANULARITY_MS, UDX_CLOCK_GRANULARITY_MS);
+  assert(err == 0);
 
   self->status |= UDX_SOCKET_BOUND;
   poll->data = self;
