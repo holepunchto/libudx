@@ -74,7 +74,7 @@ update_poll (udx_t *self) {
 }
 
 static void
-init_stream_packet (udx_packet_t *pkt, int type, udx_stream_t *stream, const char *buf, size_t buf_len) {
+init_stream_packet (udx_packet_t *pkt, int type, udx_stream_t *stream, uv_buf_t buf) {
   uint8_t *b = (uint8_t *) &(pkt->header);
 
   // 8 bit magic byte + 8 bit version + 8 bit type + 8 bit extensions
@@ -97,16 +97,13 @@ init_stream_packet (udx_packet_t *pkt, int type, udx_stream_t *stream, const cha
   *(i++) = stream->ack;
 
   pkt->transmits = 0;
-  pkt->size = (uint16_t) (UDX_HEADER_SIZE + buf_len);
+  pkt->size = (uint16_t) (UDX_HEADER_SIZE + buf.len);
   pkt->dest = stream->remote_addr;
 
   pkt->bufs_len = 2;
 
-  pkt->bufs[0].base = &(pkt->header);
-  pkt->bufs[0].len = UDX_HEADER_SIZE;
-
-  pkt->bufs[1].base = (void *) buf;
-  pkt->bufs[1].len = buf_len;
+  pkt->bufs[0] = uv_buf_init((char *) &(pkt->header), UDX_HEADER_SIZE);
+  pkt->bufs[1] = buf;
 }
 
 static int
@@ -152,7 +149,7 @@ send_state_packet (udx_stream_t *stream) {
 
   if (pkt == NULL) pkt = malloc(sizeof(udx_packet_t));
 
-  init_stream_packet(pkt, payload ? UDX_HEADER_SACK : 0, stream, payload, payload_len);
+  init_stream_packet(pkt, payload ? UDX_HEADER_SACK : 0, stream, uv_buf_init(payload, payload_len));
 
   pkt->status = UDX_PACKET_SENDING;
   pkt->type = UDX_PACKET_STREAM_STATE;
@@ -442,7 +439,7 @@ process_packet (udx_t *self, char *buf, ssize_t buf_len) {
     }
 
     if (stream->on_message != NULL) {
-      stream->on_message(stream, buf, buf_len);
+      stream->on_message(stream, uv_buf_init(buf, buf_len));
     }
   }
 
@@ -461,7 +458,7 @@ process_packet (udx_t *self, char *buf, ssize_t buf_len) {
     stream->ack++;
 
     if (pkt->buf.len > 0 && stream->on_data != NULL) {
-      stream->on_data(stream, pkt->buf.base, pkt->buf.len);
+      stream->on_data(stream, uv_buf_init(pkt->buf.base, pkt->buf.len));
     }
 
     free(pkt);
@@ -586,13 +583,13 @@ on_uv_poll (uv_poll_t *handle, int status, int events) {
     uv_buf_t buf;
 
     char b[2048];
-    buf.base = &b;
+    buf.base = (char *) &b;
     buf.len = 2048;
 
     ssize_t size = udx__recvmsg(self, &buf, &addr);
 
     if (size > 0 && !process_packet(self, b, size) && self->on_message != NULL) {
-      self->on_message(self, b, size, &addr);
+      self->on_message(self, uv_buf_init(b, size), &addr);
     }
 
     return;
@@ -686,7 +683,7 @@ udx_getsockname (udx_t *self, struct sockaddr * name, int *name_len) {
 }
 
 int
-udx_send (udx_send_t *req, udx_t *self, const char *buf, size_t buf_len, const struct sockaddr *dest, udx_send_cb cb) {
+udx_send (udx_send_t *req, udx_t *self, uv_buf_t buf, const struct sockaddr *dest, udx_send_cb cb) {
   udx_packet_t *pkt = &(req->pkt);
 
   pkt->status = UDX_PACKET_SENDING;
@@ -699,8 +696,7 @@ udx_send (udx_send_t *req, udx_t *self, const char *buf, size_t buf_len, const s
 
   pkt->bufs_len = 1;
 
-  pkt->bufs[0].base = (void *) buf;
-  pkt->bufs[0].len = buf_len;
+  pkt->bufs[0] = buf;
 
   pkt->fifo_gc = udx_fifo_push(&(self->send_queue), pkt);
 
@@ -932,11 +928,11 @@ udx_stream_connect (udx_stream_t *stream, uint32_t remote_id, const struct socka
 }
 
 int
-udx_stream_send (udx_stream_t *stream, udx_stream_send_t *req, const char *buf, size_t buf_len) {
+udx_stream_send (udx_stream_t *stream, udx_stream_send_t *req, uv_buf_t buf) {
   udx_t *self = stream->udx;
   udx_packet_t *pkt = &(req->pkt);
 
-  init_stream_packet(pkt, UDX_HEADER_MESSAGE, stream, buf, buf_len);
+  init_stream_packet(pkt, UDX_HEADER_MESSAGE, stream, buf);
 
   pkt->status = UDX_PACKET_SENDING;
   pkt->type = UDX_PACKET_STREAM_SEND;
@@ -950,7 +946,7 @@ udx_stream_send (udx_stream_t *stream, udx_stream_send_t *req, const char *buf, 
 }
 
 int
-udx_stream_write (udx_stream_t *stream, udx_stream_write_t *req, const char *buf, size_t buf_len) {
+udx_stream_write (udx_stream_t *stream, udx_stream_write_t *req, uv_buf_t buf) {
   int err = 0;
 
   req->packets = 0;
@@ -961,12 +957,12 @@ udx_stream_write (udx_stream_t *stream, udx_stream_write_t *req, const char *buf
     stream->rto_timeout = get_milliseconds() + stream->rto;
   }
 
-  while (buf_len > 0 || err < 0) {
+  while (buf.len > 0 || err < 0) {
     udx_packet_t *pkt = malloc(sizeof(udx_packet_t));
 
-    size_t buf_partial_len = buf_len < UDX_MAX_DATA_SIZE ? buf_len : UDX_MAX_DATA_SIZE;
+    size_t buf_partial_len = buf.len < UDX_MAX_DATA_SIZE ? buf.len : UDX_MAX_DATA_SIZE;
 
-    init_stream_packet(pkt, UDX_HEADER_DATA, stream, buf, buf_partial_len);
+    init_stream_packet(pkt, UDX_HEADER_DATA, stream, uv_buf_init(buf.base, buf_partial_len));
 
     pkt->status = UDX_PACKET_WAITING;
     pkt->type = UDX_PACKET_STREAM_WRITE;
@@ -975,8 +971,8 @@ udx_stream_write (udx_stream_t *stream, udx_stream_write_t *req, const char *buf
     stream->seq++;
     req->packets++;
 
-    buf_len -= buf_partial_len;
-    buf += buf_partial_len;
+    buf.len -= buf_partial_len;
+    buf.base += buf_partial_len;
 
     udx_cirbuf_set(&(stream->outgoing), (udx_cirbuf_val_t *) pkt);
 
@@ -997,7 +993,7 @@ udx_stream_end (udx_stream_t *stream, udx_stream_write_t *req) {
 
   udx_packet_t *pkt = malloc(sizeof(udx_packet_t));
 
-  init_stream_packet(pkt, UDX_HEADER_END, stream, NULL, 0);
+  init_stream_packet(pkt, UDX_HEADER_END, stream, uv_buf_init(NULL, 0));
 
   pkt->status = UDX_PACKET_WAITING;
   pkt->type = UDX_PACKET_STREAM_WRITE;
@@ -1025,7 +1021,7 @@ udx_stream_destroy (udx_stream_t *stream) {
 
   udx_packet_t *pkt = malloc(sizeof(udx_packet_t));
 
-  init_stream_packet(pkt, UDX_HEADER_DESTROY, stream, NULL, 0);
+  init_stream_packet(pkt, UDX_HEADER_DESTROY, stream, uv_buf_init(NULL, 0));
 
   pkt->status = UDX_PACKET_SENDING;
   pkt->type = UDX_PACKET_STREAM_DESTROY;
