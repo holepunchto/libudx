@@ -1,7 +1,7 @@
-#include "../include/udx/cirbuf.h"
+#include "cirbuf.h"
 
 void
-udx_cirbuf_init (udx_cirbuf_t *c, uint32_t initial_size) {
+udx__cirbuf_init (udx_cirbuf_t *c, uint32_t initial_size) {
   // OBS: initial_size MUST be 2^n
   c->size = initial_size;
   c->mask = initial_size - 1;
@@ -9,14 +9,14 @@ udx_cirbuf_init (udx_cirbuf_t *c, uint32_t initial_size) {
 }
 
 void
-udx_cirbuf_destroy (udx_cirbuf_t *c) {
+udx__cirbuf_destroy (udx_cirbuf_t *c) {
   if (c->values != NULL) free(c->values);
   c->size = c->mask = 0;
   c->values = NULL;
 }
 
 void
-udx_cirbuf_set (udx_cirbuf_t *c, udx_cirbuf_val_t *val) {
+udx__cirbuf_set (udx_cirbuf_t *c, udx_cirbuf_val_t *val) {
   udx_cirbuf_val_t **values = c->values + (val->seq & c->mask);
   udx_cirbuf_val_t *v = *values;
 
@@ -44,18 +44,18 @@ udx_cirbuf_set (udx_cirbuf_t *c, udx_cirbuf_val_t *val) {
 }
 
 udx_cirbuf_val_t *
-udx_cirbuf_get (udx_cirbuf_t *c, uint32_t seq) {
+udx__cirbuf_get (udx_cirbuf_t *c, uint32_t seq) {
   udx_cirbuf_val_t *v = c->values[seq & c->mask];
   return (v == NULL || v->seq != seq) ? NULL : v;
 }
 
 udx_cirbuf_val_t *
-udx_cirbuf_get_stored (udx_cirbuf_t *c, uint32_t seq) {
+udx__cirbuf_get_stored (udx_cirbuf_t *c, uint32_t seq) {
   return c->values[seq & c->mask];
 }
 
 udx_cirbuf_val_t *
-udx_cirbuf_remove (udx_cirbuf_t *c, uint32_t seq) {
+udx__cirbuf_remove (udx_cirbuf_t *c, uint32_t seq) {
   udx_cirbuf_val_t **values = c->values + (seq & c->mask);
   udx_cirbuf_val_t *v = *values;
 
