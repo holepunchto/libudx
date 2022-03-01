@@ -115,6 +115,53 @@ struct udx {
   udx_cirbuf_t streams_by_id;
 };
 
+struct udx_stream {
+  uint32_t local_id; // must be first entry, so its compat with the cirbuf
+  uint32_t remote_id;
+
+  int set_id;
+  int status;
+
+  udx_t *udx;
+
+  struct sockaddr remote_addr;
+
+  void *data;
+
+  udx_stream_read_cb on_read;
+  udx_stream_recv_cb on_recv;
+  udx_stream_close_cb on_close;
+
+  uint32_t seq;
+  uint32_t ack;
+  uint32_t remote_acked;
+  uint32_t remote_ended;
+
+  uint32_t srtt;
+  uint32_t rttvar;
+  uint32_t rto;
+
+  uint64_t rto_timeout;
+
+  uint32_t pkts_waiting;
+  uint32_t pkts_inflight;
+  uint32_t dup_acks;
+  uint32_t retransmits_waiting;
+
+  size_t inflight;
+  size_t ssthresh;
+  size_t cwnd;
+  size_t rwnd;
+
+  size_t stats_sacks;
+  size_t stats_pkts_sent;
+  size_t stats_fast_rt;
+  uint32_t stats_last_seq;
+
+  udx_cirbuf_t outgoing;
+  udx_cirbuf_t incoming;
+};
+
 struct udx_packet {
   uint32_t seq; // must be the first entry, so its compat with the cirbuf
 
@@ -162,53 +209,6 @@ struct udx_stream_send {
   udx_stream_send_cb on_send;
 
   void *data;
-};
-
-struct udx_stream {
-  uint32_t local_id; // must be first entry, so its compat with the cirbuf
-  uint32_t remote_id;
-
-  int set_id;
-  int status;
-
-  udx_t *udx;
-
-  struct sockaddr remote_addr;
-
-  void *data;
-
-  udx_stream_read_cb on_read;
-  udx_stream_recv_cb on_recv;
-  udx_stream_close_cb on_close;
-
-  uint32_t seq;
-  uint32_t ack;
-  uint32_t remote_acked;
-  uint32_t remote_ended;
-
-  uint32_t srtt;
-  uint32_t rttvar;
-  uint32_t rto;
-
-  uint64_t rto_timeout;
-
-  uint32_t pkts_waiting;
-  uint32_t pkts_inflight;
-  uint32_t dup_acks;
-  uint32_t retransmits_waiting;
-
-  size_t inflight;
-  size_t ssthresh;
-  size_t cwnd;
-  size_t rwnd;
-
-  size_t stats_sacks;
-  size_t stats_pkts_sent;
-  size_t stats_fast_rt;
-  uint32_t stats_last_seq;
-
-  udx_cirbuf_t outgoing;
-  udx_cirbuf_t incoming;
 };
 
 int
