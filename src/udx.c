@@ -27,6 +27,14 @@
 
 #define UDX_MAX_TRANSMITS 5
 
+typedef struct {
+  uint32_t seq; // must be the first entry, so its compat with the cirbuf
+
+  int type;
+
+  uv_buf_t buf;
+} udx_pending_read_t;
+
 static uint32_t
 random_id () {
   uint32_t id;
