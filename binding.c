@@ -347,7 +347,7 @@ NAPI_METHOD(udx_napi_stream_init) {
   udx_stream_t *u = (udx_stream_t *) stream;
   uint32_t local_id;
 
-  int err = udx_stream_init(self, u, &local_id);
+  int err = udx_stream_init(self, u, &local_id, on_udx_stream_drain, on_udx_stream_close);
   if (err < 0) UDX_NAPI_THROW(err)
 
   // TODO: should these be deferred?
@@ -383,7 +383,7 @@ NAPI_METHOD(udx_napi_stream_connect) {
   stream->read_buf_head = read_buf;
   stream->read_buf_free = read_buf_len;
 
-  udx_stream_connect((udx_stream_t *) stream, remote_id, (const struct sockaddr *) &addr, on_udx_stream_drain, on_udx_stream_close);
+  udx_stream_connect((udx_stream_t *) stream, remote_id, (const struct sockaddr *) &addr);
 
   return NULL;
 }

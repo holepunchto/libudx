@@ -53,7 +53,6 @@ extern "C" {
 #define UDX_ERROR_DESTROYED        -1
 #define UDX_ERROR_DESTROYED_REMOTE -2
 #define UDX_ERROR_TIMEOUT          -3
-#define UDX_EOF                    -4
 
 typedef struct {
   uint32_t seq;
@@ -96,7 +95,7 @@ typedef void (*udx_stream_recv_cb)(udx_stream_t *handle, ssize_t read_len, const
 typedef void (*udx_stream_close_cb)(udx_stream_t *handle, int status);
 
 struct udx {
-  uv_udp_t handle;
+  uv_udp_t socket;
   uv_poll_t io_poll;
   uv_loop_t *loop;
   udx_fifo_t send_queue;
@@ -126,7 +125,7 @@ struct udx_stream {
   int set_id;
   int status;
 
-  udx_t *udx;
+  udx_t *socket;
 
   struct sockaddr remote_addr;
 
@@ -259,10 +258,10 @@ int
 udx_check_timeouts (udx_t *handle);
 
 int
-udx_stream_init (udx_t *socket, udx_stream_t *handle, uint32_t *local_id);
+udx_stream_init (udx_t *socket, udx_stream_t *handle, uint32_t *local_id, udx_stream_drain_cb drain_cb, udx_stream_close_cb close_cb);
 
 void
-udx_stream_connect (udx_stream_t *handle, uint32_t remote_id, const struct sockaddr *remote_addr, udx_stream_drain_cb drain_cb, udx_stream_close_cb close_cb);
+udx_stream_connect (udx_stream_t *handle, uint32_t remote_id, const struct sockaddr *remote_addr);
 
 void
 udx_stream_recv_start (udx_stream_t *handle, udx_stream_recv_cb cb);

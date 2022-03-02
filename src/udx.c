@@ -62,26 +62,26 @@ on_uv_poll (uv_poll_t *handle, int status, int events);
 
 static void
 on_uv_close (uv_handle_t *handle) {
-  udx_t *self = (udx_t *) handle->data;
+  udx_t *socket = (udx_t *) handle->data;
 
-  if (--self->pending_closes == 0 && self->on_close != NULL) {
-    self->on_close(self);
+  if (--socket->pending_closes == 0 && socket->on_close != NULL) {
+    socket->on_close(socket);
   }
 }
 
 static void
-on_uv_interval (uv_timer_t *req) {
-  udx_t *udx = req->data;
-  udx_check_timeouts(udx);
+on_uv_interval (uv_timer_t *handle) {
+  udx_t *socket = handle->data;
+  udx_check_timeouts(socket);
 }
 
 static int
-update_poll (udx_t *self) {
-  int events = (self->send_queue.len > 0 ? UV_WRITABLE : 0) | (self->readers ? UV_READABLE : 0);
-  if (events == self->events) return 0;
+update_poll (udx_t *socket) {
+  int events = (socket->send_queue.len > 0 ? UV_WRITABLE : 0) | (socket->readers ? UV_READABLE : 0);
+  if (events == socket->events) return 0;
 
-  self->events = events;
-  return uv_poll_start(&(self->io_poll), events, on_uv_poll);
+  socket->events = events;
+  return uv_poll_start(&(socket->io_poll), events, on_uv_poll);
 }
 
 static void
@@ -169,8 +169,8 @@ send_state_packet (udx_stream_t *stream) {
 
   stream->stats_pkts_sent++;
 
-  udx__fifo_push(&(stream->udx->send_queue), pkt);
-  return update_poll(stream->udx);
+  udx__fifo_push(&(stream->socket->send_queue), pkt);
+  return update_poll(stream->socket);
 }
 
 static int
@@ -189,9 +189,9 @@ send_data_packet (udx_stream_t *stream, udx_packet_t *pkt) {
   if (pkt->transmits > 0) stream->retransmits_waiting--;
 
   stream->stats_pkts_sent++;
-  pkt->fifo_gc = udx__fifo_push(&(stream->udx->send_queue), pkt);
+  pkt->fifo_gc = udx__fifo_push(&(stream->socket->send_queue), pkt);
 
-  int err = update_poll(stream->udx);
+  int err = update_poll(stream->socket);
   return err < 0 ? err : 1;
 }
 
@@ -230,21 +230,21 @@ close_maybe (udx_stream_t *stream, int err) {
 
   stream->status |= UDX_STREAM_CLOSED;
 
-  udx_t *u = stream->udx;
-  u->streams[stream->set_id] = u->streams[--(u->streams_len)];
+  udx_t *socket = stream->socket;
+  socket->streams[stream->set_id] = socket->streams[--(socket->streams_len)];
 
   // TODO: Dealloc all remaning state such as
   // - pending reads
   // - destroy alloc'ed cirbufs
   // (anything else from stream init)
 
-  udx__cirbuf_remove(&(stream->udx->streams_by_id), stream->local_id);
+  udx__cirbuf_remove(&(stream->socket->streams_by_id), stream->local_id);
   // TODO: move the instance to a TIME_WAIT state, so we can handle retransmits
 
   if (stream->status & UDX_STREAM_CONNECTED) {
     // TODO: move this to read_stop
-    stream->udx->readers--;
-    update_poll(stream->udx);
+    stream->socket->readers--;
+    update_poll(stream->socket);
   }
 
   if (stream->on_close != NULL) {
@@ -293,7 +293,7 @@ ack_packet (udx_stream_t *stream, uint32_t seq, int sack) {
 
   // If this packet was queued for sending we need to remove it from the queue.
   if (pkt->status == UDX_PACKET_SENDING) {
-    udx__fifo_remove(&(stream->udx->send_queue), pkt, pkt->fifo_gc);
+    udx__fifo_remove(&(stream->socket->send_queue), pkt, pkt->fifo_gc);
   }
   
   if (pkt->type == UDX_PACKET_STREAM_WRITE) {
@@ -384,7 +384,7 @@ clear_outgoing_packets (udx_stream_t *stream) {
 
     // Make sure to remove it from the fifo, if it was added
     if (pkt->status == UDX_PACKET_SENDING) {
-      udx__fifo_remove(&(stream->udx->send_queue), pkt, pkt->fifo_gc);
+      udx__fifo_remove(&(stream->socket->send_queue), pkt, pkt->fifo_gc);
     }
 
     udx_stream_write_t *w = (udx_stream_write_t *) pkt->ctx;
@@ -398,7 +398,7 @@ clear_outgoing_packets (udx_stream_t *stream) {
 }
 
 static int
-process_packet (udx_t *self, char *buf, ssize_t buf_len) {
+process_packet (udx_t *socket, char *buf, ssize_t buf_len) {
   if (buf_len < UDX_HEADER_SIZE) return 0;
 
   uint8_t *b = (uint8_t *) buf;
@@ -418,7 +418,7 @@ process_packet (udx_t *self, char *buf, ssize_t buf_len) {
   buf += UDX_HEADER_SIZE;
   buf_len -= UDX_HEADER_SIZE;
 
-  udx_stream_t *stream = (udx_stream_t *) udx__cirbuf_get(&(self->streams_by_id), local_id);
+  udx_stream_t *stream = (udx_stream_t *) udx__cirbuf_get(&(socket->streams_by_id), local_id);
   if (stream == NULL || stream->status & UDX_STREAM_DEAD) return 0;
 
   udx_cirbuf_t *inc = &(stream->incoming);
@@ -546,7 +546,7 @@ process_packet (udx_t *self, char *buf, ssize_t buf_len) {
 }
 
 static void
-trigger_send_callback (udx_t *self, udx_packet_t *pkt) {
+trigger_send_callback (udx_t *socket, udx_packet_t *pkt) {
   if (pkt->type == UDX_PACKET_SEND) {
     udx_send_t *req = pkt->ctx;
 
@@ -576,10 +576,10 @@ trigger_send_callback (udx_t *self, udx_packet_t *pkt) {
 
 static void
 on_uv_poll (uv_poll_t *handle, int status, int events) {
-  udx_t *self = handle->data;
+  udx_t *socket = handle->data;
 
-  if (self->send_queue.len > 0 && events & UV_WRITABLE) {
-    udx_packet_t *pkt = (udx_packet_t *) udx__fifo_shift(&(self->send_queue));
+  if (socket->send_queue.len > 0 && events & UV_WRITABLE) {
+    udx_packet_t *pkt = (udx_packet_t *) udx__fifo_shift(&(socket->send_queue));
 
     if (pkt == NULL) return;
 
@@ -587,12 +587,12 @@ on_uv_poll (uv_poll_t *handle, int status, int events) {
     pkt->status = UDX_PACKET_INFLIGHT;
     pkt->transmits++;
 
-    udx__sendmsg(self, pkt);
+    udx__sendmsg(socket, pkt);
 
     int type = pkt->type;
 
     if (type & UDX_PACKET_CALLBACK) {
-      trigger_send_callback(self, pkt);
+      trigger_send_callback(socket, pkt);
       // TODO: watch for re-entry here!
     }
 
@@ -601,7 +601,7 @@ on_uv_poll (uv_poll_t *handle, int status, int events) {
     }
 
     // queue another write, might be able to do this smarter...
-    if (self->send_queue.len > 0) {
+    if (socket->send_queue.len > 0) {
       return;
     }
   }
@@ -614,39 +614,39 @@ on_uv_poll (uv_poll_t *handle, int status, int events) {
     buf.base = (char *) &b;
     buf.len = 2048;
 
-    ssize_t size = udx__recvmsg(self, &buf, &addr);
+    ssize_t size = udx__recvmsg(socket, &buf, &addr);
 
-    if (size > 0 && !process_packet(self, b, size) && self->on_recv != NULL) {
+    if (size > 0 && !process_packet(socket, b, size) && socket->on_recv != NULL) {
       buf.len = size;
-      self->on_recv(self, size, &buf, &addr);
+      socket->on_recv(socket, size, &buf, &addr);
     }
 
     return;
   }
 
-  update_poll(self);
+  update_poll(socket);
 }
 
 int
-udx_init (uv_loop_t *loop, udx_t *self) {
-  self->status = 0;
-  self->readers = 0;
-  self->events = 0;
+udx_init (uv_loop_t *loop, udx_t *handle) {
+  handle->status = 0;
+  handle->readers = 0;
+  handle->events = 0;
 
-  self->streams_len = 0;
-  self->streams_max_len = 16;
-  self->streams = malloc(self->streams_max_len * sizeof(udx_stream_t *));
+  handle->streams_len = 0;
+  handle->streams_max_len = 16;
+  handle->streams = malloc(handle->streams_max_len * sizeof(udx_stream_t *));
 
-  self->loop = loop;
+  handle->loop = loop;
 
-  self->on_recv = NULL;
-  self->on_close = NULL;
+  handle->on_recv = NULL;
+  handle->on_close = NULL;
 
-  udx__fifo_init(&(self->send_queue), 16);
-  udx__cirbuf_init(&(self->streams_by_id), 1);
+  udx__fifo_init(&(handle->send_queue), 16);
+  udx__cirbuf_init(&(handle->streams_by_id), 1);
 
-  uv_udp_t *handle = &(self->handle);
-  uv_timer_t *timer = &(self->timer);
+  uv_udp_t *socket = &(handle->socket);
+  uv_timer_t *timer = &(handle->timer);
 
   // Asserting all the errors here as it massively simplifies error handling.
   // In practice these will never fail.
@@ -654,61 +654,61 @@ udx_init (uv_loop_t *loop, udx_t *self) {
   int err = uv_timer_init(loop, timer);
   assert(err == 0);
 
-  err = uv_udp_init(loop, handle);
+  err = uv_udp_init(loop, socket);
   assert(err == 0);
 
-  timer->data = self;
-  handle->data = self;
+  timer->data = handle;
+  socket->data = handle;
 
   return 0;
 }
 
 int
-udx_send_buffer_size(udx_t *self, int *value) {
-  return uv_send_buffer_size((uv_handle_t *) &(self->handle), value);
+udx_send_buffer_size(udx_t *handle, int *value) {
+  return uv_send_buffer_size((uv_handle_t *) &(handle->socket), value);
 }
 
 int
-udx_recv_buffer_size(udx_t *self, int *value) {
-  return uv_recv_buffer_size((uv_handle_t *) &(self->handle), value);
+udx_recv_buffer_size(udx_t *handle, int *value) {
+  return uv_recv_buffer_size((uv_handle_t *) &(handle->socket), value);
 }
 
 int
-udx_set_ttl(udx_t *self, int ttl) {
-  return uv_udp_set_ttl((uv_udp_t *) &(self->handle), ttl);
+udx_set_ttl(udx_t *handle, int ttl) {
+  return uv_udp_set_ttl((uv_udp_t *) &(handle->socket), ttl);
 }
 
 int
-udx_bind (udx_t *self, const struct sockaddr *addr) {
-  uv_udp_t *handle = &(self->handle);
-  uv_poll_t *poll = &(self->io_poll);
+udx_bind (udx_t *handle, const struct sockaddr *addr) {
+  uv_udp_t *socket = &(handle->socket);
+  uv_poll_t *poll = &(handle->io_poll);
   uv_os_fd_t fd;
 
   // This might actually fail in practice, so
-  int err = uv_udp_bind(handle, addr, 0);
+  int err = uv_udp_bind(socket, addr, 0);
   if (err) return err;
 
   // Asserting all the errors here as it massively simplifies error handling
   // and in practice non of these will fail, as all our handles are valid and alive.
 
-  err = uv_fileno((const uv_handle_t *) handle, &fd);
+  err = uv_fileno((const uv_handle_t *) socket, &fd);
   assert(err == 0);
 
-  err = uv_poll_init(self->loop, poll, fd);
+  err = uv_poll_init(handle->loop, poll, fd);
   assert(err == 0);
 
-  err = uv_timer_start(&(self->timer), on_uv_interval, UDX_CLOCK_GRANULARITY_MS, UDX_CLOCK_GRANULARITY_MS);
+  err = uv_timer_start(&(handle->timer), on_uv_interval, UDX_CLOCK_GRANULARITY_MS, UDX_CLOCK_GRANULARITY_MS);
   assert(err == 0);
 
-  self->status |= UDX_SOCKET_BOUND;
-  poll->data = self;
+  handle->status |= UDX_SOCKET_BOUND;
+  poll->data = handle;
 
   return 0;
 }
 
 int
-udx_getsockname (udx_t *self, struct sockaddr * name, int *name_len) {
-  return uv_udp_getsockname(&(self->handle), name, name_len);
+udx_getsockname (udx_t *handle, struct sockaddr * name, int *name_len) {
+  return uv_udp_getsockname(&(handle->socket), name, name_len);
 }
 
 int
@@ -759,9 +759,9 @@ udx_recv_stop (udx_t *handle) {
 }
 
 int
-udx_check_timeouts (udx_t *self) {
-  for (uint32_t i = 0; i < self->streams_len; i++) {
-    int err = udx_stream_check_timeouts(self->streams[i]);
+udx_check_timeouts (udx_t *handle) {
+  for (uint32_t i = 0; i < handle->streams_len; i++) {
+    int err = udx_stream_check_timeouts(handle->streams[i]);
     if (err < 0) return err;
     if (err == 1) i--; // stream was closed, the index again
   }
@@ -769,24 +769,24 @@ udx_check_timeouts (udx_t *self) {
 }
 
 int
-udx_close (udx_t *self, udx_close_cb cb) {
-  if (self->streams_len > 0) return UV_EBUSY;
+udx_close (udx_t *handle, udx_close_cb cb) {
+  if (handle->streams_len > 0) return UV_EBUSY;
 
-  self->on_close = cb;
-  self->pending_closes = 2;
-  uv_timer_stop(&(self->timer));
+  handle->on_close = cb;
+  handle->pending_closes = 2;
+  uv_timer_stop(&(handle->timer));
 
-  if (self->status & UDX_SOCKET_BOUND) {
-    self->pending_closes++;
-    uv_poll_stop(&(self->io_poll));
-    uv_close((uv_handle_t *) &(self->io_poll), on_uv_close);
+  if (handle->status & UDX_SOCKET_BOUND) {
+    handle->pending_closes++;
+    uv_poll_stop(&(handle->io_poll));
+    uv_close((uv_handle_t *) &(handle->io_poll), on_uv_close);
   }
 
-  uv_close((uv_handle_t *) &(self->handle), on_uv_close);
-  uv_close((uv_handle_t *) &(self->timer), on_uv_close);
+  uv_close((uv_handle_t *) &(handle->socket), on_uv_close);
+  uv_close((uv_handle_t *) &(handle->timer), on_uv_close);
 
   while (1) {
-    udx_packet_t *pkt = udx__fifo_shift(&self->send_queue);
+    udx_packet_t *pkt = udx__fifo_shift(&handle->send_queue);
     if (pkt == NULL) break;
 
     if (pkt->type == UDX_PACKET_SEND) {
@@ -802,65 +802,66 @@ udx_close (udx_t *self, udx_close_cb cb) {
 }
 
 int
-udx_stream_init (udx_t *self, udx_stream_t *stream, uint32_t *local_id) {
-  if (self->streams_len >= 65536) return -1;
+udx_stream_init (udx_t *socket, udx_stream_t *handle, uint32_t *local_id, udx_stream_drain_cb drain_cb, udx_stream_close_cb close_cb) {
+  if (socket->streams_len >= 65536) return -1;
 
   // Get a free socket id (pick a random one until we get a free one)
   uint32_t id;
   while (1) {
     id = random_id();
-    udx_cirbuf_val_t *v = udx__cirbuf_get_stored(&(self->streams_by_id), id);
+    udx_cirbuf_val_t *v = udx__cirbuf_get_stored(&(socket->streams_by_id), id);
     if (v == NULL) break;
   }
 
-  if (self->streams_len == self->streams_max_len) {
-    self->streams_max_len *= 2;
-    self->streams = realloc(self->streams, self->streams_max_len * sizeof(udx_stream_t *));
+  if (socket->streams_len == socket->streams_max_len) {
+    socket->streams_max_len *= 2;
+    socket->streams = realloc(socket->streams, socket->streams_max_len * sizeof(udx_stream_t *));
   }
 
-  stream->status = 0;
+  handle->status = 0;
 
-  *local_id = stream->local_id = id;
-  stream->remote_id = 0;
-  stream->set_id = self->streams_len++;
-  stream->udx = self;
+  *local_id = handle->local_id = id;
+  handle->remote_id = 0;
+  handle->set_id = socket->streams_len++;
+  handle->socket = socket;
 
-  self->streams[stream->set_id] = stream;
+  socket->streams[handle->set_id] = handle;
 
-  stream->seq = 0;
-  stream->ack = 0;
-  stream->remote_acked = 0;
+  handle->seq = 0;
+  handle->ack = 0;
+  handle->remote_acked = 0;
 
-  stream->srtt = 0;
-  stream->rttvar = 0;
-  stream->rto = 1000;
-  stream->rto_timeout = get_milliseconds() + stream->rto;
+  handle->srtt = 0;
+  handle->rttvar = 0;
+  handle->rto = 1000;
+  handle->rto_timeout = get_milliseconds() + handle->rto;
 
-  stream->pkts_waiting = 0;
-  stream->pkts_inflight = 0;
-  stream->dup_acks = 0;
-  stream->retransmits_waiting = 0;
+  handle->pkts_waiting = 0;
+  handle->pkts_inflight = 0;
+  handle->dup_acks = 0;
+  handle->retransmits_waiting = 0;
 
-  stream->inflight = 0;
-  stream->ssthresh = 65535;
-  stream->cwnd = 2 * UDX_MTU;
-  stream->rwnd = 0;
+  handle->inflight = 0;
+  handle->ssthresh = 65535;
+  handle->cwnd = 2 * UDX_MTU;
+  handle->rwnd = 0;
 
-  stream->stats_sacks = 0;
-  stream->stats_pkts_sent = 0;
-  stream->stats_fast_rt = 0;
-  stream->stats_last_seq = 0;
+  handle->stats_sacks = 0;
+  handle->stats_pkts_sent = 0;
+  handle->stats_fast_rt = 0;
+  handle->stats_last_seq = 0;
 
-  stream->on_read = NULL;
-  stream->on_recv = NULL;
-  stream->on_close = NULL;
+  handle->on_read = NULL;
+  handle->on_recv = NULL;
+  handle->on_drain = drain_cb;
+  handle->on_close = close_cb;
 
   // Add the socket to the active set
-  udx__cirbuf_set(&(self->streams_by_id), (udx_cirbuf_val_t *) stream);
+  udx__cirbuf_set(&(socket->streams_by_id), (udx_cirbuf_val_t *) handle);
 
   // Init stream write/read buffers
-  udx__cirbuf_init(&(stream->outgoing), 16);
-  udx__cirbuf_init(&(stream->incoming), 16);
+  udx__cirbuf_init(&(handle->outgoing), 16);
+  udx__cirbuf_init(&(handle->incoming), 16);
 
   return 0;
 }
@@ -890,60 +891,58 @@ udx_stream_read_stop (udx_stream_t *handle) {
 }
 
 int
-udx_stream_check_timeouts (udx_stream_t *stream) {
-  if (stream->remote_acked == stream->seq) return 0;
+udx_stream_check_timeouts (udx_stream_t *handle) {
+  if (handle->remote_acked == handle->seq) return 0;
 
-  const uint64_t now = stream->inflight ? get_milliseconds() : 0;
+  const uint64_t now = handle->inflight ? get_milliseconds() : 0;
 
-  if (now > stream->rto_timeout) {
+  if (now > handle->rto_timeout) {
     // Ensure it backs off until data is acked...
-    stream->rto_timeout = now + 2 * stream->rto;
+    handle->rto_timeout = now + 2 * handle->rto;
 
     // Consider all packet losts - seems to be the simple consensus across different stream impls
     // which we like cause it is nice and simple to implement.
-    for (uint32_t seq = stream->remote_acked; seq != stream->seq; seq++) {
-      udx_packet_t *pkt = (udx_packet_t *) udx__cirbuf_get(&(stream->outgoing), seq);
+    for (uint32_t seq = handle->remote_acked; seq != handle->seq; seq++) {
+      udx_packet_t *pkt = (udx_packet_t *) udx__cirbuf_get(&(handle->outgoing), seq);
 
       if (pkt == NULL || pkt->status != UDX_PACKET_INFLIGHT) continue;
 
       if (pkt->transmits >= UDX_MAX_TRANSMITS) {
-        stream->status |= UDX_STREAM_DESTROYED;
-        close_maybe(stream, UDX_ERROR_TIMEOUT);
+        handle->status |= UDX_STREAM_DESTROYED;
+        close_maybe(handle, UDX_ERROR_TIMEOUT);
         return 1;
       }
 
       pkt->status = UDX_PACKET_WAITING;
 
-      stream->inflight -= pkt->size;
-      stream->pkts_waiting++;
-      stream->pkts_inflight--;
-      stream->retransmits_waiting++;
+      handle->inflight -= pkt->size;
+      handle->pkts_waiting++;
+      handle->pkts_inflight--;
+      handle->retransmits_waiting++;
     }
 
-    stream->cwnd = max(UDX_MTU, stream->cwnd / 2);
+    handle->cwnd = max(UDX_MTU, handle->cwnd / 2);
 
     printf("pkt loss! stream is congested, scaling back (requeued the full window)\n");
   }
 
-  int err = flush_waiting_packets(stream);
+  int err = flush_waiting_packets(handle);
   return err < 0 ? err : 0;
 }
 
 void
-udx_stream_connect (udx_stream_t *stream, uint32_t remote_id, const struct sockaddr *remote_addr, udx_stream_drain_cb drain_cb, udx_stream_close_cb close_cb) {
-  int already_connected = stream->status & UDX_STREAM_CONNECTED;
+udx_stream_connect (udx_stream_t *handle, uint32_t remote_id, const struct sockaddr *remote_addr) {
+  int already_connected = handle->status & UDX_STREAM_CONNECTED;
 
-  stream->status |= UDX_STREAM_CONNECTED;
+  handle->status |= UDX_STREAM_CONNECTED;
 
-  stream->remote_id = remote_id;
-  stream->remote_addr = *remote_addr;
-  stream->on_drain = drain_cb;
-  stream->on_close = close_cb;
+  handle->remote_id = remote_id;
+  handle->remote_addr = *remote_addr;
 
   if (already_connected == 0) {
     // TODO: move this to read_start once we have that
-    stream->udx->readers++;
-    update_poll(stream->udx);
+    handle->socket->readers++;
+    update_poll(handle->socket);
   }
 }
 
@@ -954,7 +953,7 @@ udx_stream_send (udx_stream_send_t *req, udx_stream_t *handle, const uv_buf_t bu
   req->handle = handle;
   req->on_send = cb;
 
-  udx_t *self = handle->udx;
+  udx_t *socket = handle->socket;
   udx_packet_t *pkt = &(req->pkt);
 
   init_stream_packet(pkt, UDX_HEADER_MESSAGE, handle, &bufs[0]);
@@ -964,8 +963,8 @@ udx_stream_send (udx_stream_send_t *req, udx_stream_t *handle, const uv_buf_t bu
   pkt->ctx = req;
   pkt->transmits = 0;
 
-  pkt->fifo_gc = udx__fifo_push(&(self->send_queue), pkt);
-  return update_poll(self);
+  pkt->fifo_gc = udx__fifo_push(&(socket->send_queue), pkt);
+  return update_poll(socket);
 }
 
 int
@@ -1039,31 +1038,31 @@ udx_stream_end (udx_stream_end_t *req, udx_stream_t *handle, udx_stream_end_cb c
 }
 
 int
-udx_stream_destroy (udx_stream_t *stream) {
-  if ((stream->status & UDX_STREAM_CONNECTED) == 0) {
-    stream->status |= UDX_STREAM_DESTROYED;
-    close_maybe(stream, UDX_ERROR_DESTROYED);
+udx_stream_destroy (udx_stream_t *handle) {
+  if ((handle->status & UDX_STREAM_CONNECTED) == 0) {
+    handle->status |= UDX_STREAM_DESTROYED;
+    close_maybe(handle, UDX_ERROR_DESTROYED);
     return 0;
   }
 
-  stream->status |= UDX_STREAM_DESTROYING;
+  handle->status |= UDX_STREAM_DESTROYING;
 
-  clear_outgoing_packets(stream);
+  clear_outgoing_packets(handle);
 
   udx_packet_t *pkt = malloc(sizeof(udx_packet_t));
 
   uv_buf_t buf = uv_buf_init(NULL, 0);
 
-  init_stream_packet(pkt, UDX_HEADER_DESTROY, stream, &buf);
+  init_stream_packet(pkt, UDX_HEADER_DESTROY, handle, &buf);
 
   pkt->status = UDX_PACKET_SENDING;
   pkt->type = UDX_PACKET_STREAM_DESTROY;
-  pkt->ctx = stream;
+  pkt->ctx = handle;
 
-  stream->seq++;
+  handle->seq++;
 
-  udx__fifo_push(&(stream->udx->send_queue), pkt);
+  udx__fifo_push(&(handle->socket->send_queue), pkt);
 
-  int err = update_poll(stream->udx);
+  int err = update_poll(handle->socket);
   return err < 0 ? err : 1;
 }
