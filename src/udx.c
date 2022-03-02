@@ -247,9 +247,8 @@ close_maybe (udx_stream_t *stream, int err) {
     update_poll(stream->udx);
   }
 
-  if (stream->on_read != NULL) {
-    uv_buf_t b = uv_buf_init(NULL, 0);
-    stream->on_read(stream, err, &b);
+  if (stream->on_close != NULL) {
+    stream->on_close(stream, err);
   }
 
   return 1;
@@ -520,7 +519,7 @@ process_packet (udx_t *self, char *buf, ssize_t buf_len) {
       // TODO: make this work as well, if the ack packet is lost, ie
       // have some internal (capped) queue of "gracefully closed" streams
       send_state_packet(stream);
-      close_maybe(stream, UV_EOF);
+      close_maybe(stream, 0);
     }
     return 1;
   }
@@ -536,7 +535,7 @@ process_packet (udx_t *self, char *buf, ssize_t buf_len) {
       uv_buf_t b = uv_buf_init(NULL, 0);
       stream->on_read(stream, UV_EOF, &b);
     }
-    if (close_maybe(stream, UV_EOF)) return 1;
+    if (close_maybe(stream, 0)) return 1;
   }
 
   if (stream->pkts_waiting > 0) {
@@ -931,7 +930,7 @@ udx_stream_check_timeouts (udx_stream_t *stream) {
 }
 
 void
-udx_stream_connect (udx_stream_t *stream, uint32_t remote_id, const struct sockaddr *remote_addr, udx_stream_drain_cb drain_cb) {
+udx_stream_connect (udx_stream_t *stream, uint32_t remote_id, const struct sockaddr *remote_addr, udx_stream_drain_cb drain_cb, udx_stream_close_cb close_cb) {
   int already_connected = stream->status & UDX_STREAM_CONNECTED;
 
   stream->status |= UDX_STREAM_CONNECTED;
@@ -939,6 +938,7 @@ udx_stream_connect (udx_stream_t *stream, uint32_t remote_id, const struct socka
   stream->remote_id = remote_id;
   stream->remote_addr = *remote_addr;
   stream->on_drain = drain_cb;
+  stream->on_close = close_cb;
 
   if (already_connected == 0) {
     // TODO: move this to read_start once we have that

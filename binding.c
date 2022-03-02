@@ -111,26 +111,22 @@ on_udx_close (udx_t *self) {
   })
 }
 
-// TODO: remove this
 static void
-on_udx_stream_end (udx_stream_t *stream);
+on_udx_stream_end (udx_stream_t *stream) {
+  udx_napi_stream_t *n = (udx_napi_stream_t *) stream;
 
-// TODO: remove this
-static void
-on_udx_stream_close (udx_stream_t *stream, int hard_close);
+  size_t read = n->read_buf_head - n->read_buf;
+
+  UDX_NAPI_CALLBACK(n, n->on_end, {
+    napi_value argv[1];
+    napi_create_uint32(env, read, &(argv[0]));
+    NAPI_MAKE_CALLBACK(env, NULL, ctx, callback, 1, argv, NULL)
+  })
+}
 
 static void
 on_udx_stream_read (udx_stream_t *stream, ssize_t read_len, const uv_buf_t *buf) {
-  // TODO: handle this in javascript similar to node.js?
-  if (read_len < 0) {
-    if (read_len == UV_EOF) {
-      on_udx_stream_end(stream);
-    } else {
-      on_udx_stream_close(stream, read_len);
-    }
-
-    return;
-  }
+  if (read_len == UV_EOF) return on_udx_stream_end(stream);
 
   udx_napi_stream_t *n = (udx_napi_stream_t *) stream;
 
@@ -150,20 +146,6 @@ on_udx_stream_read (udx_stream_t *stream, ssize_t read_len, const uv_buf_t *buf)
     napi_value argv[1];
     napi_create_uint32(env, read, &(argv[0]));
     UDX_NAPI_MAKE_ALLOC_CALLBACK(n, env, NULL, ctx, callback, 1, argv, ret)
-  })
-}
-
-// TODO: remove this
-static void
-on_udx_stream_end (udx_stream_t *stream) {
-  udx_napi_stream_t *n = (udx_napi_stream_t *) stream;
-
-  size_t read = n->read_buf_head - n->read_buf;
-
-  UDX_NAPI_CALLBACK(n, n->on_end, {
-    napi_value argv[1];
-    napi_create_uint32(env, read, &(argv[0]));
-    NAPI_MAKE_CALLBACK(env, NULL, ctx, callback, 1, argv, NULL)
   })
 }
 
@@ -210,14 +192,13 @@ on_udx_stream_recv (udx_stream_t *stream, ssize_t read_len, const uv_buf_t *buf)
   })
 }
 
-// TODO: remove this
 static void
-on_udx_stream_close (udx_stream_t *stream, int hard_close) {
+on_udx_stream_close (udx_stream_t *stream, int status) {
   udx_napi_stream_t *n = (udx_napi_stream_t *) stream;
 
   UDX_NAPI_CALLBACK(n, n->on_close, {
     napi_value argv[1];
-    napi_create_uint32(env, hard_close, &(argv[0]));
+    napi_create_uint32(env, status, &(argv[0]));
     NAPI_MAKE_CALLBACK(env, NULL, ctx, callback, 1, argv, NULL)
   })
 }
@@ -402,7 +383,7 @@ NAPI_METHOD(udx_napi_stream_connect) {
   stream->read_buf_head = read_buf;
   stream->read_buf_free = read_buf_len;
 
-  udx_stream_connect((udx_stream_t *) stream, remote_id, (const struct sockaddr *) &addr, on_udx_stream_drain);
+  udx_stream_connect((udx_stream_t *) stream, remote_id, (const struct sockaddr *) &addr, on_udx_stream_drain, on_udx_stream_close);
 
   return NULL;
 }
@@ -444,7 +425,7 @@ NAPI_METHOD(udx_napi_stream_write) {
 NAPI_METHOD(udx_napi_stream_end) {
   NAPI_ARGV(3)
   NAPI_ARGV_BUFFER_CAST(udx_stream_t *, stream, 0)
-  NAPI_ARGV_BUFFER_CAST(udx_stream_write_t *, req, 1)
+  NAPI_ARGV_BUFFER_CAST(udx_stream_end_t *, req, 1)
   NAPI_ARGV_UINT32(rid, 2)
 
   req->data = (void *)((uintptr_t) rid);
