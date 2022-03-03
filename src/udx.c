@@ -789,7 +789,7 @@ udx_stream_init (udx_t *self, udx_stream_t *stream, uint32_t *local_id) {
   uint32_t id;
   while (1) {
     id = random_id();
-    udx_cirbuf_val_t *v = udx__cirbuf_get_stored(&(self->streams_by_id), id);
+    udx_cirbuf_val_t *v = udx__cirbuf_get(&(self->streams_by_id), id);
     if (v == NULL) break;
   }
 
