@@ -50,11 +50,6 @@ udx__cirbuf_get (udx_cirbuf_t *c, uint32_t seq) {
 }
 
 udx_cirbuf_val_t *
-udx__cirbuf_get_stored (udx_cirbuf_t *c, uint32_t seq) {
-  return c->values[seq & c->mask];
-}
-
-udx_cirbuf_val_t *
 udx__cirbuf_remove (udx_cirbuf_t *c, uint32_t seq) {
   udx_cirbuf_val_t **values = c->values + (seq & c->mask);
   udx_cirbuf_val_t *v = *values;
