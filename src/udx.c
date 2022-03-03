@@ -295,7 +295,7 @@ ack_packet (udx_stream_t *stream, uint32_t seq, int sack) {
   if (pkt->status == UDX_PACKET_SENDING) {
     udx__fifo_remove(&(stream->socket->send_queue), pkt, pkt->fifo_gc);
   }
-  
+
   if (pkt->type == UDX_PACKET_STREAM_WRITE) {
     udx_stream_write_t *w = (udx_stream_write_t *) pkt->ctx;
 
@@ -306,9 +306,7 @@ ack_packet (udx_stream_t *stream, uint32_t seq, int sack) {
     if (w->on_write != NULL) {
       w->on_write(w, 0, sack);
     }
-  }
-
-  if (pkt->type == UDX_PACKET_STREAM_END) {
+  } else if (pkt->type == UDX_PACKET_STREAM_END) {
     udx_stream_end_t *e = (udx_stream_end_t *) pkt->ctx;
 
     free(pkt);
@@ -791,7 +789,7 @@ udx_close (udx_t *handle, udx_close_cb cb) {
 
     if (pkt->type == UDX_PACKET_SEND) {
       udx_send_t *req = pkt->ctx;
-      
+
       if (req->on_send != NULL) {
         req->on_send(req, UDX_ERROR_DESTROYED);
       }
