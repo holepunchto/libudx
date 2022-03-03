@@ -166,6 +166,20 @@ test('unordered messages', async function (t) {
   a.send(Buffer.from('d'))
 })
 
+test('several streams on same socket', async function (t) {
+  const socket = new Socket()
+
+  t.teardown(() => socket.close())
+
+  for (let i = 0; i < 10; i++) {
+    const stream = socket.createStream()
+
+    t.teardown(() => stream.destroy())
+  }
+
+  t.pass('halts')
+})
+
 writeALot(1)
 
 writeALot(1024)

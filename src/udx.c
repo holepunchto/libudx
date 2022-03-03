@@ -809,7 +809,7 @@ udx_stream_init (udx_t *socket, udx_stream_t *handle, uint32_t *local_id, udx_st
   uint32_t id;
   while (1) {
     id = random_id();
-    udx_cirbuf_val_t *v = udx__cirbuf_get_stored(&(socket->streams_by_id), id);
+    udx_cirbuf_val_t *v = udx__cirbuf_get(&(socket->streams_by_id), id);
     if (v == NULL) break;
   }
 
