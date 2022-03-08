@@ -306,13 +306,13 @@ ack_packet (udx_stream_t *stream, uint32_t seq, int sack) {
     if (w->on_write != NULL) {
       w->on_write(w, 0, sack);
     }
-  } else if (pkt->type == UDX_PACKET_STREAM_END) {
-    udx_stream_end_t *e = (udx_stream_end_t *) pkt->ctx;
+  } else if (pkt->type == UDX_PACKET_STREAM_SHUTDOWN) {
+    udx_stream_shutdown_t *s = (udx_stream_shutdown_t *) pkt->ctx;
 
     free(pkt);
 
-    if (e->on_end != NULL) {
-      e->on_end(e, 0);
+    if (s->on_shutdown != NULL) {
+      s->on_shutdown(s, 0);
     }
   }
 
@@ -1011,11 +1011,11 @@ udx_stream_write (udx_stream_write_t *req, udx_stream_t *handle, const uv_buf_t 
 }
 
 int
-udx_stream_end (udx_stream_end_t *req, udx_stream_t *handle, udx_stream_end_cb cb) {
+udx_stream_shutdown (udx_stream_shutdown_t *req, udx_stream_t *handle, udx_stream_shutdown_cb cb) {
   handle->status |= UDX_STREAM_ENDING;
 
   req->handle = handle;
-  req->on_end = cb;
+  req->on_shutdown = cb;
 
   udx_packet_t *pkt = malloc(sizeof(udx_packet_t));
 
@@ -1024,7 +1024,7 @@ udx_stream_end (udx_stream_end_t *req, udx_stream_t *handle, udx_stream_end_cb c
   init_stream_packet(pkt, UDX_HEADER_END, handle, &buf);
 
   pkt->status = UDX_PACKET_WAITING;
-  pkt->type = UDX_PACKET_STREAM_END;
+  pkt->type = UDX_PACKET_STREAM_SHUTDOWN;
   pkt->ctx = req;
 
   handle->seq++;
