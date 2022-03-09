@@ -247,8 +247,9 @@ close_maybe (udx_stream_t *stream, int err) {
     update_poll(stream->socket);
   }
 
-  if (stream->on_close != NULL) {
-    stream->on_close(stream, err);
+  if (err < 0 && stream->on_read != NULL) {
+    uv_buf_t b = uv_buf_init(NULL, 0);
+    stream->on_read(stream, err, &b);
   }
 
   return 1;
@@ -568,6 +569,10 @@ trigger_send_callback (udx_t *socket, udx_packet_t *pkt) {
 
     stream->status |= UDX_STREAM_DESTROYED;
     close_maybe(stream, UDX_ERROR_DESTROYED);
+
+    if (stream->on_close != NULL) {
+      stream->on_close(stream);
+    }
     return;
   }
 }
@@ -800,7 +805,7 @@ udx_close (udx_t *handle, udx_close_cb cb) {
 }
 
 int
-udx_stream_init (udx_t *socket, udx_stream_t *handle, uint32_t *local_id, udx_stream_drain_cb drain_cb, udx_stream_close_cb close_cb) {
+udx_stream_init (udx_t *socket, udx_stream_t *handle, uint32_t *local_id, udx_stream_drain_cb drain_cb) {
   if (socket->streams_len >= 65536) return -1;
 
   // Get a free socket id (pick a random one until we get a free one)
@@ -852,7 +857,7 @@ udx_stream_init (udx_t *socket, udx_stream_t *handle, uint32_t *local_id, udx_st
   handle->on_read = NULL;
   handle->on_recv = NULL;
   handle->on_drain = drain_cb;
-  handle->on_close = close_cb;
+  handle->on_close = NULL;
 
   // Add the socket to the active set
   udx__cirbuf_set(&(socket->streams_by_id), (udx_cirbuf_val_t *) handle);
@@ -1036,14 +1041,16 @@ udx_stream_shutdown (udx_stream_shutdown_t *req, udx_stream_t *handle, udx_strea
 }
 
 int
-udx_stream_destroy (udx_stream_t *handle) {
+udx_stream_close (udx_stream_t *handle, udx_stream_close_cb cb) {
   if ((handle->status & UDX_STREAM_CONNECTED) == 0) {
     handle->status |= UDX_STREAM_DESTROYED;
     close_maybe(handle, UDX_ERROR_DESTROYED);
+    if (cb) cb(handle);
     return 0;
   }
 
   handle->status |= UDX_STREAM_DESTROYING;
+  handle->on_close = cb;
 
   clear_outgoing_packets(handle);
 
