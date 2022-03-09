@@ -37,12 +37,11 @@ extern "C" {
 #define UDX_PACKET_SENDING  2
 #define UDX_PACKET_INFLIGHT 3
 
-#define UDX_PACKET_STREAM_STATE    0b000001
-#define UDX_PACKET_STREAM_WRITE    0b000010
-#define UDX_PACKET_STREAM_SEND     0b000100
-#define UDX_PACKET_STREAM_SHUTDOWN 0b001000
-#define UDX_PACKET_STREAM_DESTROY  0b010000
-#define UDX_PACKET_SEND            0b100000
+#define UDX_PACKET_STREAM_STATE   0b00001
+#define UDX_PACKET_STREAM_WRITE   0b00010
+#define UDX_PACKET_STREAM_SEND    0b00100
+#define UDX_PACKET_STREAM_DESTROY 0b01000
+#define UDX_PACKET_SEND           0b10000
 
 #define UDX_HEADER_DATA    0b00001
 #define UDX_HEADER_END     0b00010
@@ -80,7 +79,6 @@ typedef struct udx_send udx_send_t;
 
 typedef struct udx_stream_write udx_stream_write_t;
 typedef struct udx_stream_send udx_stream_send_t;
-typedef struct udx_stream_shutdown udx_stream_shutdown_t;
 
 typedef void (*udx_send_cb)(udx_send_t *req, int status);
 typedef void (*udx_recv_cb)(udx_t *handle, ssize_t read_len, const uv_buf_t *buf, const struct sockaddr *from);
@@ -88,9 +86,8 @@ typedef void (*udx_close_cb)(udx_t *handle);
 
 typedef void (*udx_stream_read_cb)(udx_stream_t *handle, ssize_t read_len, const uv_buf_t *buf);
 typedef void (*udx_stream_drain_cb)(udx_stream_t *handle);
-typedef void (*udx_stream_write_cb)(udx_stream_write_t *req, int status, int unordered);
+typedef void (*udx_stream_ack_cb)(udx_stream_write_t *req, int status, int unordered);
 typedef void (*udx_stream_send_cb)(udx_stream_send_t *req, int status);
-typedef void (*udx_stream_shutdown_cb)(udx_stream_shutdown_t *req, int status);
 typedef void (*udx_stream_recv_cb)(udx_stream_t *handle, ssize_t read_len, const uv_buf_t *buf);
 typedef void (*udx_stream_close_cb)(udx_stream_t *handle, int status);
 
@@ -201,7 +198,7 @@ struct udx_stream_write {
   uint32_t packets;
   udx_stream_t *handle;
 
-  udx_stream_write_cb on_write;
+  udx_stream_ack_cb on_ack;
 
   void *data;
 };
@@ -211,14 +208,6 @@ struct udx_stream_send {
   udx_stream_t *handle;
 
   udx_stream_send_cb on_send;
-
-  void *data;
-};
-
-struct udx_stream_shutdown {
-  udx_stream_t *handle;
-
-  udx_stream_shutdown_cb on_shutdown;
 
   void *data;
 };
@@ -258,7 +247,7 @@ int
 udx_check_timeouts (udx_t *handle);
 
 int
-udx_stream_init (udx_t *socket, udx_stream_t *handle, uint32_t *local_id, udx_stream_drain_cb drain_cb, udx_stream_close_cb close_cb);
+udx_stream_init (udx_t *socket, udx_stream_t *handle, uint32_t *local_id, udx_stream_close_cb close_cb);
 
 void
 udx_stream_connect (udx_stream_t *handle, uint32_t remote_id, const struct sockaddr *remote_addr);
@@ -282,11 +271,14 @@ udx_stream_check_timeouts (udx_stream_t *handle);
 int
 udx_stream_send (udx_stream_send_t *req, udx_stream_t *handle, const uv_buf_t bufs[], unsigned int bufs_len, udx_stream_send_cb cb);
 
-int
-udx_stream_write (udx_stream_write_t *req, udx_stream_t *handle, const uv_buf_t bufs[], unsigned int bufs_len, udx_stream_write_cb cb);
+void
+udx_stream_write_resume (udx_stream_t *handle, udx_stream_drain_cb drain_cb);
 
 int
-udx_stream_shutdown (udx_stream_shutdown_t *req, udx_stream_t *handle, udx_stream_shutdown_cb cb);
+udx_stream_write (udx_stream_write_t *req, udx_stream_t *handle, const uv_buf_t bufs[], unsigned int bufs_len, udx_stream_ack_cb ack_cb);
+
+int
+udx_stream_write_end (udx_stream_write_t *req, udx_stream_t *handle, const uv_buf_t bufs[], unsigned int bufs_len, udx_stream_ack_cb ack_cb);
 
 int
 udx_stream_destroy (udx_stream_t *handle);

@@ -296,24 +296,14 @@ ack_packet (udx_stream_t *stream, uint32_t seq, int sack) {
     udx__fifo_remove(&(stream->socket->send_queue), pkt, pkt->fifo_gc);
   }
 
-  if (pkt->type == UDX_PACKET_STREAM_WRITE) {
-    udx_stream_write_t *w = (udx_stream_write_t *) pkt->ctx;
+  udx_stream_write_t *w = (udx_stream_write_t *) pkt->ctx;
 
-    free(pkt);
+  free(pkt);
 
-    if (--(w->packets) != 0) return 1;
+  if (--(w->packets) != 0) return 1;
 
-    if (w->on_write != NULL) {
-      w->on_write(w, 0, sack);
-    }
-  } else if (pkt->type == UDX_PACKET_STREAM_SHUTDOWN) {
-    udx_stream_shutdown_t *s = (udx_stream_shutdown_t *) pkt->ctx;
-
-    free(pkt);
-
-    if (s->on_shutdown != NULL) {
-      s->on_shutdown(s, 0);
-    }
+  if (w->on_ack != NULL) {
+    w->on_ack(w, 0, sack);
   }
 
   if (stream->status & UDX_STREAM_DEAD) return 2;
@@ -387,8 +377,8 @@ clear_outgoing_packets (udx_stream_t *stream) {
 
     udx_stream_write_t *w = (udx_stream_write_t *) pkt->ctx;
 
-    if (--(w->packets) == 0 && w->on_write != NULL) {
-      w->on_write(w, 1, 0);
+    if (--(w->packets) == 0 && w->on_ack != NULL) {
+      w->on_ack(w, 1, 0);
     }
 
     free(pkt);
@@ -800,7 +790,7 @@ udx_close (udx_t *handle, udx_close_cb cb) {
 }
 
 int
-udx_stream_init (udx_t *socket, udx_stream_t *handle, uint32_t *local_id, udx_stream_drain_cb drain_cb, udx_stream_close_cb close_cb) {
+udx_stream_init (udx_t *socket, udx_stream_t *handle, uint32_t *local_id, udx_stream_close_cb close_cb) {
   if (socket->streams_len >= 65536) return -1;
 
   // Get a free socket id (pick a random one until we get a free one)
@@ -851,7 +841,7 @@ udx_stream_init (udx_t *socket, udx_stream_t *handle, uint32_t *local_id, udx_st
 
   handle->on_read = NULL;
   handle->on_recv = NULL;
-  handle->on_drain = drain_cb;
+  handle->on_drain = NULL;
   handle->on_close = close_cb;
 
   // Add the socket to the active set
@@ -965,13 +955,18 @@ udx_stream_send (udx_stream_send_t *req, udx_stream_t *handle, const uv_buf_t bu
   return update_poll(socket);
 }
 
+void
+udx_stream_write_resume (udx_stream_t *handle, udx_stream_drain_cb drain_cb) {
+  handle->on_drain = drain_cb;
+}
+
 int
-udx_stream_write (udx_stream_write_t *req, udx_stream_t *handle, const uv_buf_t bufs[], unsigned int bufs_len, udx_stream_write_cb cb) {
+udx_stream_write (udx_stream_write_t *req, udx_stream_t *handle, const uv_buf_t bufs[], unsigned int bufs_len, udx_stream_ack_cb ack_cb) {
   assert(bufs_len == 1);
 
   req->packets = 0;
   req->handle = handle;
-  req->on_write = cb;
+  req->on_ack = ack_cb;
 
   // if this is the first inflight packet, we should "restart" rto timer
   if (handle->inflight == 0) {
@@ -982,7 +977,7 @@ udx_stream_write (udx_stream_write_t *req, udx_stream_t *handle, const uv_buf_t 
 
   uv_buf_t buf = bufs[0];
 
-  while (buf.len > 0 || err < 0) {
+  do {
     udx_packet_t *pkt = malloc(sizeof(udx_packet_t));
 
     size_t buf_partial_len = buf.len < UDX_MAX_DATA_SIZE ? buf.len : UDX_MAX_DATA_SIZE;
@@ -1005,34 +1000,51 @@ udx_stream_write (udx_stream_write_t *req, udx_stream_t *handle, const uv_buf_t 
     // If we are not the first packet in the queue, wait to send us until the queue is flushed...
     if (handle->pkts_waiting++ > 0) continue;
     err = send_data_packet(handle, pkt);
-  }
+  } while (buf.len > 0 || err < 0);
 
   return err;
 }
 
 int
-udx_stream_shutdown (udx_stream_shutdown_t *req, udx_stream_t *handle, udx_stream_shutdown_cb cb) {
+udx_stream_write_end (udx_stream_write_t *req, udx_stream_t *handle, const uv_buf_t bufs[], unsigned int bufs_len, udx_stream_ack_cb ack_cb) {
+  assert(bufs_len == 1);
+
   handle->status |= UDX_STREAM_ENDING;
 
+  req->packets = 0;
   req->handle = handle;
-  req->on_shutdown = cb;
+  req->on_ack = ack_cb;
 
-  udx_packet_t *pkt = malloc(sizeof(udx_packet_t));
+  int err = 0;
 
-  uv_buf_t buf = uv_buf_init(NULL, 0);
+  uv_buf_t buf = bufs[0];
 
-  init_stream_packet(pkt, UDX_HEADER_END, handle, &buf);
+  do {
+    udx_packet_t *pkt = malloc(sizeof(udx_packet_t));
 
-  pkt->status = UDX_PACKET_WAITING;
-  pkt->type = UDX_PACKET_STREAM_SHUTDOWN;
-  pkt->ctx = req;
+    size_t buf_partial_len = buf.len < UDX_MAX_DATA_SIZE ? buf.len : UDX_MAX_DATA_SIZE;
+    uv_buf_t buf_partial = uv_buf_init(buf.base, buf_partial_len);
 
-  handle->seq++;
+    init_stream_packet(pkt, UDX_HEADER_END, handle, &buf_partial);
 
-  udx__cirbuf_set(&(handle->outgoing), (udx_cirbuf_val_t *) pkt);
+    pkt->status = UDX_PACKET_WAITING;
+    pkt->type = UDX_PACKET_STREAM_WRITE;
+    pkt->ctx = req;
 
-  if (handle->pkts_waiting++ > 0) return 0;
-  return send_data_packet(handle, pkt);
+    handle->seq++;
+    req->packets++;
+
+    buf.len -= buf_partial_len;
+    buf.base += buf_partial_len;
+
+    udx__cirbuf_set(&(handle->outgoing), (udx_cirbuf_val_t *) pkt);
+
+    // If we are not the first packet in the queue, wait to send us until the queue is flushed...
+    if (handle->pkts_waiting++ > 0) continue;
+    err = send_data_packet(handle, pkt);
+  } while (buf.len > 0 || err < 0);
+
+  return err;
 }
 
 int
