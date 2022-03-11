@@ -378,7 +378,7 @@ clear_outgoing_packets (udx_stream_t *stream) {
     udx_stream_write_t *w = (udx_stream_write_t *) pkt->ctx;
 
     if (--(w->packets) == 0 && w->on_ack != NULL) {
-      w->on_ack(w, 1, 0);
+      w->on_ack(w, UV_ECANCELED, 0);
     }
 
     free(pkt);
@@ -461,7 +461,7 @@ process_packet (udx_t *socket, char *buf, ssize_t buf_len) {
   if (type & UDX_HEADER_DESTROY) {
     stream->status |= UDX_STREAM_DESTROYED_REMOTE;
     clear_outgoing_packets(stream);
-    close_maybe(stream, UDX_ERROR_DESTROYED_REMOTE);
+    close_maybe(stream, UV_ECONNRESET);
     return 1;
   }
 
@@ -557,7 +557,7 @@ trigger_send_callback (udx_t *socket, udx_packet_t *pkt) {
     udx_stream_t *stream = pkt->ctx;
 
     stream->status |= UDX_STREAM_DESTROYED;
-    close_maybe(stream, UDX_ERROR_DESTROYED);
+    close_maybe(stream, 0);
     return;
   }
 }
@@ -781,7 +781,7 @@ udx_close (udx_t *handle, udx_close_cb cb) {
       udx_send_t *req = pkt->ctx;
 
       if (req->on_send != NULL) {
-        req->on_send(req, UDX_ERROR_DESTROYED);
+        req->on_send(req, UV_ECANCELED);
       }
     }
   }
@@ -897,7 +897,7 @@ udx_stream_check_timeouts (udx_stream_t *handle) {
 
       if (pkt->transmits >= UDX_MAX_TRANSMITS) {
         handle->status |= UDX_STREAM_DESTROYED;
-        close_maybe(handle, UDX_ERROR_TIMEOUT);
+        close_maybe(handle, UV_ETIMEDOUT);
         return 1;
       }
 
@@ -1051,7 +1051,7 @@ int
 udx_stream_destroy (udx_stream_t *handle) {
   if ((handle->status & UDX_STREAM_CONNECTED) == 0) {
     handle->status |= UDX_STREAM_DESTROYED;
-    close_maybe(handle, UDX_ERROR_DESTROYED);
+    close_maybe(handle, 0);
     return 0;
   }
 

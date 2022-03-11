@@ -49,10 +49,6 @@ extern "C" {
 #define UDX_HEADER_MESSAGE 0b01000
 #define UDX_HEADER_DESTROY 0b10000
 
-#define UDX_ERROR_DESTROYED        -1
-#define UDX_ERROR_DESTROYED_REMOTE -2
-#define UDX_ERROR_TIMEOUT          -3
-
 typedef struct {
   uint32_t seq;
 } udx_cirbuf_val_t;

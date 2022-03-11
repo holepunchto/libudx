@@ -198,7 +198,7 @@ on_udx_stream_close (udx_stream_t *stream, int status) {
 
   UDX_NAPI_CALLBACK(n, n->on_close, {
     napi_value argv[1];
-    napi_create_uint32(env, status, &(argv[0]));
+    napi_create_int32(env, status, &(argv[0]));
     NAPI_MAKE_CALLBACK(env, NULL, ctx, callback, 1, argv, NULL)
   })
 }
