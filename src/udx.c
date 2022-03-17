@@ -471,7 +471,7 @@ process_packet (udx_t *self, char *buf, ssize_t buf_len) {
   }
 
   // Check if the ack is oob.
-  if (stream->seq < ack) {
+  if (udx__seq_compare(stream->seq, ack) < 0) {
     return 1;
   }
 
@@ -507,7 +507,7 @@ process_packet (udx_t *self, char *buf, ssize_t buf_len) {
     send_state_packet(stream);
   }
 
-  if ((stream->status & UDX_STREAM_SHOULD_END_REMOTE) == UDX_STREAM_END_REMOTE && stream->remote_ended <= stream->ack) {
+  if ((stream->status & UDX_STREAM_SHOULD_END_REMOTE) == UDX_STREAM_END_REMOTE && udx__seq_compare(stream->remote_ended, stream->ack) <= 0) {
     stream->status |= UDX_STREAM_ENDED_REMOTE;
     if (stream->on_end != NULL) {
       stream->on_end(stream);
