@@ -22,6 +22,8 @@ target_sources(
     src/fifo.h
     src/fifo.c
     src/io.h
+    src/seq.h
+    src/seq.c
     src/udx.c
 )
 

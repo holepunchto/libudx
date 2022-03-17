@@ -6,6 +6,7 @@
 #include "cirbuf.h"
 #include "fifo.h"
 #include "io.h"
+#include "seq.h"
 
 #define UDX_STREAM_ALL_DESTROYED (UDX_STREAM_DESTROYED | UDX_STREAM_DESTROYED_REMOTE)
 #define UDX_STREAM_ALL_ENDED (UDX_STREAM_ENDED | UDX_STREAM_ENDED_REMOTE)
@@ -319,10 +320,9 @@ process_sacks (udx_stream_t *stream, char *buf, size_t buf_len) {
   for (size_t i = 0; i + 8 <= buf_len; i += 8) {
     uint32_t start = *(sacks++);
     uint32_t end = *(sacks++);
-    uint32_t len = end - start;
 
-    for (uint32_t j = 0; j < len; j++) {
-      int a = ack_packet(stream, start + j, 1);
+    for (uint32_t j = start; udx__seq_compare(j, end) < 0; j++) {
+      int a = ack_packet(stream, j, 1);
       if (a == 2) return; // ended
       if (a == 1) {
         n++;
@@ -490,7 +490,7 @@ process_packet (udx_t *self, char *buf, ssize_t buf_len) {
     }
   }
 
-  while (stream->remote_acked < ack) {
+  while (udx__seq_compare(stream->remote_acked, ack) < 0) {
     int a = ack_packet(stream, stream->remote_acked++, 0);
     if (a == 1) continue;
     if (a == 2) { // it ended, so ack that and trigger close
