@@ -7,7 +7,7 @@ udx__sendmsg (udx_t *self, udx_packet_t *pkt) {
   pkt->time_sent = uv_hrtime() / 1e6;
 
   int result = WSASendTo(
-    self->handle->socket,
+    self->handle.socket,
     (WSABUF *) &(pkt->bufs),
     pkt->bufs_len,
     &bytes,
@@ -30,7 +30,7 @@ udx__recvmsg (udx_t *self, uv_buf_t *buf, struct sockaddr *addr) {
   DWORD bytes, flags = 0;
 
   int result = WSARecvFrom(
-    self->handle->socket,
+    self->handle.socket,
     (WSABUF *) &buf,
     1,
     &bytes,
