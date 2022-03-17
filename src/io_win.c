@@ -1,13 +1,13 @@
 #include "io.h"
 
 ssize_t
-udx__sendmsg (udx_t *handle, udx_packet_t *pkt) {
+udx__sendmsg (udx_t *self, udx_packet_t *pkt) {
   DWORD bytes;
 
   pkt->time_sent = uv_hrtime() / 1e6;
 
   int result = WSASendTo(
-    handle->socket,
+    self->handle->socket,
     (WSABUF *) &(pkt->bufs),
     pkt->bufs_len,
     &bytes,
@@ -26,11 +26,11 @@ udx__sendmsg (udx_t *handle, udx_packet_t *pkt) {
 }
 
 ssize_t
-udx__recvmsg (udx_t *handle, uv_buf_t *buf, struct sockaddr *addr) {
+udx__recvmsg (udx_t *self, uv_buf_t *buf, struct sockaddr *addr) {
   DWORD bytes, flags = 0;
 
   int result = WSARecvFrom(
-    handle->socket,
+    self->handle->socket,
     (WSABUF *) &buf,
     1,
     &bytes,
