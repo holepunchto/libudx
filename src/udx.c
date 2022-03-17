@@ -45,7 +45,7 @@ get_milliseconds () {
 }
 
 static uint32_t
-max (a, b) {
+(max) (a, b) {
   return a < b ? b : a;
 }
 
