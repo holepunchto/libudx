@@ -8,9 +8,18 @@
       './src/cirbuf.c',
       './src/fifo.c',
       './src/udx.c',
-      './src/io_posix.c',
-      './src/io_win.c',
       './binding.c',
+    ],
+    'conditions': [
+      ['OS=="win"', {
+        'sources': [
+          './src/io_win.c',
+        ],
+      }, {
+        'sources': [
+          './src/io_posix.c',
+        ],
+      }],
     ],
     'xcode_settings': {
       'OTHER_CFLAGS': [
