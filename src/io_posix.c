@@ -20,7 +20,7 @@ udx__sendmsg(udx_t *self, udx_packet_t *pkt) {
     size = sendmsg(self->io_poll.io_watcher.fd, &h, 0);
   } while (size == -1 && errno == EINTR);
 
-  return size;
+  return size == -1 ? uv_translate_sys_error(errno) : size;
 }
 
 ssize_t
@@ -40,5 +40,5 @@ udx__recvmsg(udx_t *self, uv_buf_t *buf, struct sockaddr *addr) {
     size = recvmsg(self->io_poll.io_watcher.fd, &h, 0);
   } while (size == -1 && errno == EINTR);
 
-  return size;
+  return size == -1 ? uv_translate_sys_error(errno) : size;
 }
