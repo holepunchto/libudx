@@ -130,7 +130,7 @@ send_state_packet (udx_stream_t *stream) {
 
     if (sacks == NULL) {
       pkt = malloc(sizeof(udx_packet_t) + 1024);
-      payload = (((void *) pkt) + sizeof(udx_packet_t));
+      payload = (((char *) pkt) + sizeof(udx_packet_t));
       sacks = (uint32_t *) payload;
       start = seq;
       end = seq + 1;
