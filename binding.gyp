@@ -15,6 +15,9 @@
         'sources': [
           './src/io_win.c',
         ],
+        'libraries': [
+          '-lws2_32',
+        ]
       }, {
         'sources': [
           './src/io_posix.c',
