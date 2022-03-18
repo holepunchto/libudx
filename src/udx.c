@@ -685,7 +685,7 @@ udx_bind (udx_t *self, const struct sockaddr *addr) {
   err = uv_fileno((const uv_handle_t *) handle, &fd);
   assert(err == 0);
 
-  err = uv_poll_init(self->loop, poll, (int) fd);
+  err = uv_poll_init_socket(self->loop, poll, fd);
   assert(err == 0);
 
   err = uv_timer_start(&(self->timer), on_uv_interval, UDX_CLOCK_GRANULARITY_MS, UDX_CLOCK_GRANULARITY_MS);
