@@ -29,6 +29,8 @@ ssize_t
 udx__recvmsg (udx_t *self, uv_buf_t *buf, struct sockaddr *addr) {
   DWORD bytes, flags = 0;
 
+  size_t addr_len = sizeof(*addr)
+
   int result = WSARecvFrom(
     self->handle.socket,
     (WSABUF *) &buf,
@@ -36,7 +38,7 @@ udx__recvmsg (udx_t *self, uv_buf_t *buf, struct sockaddr *addr) {
     &bytes,
     &flags,
     addr,
-    sizeof(*addr),
+    &addr_len,
     NULL,
     NULL
   );
