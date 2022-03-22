@@ -6,7 +6,6 @@
 #include "cirbuf.h"
 #include "fifo.h"
 #include "io.h"
-#include "seq.h"
 
 #define UDX_STREAM_ALL_DESTROYED (UDX_STREAM_DESTROYED | UDX_STREAM_DESTROYED_REMOTE)
 #define UDX_STREAM_ALL_ENDED (UDX_STREAM_ENDED | UDX_STREAM_ENDED_REMOTE)
