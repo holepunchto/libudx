@@ -50,6 +50,17 @@ max (a, b) {
   return a < b ? b : a;
 }
 
+static int32_t
+seq_diff (uint32_t a, uint32_t b) {
+  return a - b;
+}
+
+static int
+seq_compare (uint32_t a, uint32_t b) {
+  int32_t d = seq_diff(a, b);
+  return d < 0 ? -1 : d > 0 ? 1 : 0;
+}
+
 static void
 on_uv_poll (uv_poll_t *handle, int status, int events);
 
@@ -320,9 +331,10 @@ process_sacks (udx_stream_t *stream, char *buf, size_t buf_len) {
   for (size_t i = 0; i + 8 <= buf_len; i += 8) {
     uint32_t start = *(sacks++);
     uint32_t end = *(sacks++);
+    int32_t len = seq_diff(end, start);
 
-    for (uint32_t j = start; udx__seq_compare(j, end) < 0; j++) {
-      int a = ack_packet(stream, j, 1);
+    for (int32_t j = 0; j < len; j++) {
+      int a = ack_packet(stream, start + j, 1);
       if (a == 2) return; // ended
       if (a == 1) {
         n++;
@@ -407,7 +419,7 @@ process_packet (udx_t *self, char *buf, ssize_t buf_len) {
     process_sacks(stream, buf, buf_len);
   }
 
-  if (type & UDX_HEADER_DATA_OR_END && udx__cirbuf_get(inc, seq) == NULL && (stream->status & UDX_STREAM_SHOULD_READ) == UDX_STREAM_READ) {
+  if (type & UDX_HEADER_DATA_OR_END && seq_compare(stream->ack, seq) <= 0 && udx__cirbuf_get(inc, seq) == NULL && (stream->status & UDX_STREAM_SHOULD_READ) == UDX_STREAM_READ) {
     // Copy over incoming buffer as we CURRENTLY do not own it (stack allocated upstream)
     // TODO: if this is the next packet we expect (it usually is!), then there is no need
     // for the malloc and memcpy - we just need a way to not free it then
@@ -471,7 +483,7 @@ process_packet (udx_t *self, char *buf, ssize_t buf_len) {
   }
 
   // Check if the ack is oob.
-  if (udx__seq_compare(stream->seq, ack) < 0) {
+  if (seq_compare(stream->seq, ack) < 0) {
     return 1;
   }
 
@@ -490,7 +502,9 @@ process_packet (udx_t *self, char *buf, ssize_t buf_len) {
     }
   }
 
-  while (udx__seq_compare(stream->remote_acked, ack) < 0) {
+  int16_t len = seq_diff(ack, stream->remote_acked);
+
+  for (int16_t j = 0; j < len; j++) {
     int a = ack_packet(stream, stream->remote_acked++, 0);
     if (a == 1) continue;
     if (a == 2) { // it ended, so ack that and trigger close
@@ -507,7 +521,7 @@ process_packet (udx_t *self, char *buf, ssize_t buf_len) {
     send_state_packet(stream);
   }
 
-  if ((stream->status & UDX_STREAM_SHOULD_END_REMOTE) == UDX_STREAM_END_REMOTE && udx__seq_compare(stream->remote_ended, stream->ack) <= 0) {
+  if ((stream->status & UDX_STREAM_SHOULD_END_REMOTE) == UDX_STREAM_END_REMOTE && seq_compare(stream->remote_ended, stream->ack) <= 0) {
     stream->status |= UDX_STREAM_ENDED_REMOTE;
     if (stream->on_end != NULL) {
       stream->on_end(stream);

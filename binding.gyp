@@ -9,7 +9,6 @@
       './src/fifo.c',
       './src/udx.c',
       './src/io_posix.c',
-      './src/seq.c',
       './binding.c',
     ],
     'xcode_settings': {
