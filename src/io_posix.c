@@ -24,14 +24,14 @@ udx__sendmsg (udx_t *handle, udx_packet_t *pkt) {
 }
 
 ssize_t
-udx__recvmsg (udx_t *handle, uv_buf_t *buf, struct sockaddr *addr) {
+udx__recvmsg (udx_t *handle, uv_buf_t *buf, struct sockaddr *addr, int addr_len) {
   ssize_t size;
   struct msghdr h;
 
   memset(&h, 0, sizeof(h));
 
   h.msg_name = addr;
-  h.msg_namelen = sizeof(*addr);
+  h.msg_namelen = addr_len;
 
   h.msg_iov = (struct iovec *) buf;
   h.msg_iovlen = 1;

@@ -2,16 +2,16 @@
 
 ssize_t
 udx__sendmsg (udx_t *self, udx_packet_t *pkt) {
-  DWORD bytes;
+  DWORD bytes, flags = 0;
 
   pkt->time_sent = uv_hrtime() / 1e6;
 
   int result = WSASendTo(
-    self->handle.socket,
+    self->socket.socket,
     (WSABUF *) &(pkt->bufs),
     pkt->bufs_len,
     &bytes,
-    0,
+    flags,
     &(pkt->dest),
     sizeof(pkt->dest),
     NULL,
@@ -26,14 +26,12 @@ udx__sendmsg (udx_t *self, udx_packet_t *pkt) {
 }
 
 ssize_t
-udx__recvmsg (udx_t *self, uv_buf_t *buf, struct sockaddr *addr) {
+udx__recvmsg (udx_t *self, uv_buf_t *buf, struct sockaddr *addr, int addr_len) {
   DWORD bytes, flags = 0;
 
-  int addr_len = sizeof(*addr);
-
   int result = WSARecvFrom(
-    self->handle.socket,
-    (WSABUF *) &buf,
+    self->socket.socket,
+    (WSABUF *) buf,
     1,
     &bytes,
     &flags,

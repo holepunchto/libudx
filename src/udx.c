@@ -608,18 +608,21 @@ on_uv_poll (uv_poll_t *handle, int status, int events) {
   }
 
   if (events & UV_READABLE) {
-    struct sockaddr addr;
+    struct sockaddr_storage addr;
+    int addr_len = sizeof(addr);
     uv_buf_t buf;
+
+    memset(&addr, 0, addr_len);
 
     char b[2048];
     buf.base = (char *) &b;
     buf.len = 2048;
 
-    ssize_t size = udx__recvmsg(socket, &buf, &addr);
+    ssize_t size = udx__recvmsg(socket, &buf, (struct sockaddr *) &addr, addr_len);
 
     if (size > 0 && !process_packet(socket, b, size) && socket->on_recv != NULL) {
       buf.len = size;
-      socket->on_recv(socket, size, &buf, &addr);
+      socket->on_recv(socket, size, &buf, (struct sockaddr *) &addr);
     }
 
     return;
