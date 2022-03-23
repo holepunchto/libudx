@@ -53,7 +53,7 @@ get_milliseconds () {
 }
 
 static uint32_t
-(max) (a, b) {
+max_uint32 (uint32_t a, uint32_t b) {
   return a < b ? b : a;
 }
 
@@ -284,7 +284,7 @@ ack_packet (udx_stream_t *stream, uint32_t seq, int sack) {
     if (stream->srtt == 0) {
       stream->srtt = rtt;
       stream->rttvar = rtt / 2;
-      stream->rto = stream->srtt + max(UDX_CLOCK_GRANULARITY_MS, 4 * stream->rttvar);
+      stream->rto = stream->srtt + max_uint32(UDX_CLOCK_GRANULARITY_MS, 4 * stream->rttvar);
     } else {
       const uint32_t delta = rtt < stream->srtt ? stream->srtt - rtt : rtt - stream->srtt;
       // RTTVAR <- (1 - beta) * RTTVAR + beta * |SRTT - R'| where beta is 1/4
@@ -295,7 +295,7 @@ ack_packet (udx_stream_t *stream, uint32_t seq, int sack) {
     }
 
     // RTO <- SRTT + max (G, K*RTTVAR) where K is 4 maxed with 1s
-    stream->rto = max(stream->srtt + max(UDX_CLOCK_GRANULARITY_MS, 4 * stream->rttvar), 1000);
+    stream->rto = max_uint32(stream->srtt + max_uint32(UDX_CLOCK_GRANULARITY_MS, 4 * stream->rttvar), 1000);
   }
 
   if (!sack) { // Reset rto timer when new data is ack'ed (inorder)
@@ -370,7 +370,7 @@ fast_retransmit (udx_stream_t *stream) {
   stream->stats_fast_rt++;
 
   // Shrink the window
-  stream->cwnd = max(UDX_MTU, stream->cwnd / 2);
+  stream->cwnd = max_uint32(UDX_MTU, stream->cwnd / 2);
 }
 
 static void
@@ -501,7 +501,7 @@ process_packet (udx_t *socket, char *buf, ssize_t buf_len) {
     if (stream->cwnd < stream->ssthresh) {
       stream->cwnd += UDX_MTU;
     } else {
-      stream->cwnd += max((UDX_MTU * UDX_MTU) / stream->cwnd, 1);
+      stream->cwnd += max_uint32((UDX_MTU * UDX_MTU) / stream->cwnd, 1);
     }
     stream->dup_acks = 0;
   } else if ((type & UDX_HEADER_DATA_OR_END) == 0) {
@@ -925,7 +925,7 @@ udx_stream_check_timeouts (udx_stream_t *handle) {
       handle->retransmits_waiting++;
     }
 
-    handle->cwnd = max(UDX_MTU, handle->cwnd / 2);
+    handle->cwnd = max_uint32(UDX_MTU, handle->cwnd / 2);
 
     printf("pkt loss! stream is congested, scaling back (requeued the full window)\n");
   }
