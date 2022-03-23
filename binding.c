@@ -74,19 +74,19 @@ parse_address (struct sockaddr *name, char *ip, int *port) {
 }
 
 static void
-on_udx_send (udx_t *self, udx_send_t *req, int failed) {
-  udx_napi_t *n = (udx_napi_t *) self;
+on_udx_send (udx_send_t *req, int status) {
+  udx_napi_t *n = (udx_napi_t *) req->handle;
 
   UDX_NAPI_CALLBACK(n, n->on_send, {
     napi_value argv[2];
     napi_create_int32(env, (uintptr_t) req->data, &(argv[0]));
-    napi_create_int32(env, failed, &(argv[1]));
+    napi_create_int32(env, status, &(argv[1]));
     NAPI_MAKE_CALLBACK(env, NULL, ctx, callback, 2, argv, NULL)
   })
 }
 
 static void
-on_udx_message (udx_t *self, const char *buf, size_t buf_len, const struct sockaddr *from) {
+on_udx_message (udx_t *self, ssize_t read_len, const uv_buf_t *buf, const struct sockaddr *from) {
   udx_napi_t *n = (udx_napi_t *) self;
 
   int port;
@@ -95,7 +95,7 @@ on_udx_message (udx_t *self, const char *buf, size_t buf_len, const struct socka
 
   UDX_NAPI_CALLBACK(n, n->on_message, {
     napi_value argv[3];
-    napi_create_buffer_copy(n->env, buf_len, buf, NULL, &(argv[0]));
+    napi_create_buffer_copy(n->env, buf->len, buf->base, NULL, &(argv[0]));
     napi_create_uint32(env, port, &(argv[1]));
     napi_create_string_utf8(env, ip, NAPI_AUTO_LENGTH, &(argv[2]));
     NAPI_MAKE_CALLBACK(env, NULL, ctx, callback, 3, argv, NULL)
@@ -108,29 +108,6 @@ on_udx_close (udx_t *self) {
 
   UDX_NAPI_CALLBACK(n, n->on_close, {
     NAPI_MAKE_CALLBACK(env, NULL, ctx, callback, 0, NULL, NULL)
-  })
-}
-
-static void
-on_udx_stream_data (udx_stream_t *stream, const char *buf, const size_t buf_len) {
-  udx_napi_stream_t *n = (udx_napi_stream_t *) stream;
-
-  memcpy(n->read_buf_head, buf, buf_len);
-
-  n->read_buf_head += buf_len;
-  n->read_buf_free -= buf_len;
-
-  if (n->mode == UDX_NAPI_NON_INTERACTIVE && n->read_buf_free >= UDX_MTU) {
-    return;
-  }
-
-  size_t read = n->read_buf_head - n->read_buf;
-
-  UDX_NAPI_CALLBACK(n, n->on_data, {
-    napi_value ret;
-    napi_value argv[1];
-    napi_create_uint32(env, read, &(argv[0]));
-    UDX_NAPI_MAKE_ALLOC_CALLBACK(n, env, NULL, ctx, callback, 1, argv, ret)
   })
 }
 
@@ -148,6 +125,31 @@ on_udx_stream_end (udx_stream_t *stream) {
 }
 
 static void
+on_udx_stream_read (udx_stream_t *stream, ssize_t read_len, const uv_buf_t *buf) {
+  if (read_len == UV_EOF) return on_udx_stream_end(stream);
+
+  udx_napi_stream_t *n = (udx_napi_stream_t *) stream;
+
+  memcpy(n->read_buf_head, buf->base, buf->len);
+
+  n->read_buf_head += buf->len;
+  n->read_buf_free -= buf->len;
+
+  if (n->mode == UDX_NAPI_NON_INTERACTIVE && n->read_buf_free >= UDX_MTU) {
+    return;
+  }
+
+  size_t read = n->read_buf_head - n->read_buf;
+
+  UDX_NAPI_CALLBACK(n, n->on_data, {
+    napi_value ret;
+    napi_value argv[1];
+    napi_create_uint32(env, read, &(argv[0]));
+    UDX_NAPI_MAKE_ALLOC_CALLBACK(n, env, NULL, ctx, callback, 1, argv, ret)
+  })
+}
+
+static void
 on_udx_stream_drain (udx_stream_t *stream) {
   udx_napi_stream_t *n = (udx_napi_stream_t *) stream;
 
@@ -157,8 +159,8 @@ on_udx_stream_drain (udx_stream_t *stream) {
 }
 
 static void
-on_udx_stream_ack (udx_stream_t *stream, udx_stream_write_t *req, int status, int unordered) {
-  udx_napi_stream_t *n = (udx_napi_stream_t *) stream;
+on_udx_stream_ack (udx_stream_write_t *req, int status, int unordered) {
+  udx_napi_stream_t *n = (udx_napi_stream_t *) req->handle;
 
   UDX_NAPI_CALLBACK(n, n->on_ack, {
     napi_value argv[1];
@@ -168,35 +170,35 @@ on_udx_stream_ack (udx_stream_t *stream, udx_stream_write_t *req, int status, in
 }
 
 static void
-on_udx_stream_send (udx_stream_t *stream, udx_stream_send_t *req, int failed) {
-  udx_napi_stream_t *n = (udx_napi_stream_t *) stream;
+on_udx_stream_send (udx_stream_send_t *req, int status) {
+  udx_napi_stream_t *n = (udx_napi_stream_t *) req->handle;
 
   UDX_NAPI_CALLBACK(n, n->on_send, {
     napi_value argv[2];
     napi_create_int32(env, (uintptr_t) req->data, &(argv[0]));
-    napi_create_int32(env, failed, &(argv[1]));
+    napi_create_int32(env, status, &(argv[1]));
     NAPI_MAKE_CALLBACK(env, NULL, ctx, callback, 2, argv, NULL)
   })
 }
 
 static void
-on_udx_stream_message (udx_stream_t *stream, const char *buf, size_t buf_len) {
+on_udx_stream_recv (udx_stream_t *stream, ssize_t read_len, const uv_buf_t *buf) {
   udx_napi_stream_t *n = (udx_napi_stream_t *) stream;
 
   UDX_NAPI_CALLBACK(n, n->on_message, {
     napi_value argv[1];
-    napi_create_buffer_copy(n->env, buf_len, buf, NULL, &(argv[0]));
+    napi_create_buffer_copy(n->env, buf->len, buf->base, NULL, &(argv[0]));
     NAPI_MAKE_CALLBACK(env, NULL, ctx, callback, 1, argv, NULL)
   })
 }
 
 static void
-on_udx_stream_close (udx_stream_t *stream, int hard_close) {
+on_udx_stream_close (udx_stream_t *stream, int status) {
   udx_napi_stream_t *n = (udx_napi_stream_t *) stream;
 
   UDX_NAPI_CALLBACK(n, n->on_close, {
     napi_value argv[1];
-    napi_create_uint32(env, hard_close, &(argv[0]));
+    napi_create_int32(env, status, &(argv[0]));
     NAPI_MAKE_CALLBACK(env, NULL, ctx, callback, 1, argv, NULL)
   })
 }
@@ -216,12 +218,8 @@ NAPI_METHOD(udx_napi_init) {
   struct uv_loop_s *loop;
   napi_get_uv_event_loop(env, &loop);
 
-  int err = udx_init(udx, loop);
+  int err = udx_init(loop, udx);
   if (err < 0) UDX_NAPI_THROW(err)
-
-  udx_set_on_send(udx, on_udx_send);
-  udx_set_on_message(udx, on_udx_message);
-  udx_set_on_close(udx, on_udx_close);
 
   return NULL;
 }
@@ -252,7 +250,7 @@ NAPI_METHOD(udx_napi_bind) {
   int local_port = ntohs(name_in->sin_port);
 
   // wont error in practice
-  err = udx_read_start(self);
+  err = udx_recv_start(self, on_udx_message);
   if (err < 0) UDX_NAPI_THROW(err)
 
   NAPI_RETURN_UINT32(local_port)
@@ -307,7 +305,9 @@ NAPI_METHOD(udx_napi_send) {
   int err = uv_ip4_addr((char *) &ip, port, &addr);
   if (err < 0) UDX_NAPI_THROW(err)
 
-  err = udx_send(self, req, buf, buf_len, (const struct sockaddr *) &addr);
+  uv_buf_t b = uv_buf_init(buf, buf_len);
+
+  err = udx_send(req, self, &b, 1, (const struct sockaddr *) &addr, on_udx_send);
   if (err < 0) UDX_NAPI_THROW(err)
 
   return NULL;
@@ -317,7 +317,7 @@ NAPI_METHOD(udx_napi_close) {
   NAPI_ARGV(1)
   NAPI_ARGV_BUFFER_CAST(udx_t *, self, 0)
 
-  int err = udx_close(self);
+  int err = udx_close(self, on_udx_close);
   if (err < 0) UDX_NAPI_THROW(err)
 
   return NULL;
@@ -347,16 +347,14 @@ NAPI_METHOD(udx_napi_stream_init) {
   udx_stream_t *u = (udx_stream_t *) stream;
   uint32_t local_id;
 
-  int err = udx_stream_init(self, u, &local_id);
+  int err = udx_stream_init(self, u, &local_id, on_udx_stream_close);
   if (err < 0) UDX_NAPI_THROW(err)
 
-  udx_stream_set_on_data(u, on_udx_stream_data);
-  udx_stream_set_on_end(u, on_udx_stream_end);
-  udx_stream_set_on_drain(u, on_udx_stream_drain);
-  udx_stream_set_on_ack(u, on_udx_stream_ack);
-  udx_stream_set_on_send(u, on_udx_stream_send);
-  udx_stream_set_on_message(u, on_udx_stream_message);
-  udx_stream_set_on_close(u, on_udx_stream_close);
+  udx_stream_write_resume((udx_stream_t *) stream, on_udx_stream_drain);
+
+  // TODO: should these be deferred?
+  udx_stream_read_start((udx_stream_t *) stream, on_udx_stream_read);
+  udx_stream_recv_start((udx_stream_t *) stream, on_udx_stream_recv);
 
   NAPI_RETURN_UINT32(local_id)
 }
@@ -401,7 +399,9 @@ NAPI_METHOD(udx_napi_stream_send) {
 
   req->data = (void *)((uintptr_t) rid);
 
-  int err = udx_stream_send(stream, req, buf, buf_len);
+  uv_buf_t b = uv_buf_init(buf, buf_len);
+
+  int err = udx_stream_send(req, stream, &b, 1, on_udx_stream_send);
   if (err < 0) UDX_NAPI_THROW(err)
 
   NAPI_RETURN_UINT32(err);
@@ -416,21 +416,26 @@ NAPI_METHOD(udx_napi_stream_write) {
 
   req->data = (void *)((uintptr_t) rid);
 
-  int err = udx_stream_write(stream, req, buf, buf_len);
+  uv_buf_t b = uv_buf_init(buf, buf_len);
+
+  int err = udx_stream_write(req, stream, &b, 1, on_udx_stream_ack);
   if (err < 0) UDX_NAPI_THROW(err)
 
   NAPI_RETURN_UINT32(err);
 }
 
-NAPI_METHOD(udx_napi_stream_end) {
-  NAPI_ARGV(3)
+NAPI_METHOD(udx_napi_stream_write_end) {
+  NAPI_ARGV(4)
   NAPI_ARGV_BUFFER_CAST(udx_stream_t *, stream, 0)
   NAPI_ARGV_BUFFER_CAST(udx_stream_write_t *, req, 1)
   NAPI_ARGV_UINT32(rid, 2)
+  NAPI_ARGV_BUFFER(buf, 3)
 
   req->data = (void *)((uintptr_t) rid);
 
-  int err = udx_stream_end(stream, req);
+  uv_buf_t b = uv_buf_init(buf, buf_len);
+
+  int err = udx_stream_write_end(req, stream, &b, 1, on_udx_stream_ack);
   if (err < 0) UDX_NAPI_THROW(err)
 
   NAPI_RETURN_UINT32(err);
@@ -473,6 +478,6 @@ NAPI_INIT() {
   NAPI_EXPORT_FUNCTION(udx_napi_stream_connect)
   NAPI_EXPORT_FUNCTION(udx_napi_stream_send)
   NAPI_EXPORT_FUNCTION(udx_napi_stream_write)
-  NAPI_EXPORT_FUNCTION(udx_napi_stream_end)
+  NAPI_EXPORT_FUNCTION(udx_napi_stream_write_end)
   NAPI_EXPORT_FUNCTION(udx_napi_stream_destroy)
 }

@@ -3,7 +3,7 @@
 #include "io.h"
 
 ssize_t
-udx__sendmsg(udx_t *self, udx_packet_t *pkt) {
+udx__sendmsg (udx_t *handle, udx_packet_t *pkt) {
   ssize_t size;
   struct msghdr h;
 
@@ -17,14 +17,14 @@ udx__sendmsg(udx_t *self, udx_packet_t *pkt) {
 
   do {
     pkt->time_sent = uv_hrtime() / 1e6;
-    size = sendmsg(self->io_poll.io_watcher.fd, &h, 0);
+    size = sendmsg(handle->io_poll.io_watcher.fd, &h, 0);
   } while (size == -1 && errno == EINTR);
 
   return size == -1 ? uv_translate_sys_error(errno) : size;
 }
 
 ssize_t
-udx__recvmsg(udx_t *self, uv_buf_t *buf, struct sockaddr *addr) {
+udx__recvmsg (udx_t *handle, uv_buf_t *buf, struct sockaddr *addr) {
   ssize_t size;
   struct msghdr h;
 
@@ -37,7 +37,7 @@ udx__recvmsg(udx_t *self, uv_buf_t *buf, struct sockaddr *addr) {
   h.msg_iovlen = 1;
 
   do {
-    size = recvmsg(self->io_poll.io_watcher.fd, &h, 0);
+    size = recvmsg(handle->io_poll.io_watcher.fd, &h, 0);
   } while (size == -1 && errno == EINTR);
 
   return size == -1 ? uv_translate_sys_error(errno) : size;
