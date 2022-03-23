@@ -501,9 +501,9 @@ process_packet (udx_t *self, char *buf, ssize_t buf_len) {
     }
   }
 
-  int16_t len = seq_diff(ack, stream->remote_acked);
+  int32_t len = seq_diff(ack, stream->remote_acked);
 
-  for (int16_t j = 0; j < len; j++) {
+  for (int32_t j = 0; j < len; j++) {
     int a = ack_packet(stream, stream->remote_acked++, 0);
     if (a == 1) continue;
     if (a == 2) { // it ended, so ack that and trigger close
