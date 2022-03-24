@@ -1,4 +1,6 @@
 #include <assert.h>
+#include <stdbool.h>
+#include <string.h>
 
 #include "../include/udx.h"
 
@@ -9,15 +11,15 @@ udx_t bsock;
 
 udx_send_t req;
 
-int send_called = FALSE;
-int recv_called = FALSE;
+bool send_called = false;
+bool recv_called = false;
 
 void
 on_send (udx_send_t *r, int status) {
   assert(&req == r);
   assert(status == 0);
 
-  send_called = TRUE;
+  send_called = true;
 }
 
 void
@@ -28,7 +30,7 @@ on_recv (udx_t *handle, ssize_t read_len, const uv_buf_t *buf, const struct sock
 
   uv_stop(&loop);
 
-  recv_called = TRUE;
+  recv_called = true;
 }
 
 int

@@ -1,4 +1,6 @@
 #include <assert.h>
+#include <stdbool.h>
+#include <string.h>
 
 #include "../include/udx.h"
 
@@ -11,9 +13,9 @@ udx_stream_t bstream;
 
 udx_stream_write_t req;
 
-int ack_called = FALSE;
-int read_called = FALSE;
-int preconnect_called = FALSE;
+bool ack_called = false;
+bool read_called = false;
+bool preconnect_called = false;
 
 void
 on_ack (udx_stream_write_t *r, int status, int unordered) {
@@ -23,7 +25,7 @@ on_ack (udx_stream_write_t *r, int status, int unordered) {
 
   uv_stop(&loop);
 
-  ack_called = TRUE;
+  ack_called = true;
 }
 
 void
@@ -32,7 +34,7 @@ on_read (udx_stream_t *handle, ssize_t read_len, const uv_buf_t *buf) {
   assert(buf->len == read_len);
   assert(memcmp(buf->base, "hello", 5) == 0);
 
-  read_called = TRUE;
+  read_called = true;
 }
 
 void
@@ -45,7 +47,7 @@ on_preconnect (udx_t *sock, uint32_t id, struct sockaddr *addr) {
   e = udx_stream_read_start(&astream, on_read);
   assert(e == 0);
 
-  preconnect_called = TRUE;
+  preconnect_called = true;
 }
 
 int
