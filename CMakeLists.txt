@@ -65,3 +65,7 @@ set_target_properties(
 install(TARGETS udx_shared udx_static)
 
 install(FILES include/udx.h DESTINATION include)
+
+enable_testing()
+
+add_subdirectory(test)
