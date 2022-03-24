@@ -168,11 +168,13 @@ test('unordered messages', async function (t) {
 
 test('several streams on same socket', async function (t) {
   const socket = new Socket()
+  socket.bind(0)
 
   t.teardown(() => socket.close())
 
   for (let i = 0; i < 10; i++) {
     const stream = Socket.createStream(i)
+    stream.connect(socket, i, socket.address().port)
 
     t.teardown(() => stream.destroy())
   }

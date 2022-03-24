@@ -1,5 +1,6 @@
 list(APPEND tests
   socket-send-recv
+  stream-destroy
   stream-destroy-before-connect
   stream-preconnect
   stream-preconnect-same-socket

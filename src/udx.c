@@ -86,7 +86,7 @@ update_poll (udx_t *socket) {
   if (socket->send_queue.len > 0) {
     events |= UV_WRITABLE;
   }
-  
+
   if (socket->readers > 0 || socket->pending_acks > 0) {
     events |= UV_READABLE;
   }
@@ -665,6 +665,7 @@ udx_init (uv_loop_t *loop, udx_t *handle) {
 
   handle->loop = loop;
 
+  handle->on_preconnect = NULL;
   handle->on_recv = NULL;
   handle->on_close = NULL;
 
