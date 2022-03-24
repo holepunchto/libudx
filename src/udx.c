@@ -888,8 +888,9 @@ udx_stream_recv_start (udx_stream_t *handle, udx_stream_recv_cb cb) {
 
   handle->on_recv = cb;
   handle->status |= UDX_STREAM_RECEIVING;
+  handle->socket->readers++;
 
-  return 0;
+  return update_poll(handle->socket);
 }
 
 int
@@ -898,8 +899,9 @@ udx_stream_recv_stop (udx_stream_t *handle) {
 
   handle->on_recv = NULL;
   handle->status ^= UDX_STREAM_RECEIVING;
+  handle->socket->readers--;
 
-  return 0;
+  return update_poll(handle->socket);
 }
 
 int
