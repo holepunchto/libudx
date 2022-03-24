@@ -9,6 +9,7 @@ add_library(udx OBJECT)
 set_target_properties(
   udx
   PROPERTIES
+  C_STANDARD 99
   POSITION_INDEPENDENT_CODE 1
 )
 
