@@ -172,7 +172,7 @@ test('several streams on same socket', async function (t) {
   t.teardown(() => socket.close())
 
   for (let i = 0; i < 10; i++) {
-    const stream = socket.createStream()
+    const stream = Socket.createStream(i)
 
     t.teardown(() => stream.destroy())
   }
@@ -259,11 +259,11 @@ function makeTwoStreams (t) {
   a.bind()
   b.bind()
 
-  const aStream = a.createStream()
-  const bStream = b.createStream()
+  const aStream = Socket.createStream(1)
+  const bStream = Socket.createStream(2)
 
-  aStream.connect(bStream.id, b.address().port, '127.0.0.1')
-  bStream.connect(aStream.id, a.address().port, '127.0.0.1')
+  aStream.connect(a, bStream.id, b.address().port, '127.0.0.1')
+  bStream.connect(b, aStream.id, a.address().port, '127.0.0.1')
 
   t.teardown(() => {
     a.close()

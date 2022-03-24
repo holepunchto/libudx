@@ -1118,7 +1118,6 @@ int
 udx_stream_destroy (udx_stream_t *handle) {
   if ((handle->status & UDX_STREAM_CONNECTED) == 0) {
     handle->status |= UDX_STREAM_DESTROYED;
-    close_maybe(handle, 0);
     return 0;
   }
 
