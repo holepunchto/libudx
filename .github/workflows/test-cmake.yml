@@ -18,4 +18,4 @@ jobs:
         submodules: true
     - run: cmake -S . -B build
     - run: cmake --build build
-    - run: cmake --build build --target test
+    - run: ctest --test-dir build/test
