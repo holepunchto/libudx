@@ -155,10 +155,10 @@ test('unordered messages', async function (t) {
         'echo: bc',
         'echo: d'
       ])
-    }
 
-    // TODO: .end() here triggers a bug, investigate
-    b.destroy()
+      // TODO: .end() here triggers a bug, investigate
+      b.destroy()
+    }
   })
 
   a.send(Buffer.from('a'))
