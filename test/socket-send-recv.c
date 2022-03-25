@@ -63,4 +63,6 @@ main () {
   uv_run(&loop, UV_RUN_DEFAULT);
 
   assert(send_called && recv_called);
+
+  return 0;
 }

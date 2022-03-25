@@ -15,4 +15,6 @@ main () {
 
   e = udx_stream_destroy(&stream);
   assert(e == 0);
+
+  return 0;
 }

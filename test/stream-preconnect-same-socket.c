@@ -82,4 +82,6 @@ main () {
   uv_run(&loop, UV_RUN_DEFAULT);
 
   assert(ack_called && read_called && preconnect_called);
+
+  return 0;
 }
