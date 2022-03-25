@@ -6,6 +6,7 @@
 #include "cirbuf.h"
 #include "fifo.h"
 #include "io.h"
+#include "debug.h"
 
 #define UDX_STREAM_ALL_DESTROYED (UDX_STREAM_DESTROYED | UDX_STREAM_DESTROYED_REMOTE)
 #define UDX_STREAM_ALL_ENDED (UDX_STREAM_ENDED | UDX_STREAM_ENDED_REMOTE)
@@ -924,7 +925,7 @@ udx_stream_check_timeouts (udx_stream_t *handle) {
 
     handle->cwnd = max(UDX_MTU, handle->cwnd / 2);
 
-    printf("pkt loss! stream is congested, scaling back (requeued the full window)\n");
+    debug_printf("pkt loss! stream is congested, scaling back (requeued the full window)\n");
   }
 
   int err = flush_waiting_packets(handle);

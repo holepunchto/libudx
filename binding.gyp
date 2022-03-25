@@ -11,6 +11,14 @@
       './src/io_posix.c',
       './binding.c',
     ],
+    'configurations': {
+      'Debug': {
+        'defines': ['DEBUG'],
+      },
+      'Release': {
+        'defines': ['NDEBUG'],
+      },
+    },
     'xcode_settings': {
       'OTHER_CFLAGS': [
         '-O3',
