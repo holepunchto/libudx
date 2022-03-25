@@ -54,7 +54,7 @@ get_milliseconds () {
 }
 
 static uint32_t
-max (a, b) {
+max_uint32 (uint32_t a, uint32_t b) {
   return a < b ? b : a;
 }
 
@@ -147,7 +147,7 @@ send_state_packet (udx_stream_t *stream) {
 
     if (sacks == NULL) {
       pkt = malloc(sizeof(udx_packet_t) + 1024);
-      payload = (((void *) pkt) + sizeof(udx_packet_t));
+      payload = (((char *) pkt) + sizeof(udx_packet_t));
       sacks = (uint32_t *) payload;
       start = seq;
       end = seq + 1;
@@ -285,7 +285,7 @@ ack_packet (udx_stream_t *stream, uint32_t seq, int sack) {
     if (stream->srtt == 0) {
       stream->srtt = rtt;
       stream->rttvar = rtt / 2;
-      stream->rto = stream->srtt + max(UDX_CLOCK_GRANULARITY_MS, 4 * stream->rttvar);
+      stream->rto = stream->srtt + max_uint32(UDX_CLOCK_GRANULARITY_MS, 4 * stream->rttvar);
     } else {
       const uint32_t delta = rtt < stream->srtt ? stream->srtt - rtt : rtt - stream->srtt;
       // RTTVAR <- (1 - beta) * RTTVAR + beta * |SRTT - R'| where beta is 1/4
@@ -296,7 +296,7 @@ ack_packet (udx_stream_t *stream, uint32_t seq, int sack) {
     }
 
     // RTO <- SRTT + max (G, K*RTTVAR) where K is 4 maxed with 1s
-    stream->rto = max(stream->srtt + max(UDX_CLOCK_GRANULARITY_MS, 4 * stream->rttvar), 1000);
+    stream->rto = max_uint32(stream->srtt + max_uint32(UDX_CLOCK_GRANULARITY_MS, 4 * stream->rttvar), 1000);
   }
 
   if (!sack) { // Reset rto timer when new data is ack'ed (inorder)
@@ -371,7 +371,7 @@ fast_retransmit (udx_stream_t *stream) {
   stream->stats_fast_rt++;
 
   // Shrink the window
-  stream->cwnd = max(UDX_MTU, stream->cwnd / 2);
+  stream->cwnd = max_uint32(UDX_MTU, stream->cwnd / 2);
 }
 
 static void
@@ -502,7 +502,7 @@ process_packet (udx_t *socket, char *buf, ssize_t buf_len) {
     if (stream->cwnd < stream->ssthresh) {
       stream->cwnd += UDX_MTU;
     } else {
-      stream->cwnd += max((UDX_MTU * UDX_MTU) / stream->cwnd, 1);
+      stream->cwnd += max_uint32((UDX_MTU * UDX_MTU) / stream->cwnd, 1);
     }
     stream->dup_acks = 0;
   } else if ((type & UDX_HEADER_DATA_OR_END) == 0) {
@@ -609,18 +609,21 @@ on_uv_poll (uv_poll_t *handle, int status, int events) {
   }
 
   if (events & UV_READABLE) {
-    struct sockaddr addr;
+    struct sockaddr_storage addr;
+    int addr_len = sizeof(addr);
     uv_buf_t buf;
+
+    memset(&addr, 0, addr_len);
 
     char b[2048];
     buf.base = (char *) &b;
     buf.len = 2048;
 
-    ssize_t size = udx__recvmsg(socket, &buf, &addr);
+    ssize_t size = udx__recvmsg(socket, &buf, (struct sockaddr *) &addr, addr_len);
 
     if (size > 0 && !process_packet(socket, b, size) && socket->on_recv != NULL) {
       buf.len = size;
-      socket->on_recv(socket, size, &buf, &addr);
+      socket->on_recv(socket, size, &buf, (struct sockaddr *) &addr);
     }
 
     return;
@@ -696,7 +699,7 @@ udx_bind (udx_t *handle, const struct sockaddr *addr) {
   err = uv_fileno((const uv_handle_t *) socket, &fd);
   assert(err == 0);
 
-  err = uv_poll_init(handle->loop, poll, fd);
+  err = uv_poll_init_socket(handle->loop, poll, fd);
   assert(err == 0);
 
   err = uv_timer_start(&(handle->timer), on_uv_interval, UDX_CLOCK_GRANULARITY_MS, UDX_CLOCK_GRANULARITY_MS);
@@ -923,7 +926,7 @@ udx_stream_check_timeouts (udx_stream_t *handle) {
       handle->retransmits_waiting++;
     }
 
-    handle->cwnd = max(UDX_MTU, handle->cwnd / 2);
+    handle->cwnd = max_uint32(UDX_MTU, handle->cwnd / 2);
 
     debug_printf("pkt loss! stream is congested, scaling back (requeued the full window)\n");
   }

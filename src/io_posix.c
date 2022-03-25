@@ -20,18 +20,18 @@ udx__sendmsg (udx_t *handle, udx_packet_t *pkt) {
     size = sendmsg(handle->io_poll.io_watcher.fd, &h, 0);
   } while (size == -1 && errno == EINTR);
 
-  return size;
+  return size == -1 ? uv_translate_sys_error(errno) : size;
 }
 
 ssize_t
-udx__recvmsg (udx_t *handle, uv_buf_t *buf, struct sockaddr *addr) {
+udx__recvmsg (udx_t *handle, uv_buf_t *buf, struct sockaddr *addr, int addr_len) {
   ssize_t size;
   struct msghdr h;
 
   memset(&h, 0, sizeof(h));
 
   h.msg_name = addr;
-  h.msg_namelen = sizeof(*addr);
+  h.msg_namelen = addr_len;
 
   h.msg_iov = (struct iovec *) buf;
   h.msg_iovlen = 1;
@@ -40,5 +40,5 @@ udx__recvmsg (udx_t *handle, uv_buf_t *buf, struct sockaddr *addr) {
     size = recvmsg(handle->io_poll.io_watcher.fd, &h, 0);
   } while (size == -1 && errno == EINTR);
 
-  return size;
+  return size == -1 ? uv_translate_sys_error(errno) : size;
 }

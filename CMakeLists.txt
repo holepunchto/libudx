@@ -40,6 +40,14 @@ if (UNIX)
   )
 endif()
 
+if (WIN32)
+  target_sources(
+    udx
+    PRIVATE
+      src/io_win.c
+  )
+endif()
+
 add_library(udx_shared SHARED $<TARGET_OBJECTS:udx>)
 
 set_target_properties(
