@@ -182,7 +182,7 @@ test('several streams on same socket', async function (t) {
   t.pass('halts')
 })
 
-test('destroy unconnected stream', function (t) {
+test('destroy unconnected stream', async function (t) {
   t.plan(1)
 
   const stream = Socket.createStream(1)
@@ -192,6 +192,29 @@ test('destroy unconnected stream', function (t) {
   })
 
   stream.destroy()
+})
+
+test('preconnect', async function (t) {
+  t.plan(4)
+  const socket = new Socket()
+  socket.bind(0)
+
+  socket.on('preconnect', (id, address) => {
+    t.is(address.port, socket.address().port)
+    t.is(address.address, '127.0.0.1')
+    t.is(id, a.id)
+
+    a.connect(socket, 2, socket.address().port)
+    a.on('data', function (data) {
+      t.is(data.toString(), 'hello')
+    })
+  })
+
+  const a = Socket.createStream(1)
+  const b = Socket.createStream(2)
+
+  b.connect(socket, 1, socket.address().port)
+  b.write(Buffer.from('hello'))
 })
 
 writeALot(1)

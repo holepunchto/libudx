@@ -44,6 +44,7 @@ typedef struct {
   napi_ref on_send;
   napi_ref on_message;
   napi_ref on_close;
+  napi_ref on_preconnect;
 } udx_napi_t;
 
 typedef struct {
@@ -96,6 +97,23 @@ on_udx_message (udx_t *self, ssize_t read_len, const uv_buf_t *buf, const struct
   UDX_NAPI_CALLBACK(n, n->on_message, {
     napi_value argv[3];
     napi_create_buffer_copy(n->env, buf->len, buf->base, NULL, &(argv[0]));
+    napi_create_uint32(env, port, &(argv[1]));
+    napi_create_string_utf8(env, ip, NAPI_AUTO_LENGTH, &(argv[2]));
+    NAPI_MAKE_CALLBACK(env, NULL, ctx, callback, 3, argv, NULL)
+  })
+}
+
+static void
+on_udx_preconnect (udx_t *self, uint32_t id, struct sockaddr *addr) {
+  udx_napi_t *n = (udx_napi_t *) self;
+
+  int port;
+  char ip[17];
+  parse_address((struct sockaddr *) addr, ip, &port);
+
+  UDX_NAPI_CALLBACK(n, n->on_preconnect, {
+    napi_value argv[3];
+    napi_create_uint32(env, id, &(argv[0]));
     napi_create_uint32(env, port, &(argv[1]));
     napi_create_string_utf8(env, ip, NAPI_AUTO_LENGTH, &(argv[2]));
     NAPI_MAKE_CALLBACK(env, NULL, ctx, callback, 3, argv, NULL)
@@ -204,7 +222,7 @@ on_udx_stream_close (udx_stream_t *stream, int status) {
 }
 
 NAPI_METHOD(udx_napi_init) {
-  NAPI_ARGV(5)
+  NAPI_ARGV(6)
   NAPI_ARGV_BUFFER_CAST(udx_napi_t *, self, 0)
 
   udx_t *udx = (udx_t *) self;
@@ -214,6 +232,7 @@ NAPI_METHOD(udx_napi_init) {
   napi_create_reference(env, argv[2], 1, &(self->on_send));
   napi_create_reference(env, argv[3], 1, &(self->on_message));
   napi_create_reference(env, argv[4], 1, &(self->on_close));
+  napi_create_reference(env, argv[5], 1, &(self->on_preconnect));
 
   struct uv_loop_s *loop;
   napi_get_uv_event_loop(env, &loop);
@@ -251,6 +270,10 @@ NAPI_METHOD(udx_napi_bind) {
 
   // wont error in practice
   err = udx_recv_start(self, on_udx_message);
+  if (err < 0) UDX_NAPI_THROW(err)
+
+  // wont error in practice
+  err = udx_preconnect(self, on_udx_preconnect);
   if (err < 0) UDX_NAPI_THROW(err)
 
   NAPI_RETURN_UINT32(local_port)
