@@ -182,6 +182,18 @@ test('several streams on same socket', async function (t) {
   t.pass('halts')
 })
 
+test('destroy unconnected stream', function (t) {
+  t.plan(1)
+
+  const stream = Socket.createStream(1)
+
+  stream.on('close', function () {
+    t.pass('closed')
+  })
+
+  stream.destroy()
+})
+
 writeALot(1)
 
 writeALot(1024)
