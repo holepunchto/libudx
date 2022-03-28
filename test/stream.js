@@ -208,6 +208,11 @@ test('preconnect', async function (t) {
     a.connect(socket, 2, socket.address().port)
     a.on('data', function (data) {
       t.is(data.toString(), 'hello')
+
+      a.destroy()
+      b.destroy()
+
+      socket.close()
     })
   })
 
@@ -215,6 +220,28 @@ test('preconnect', async function (t) {
   const b = Socket.createStream(2)
 
   b.connect(socket, 1, socket.address().port)
+  b.write(Buffer.from('hello'))
+})
+
+test('destroy streams and close socket in callback', async function (t) {
+  t.plan(1)
+
+  const socket = new Socket()
+  socket.bind(0)
+
+  const a = Socket.createStream(1)
+  const b = Socket.createStream(2)
+
+  a.connect(socket, 2, socket.address().port)
+  b.connect(socket, 1, socket.address().port)
+
+  a.on('data', function (data) {
+    a.destroy()
+    b.destroy()
+
+    socket.close(() => t.pass('closed'))
+  })
+
   b.write(Buffer.from('hello'))
 })
 

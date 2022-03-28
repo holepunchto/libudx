@@ -655,7 +655,10 @@ on_uv_poll (uv_poll_t *handle, int status, int events) {
     return;
   }
 
-  update_poll(socket);
+  // update the poll is the socket is still active.
+  if (uv_is_active((uv_handle_t *) &socket->io_poll)) {
+    update_poll(socket);
+  }
 }
 
 int
