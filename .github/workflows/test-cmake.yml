@@ -19,3 +19,8 @@ jobs:
     - run: cmake -S . -B build
     - run: cmake --build build
     - run: ctest --verbose --test-dir build/test
+    - uses: actions/upload-artifact@v3
+      if: failure()
+      with:
+        name: test-logs-${{ matrix.os }}
+        path: build/test/Testing/Temporary/LastTest.log
