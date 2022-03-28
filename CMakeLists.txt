@@ -71,6 +71,12 @@ set_target_properties(
   OUTPUT_NAME udx
 )
 
+target_link_libraries(
+  udx_static
+  PUBLIC
+    uv_a
+)
+
 install(TARGETS udx_shared udx_static)
 
 install(FILES include/udx.h DESTINATION include)
