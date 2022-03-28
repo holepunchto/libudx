@@ -276,7 +276,7 @@ udx_stream_check_timeouts (udx_stream_t *handle);
 int
 udx_stream_send (udx_stream_send_t *req, udx_stream_t *handle, const uv_buf_t bufs[], unsigned int bufs_len, udx_stream_send_cb cb);
 
-void
+int
 udx_stream_write_resume (udx_stream_t *handle, udx_stream_drain_cb drain_cb);
 
 int

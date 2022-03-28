@@ -1020,9 +1020,10 @@ udx_stream_send (udx_stream_send_t *req, udx_stream_t *handle, const uv_buf_t bu
   return update_poll(socket);
 }
 
-void
+int
 udx_stream_write_resume (udx_stream_t *handle, udx_stream_drain_cb drain_cb) {
   handle->on_drain = drain_cb;
+  return 0;
 }
 
 int
