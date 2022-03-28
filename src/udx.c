@@ -243,16 +243,18 @@ close_maybe (udx_stream_t *stream, int err) {
 
   stream->status |= UDX_STREAM_CLOSED;
 
-  udx_t *socket = stream->socket;
-  socket->streams[stream->set_id] = socket->streams[--(socket->streams_len)];
+  if (stream->status & UDX_STREAM_CONNECTED) {
+    udx_t *socket = stream->socket;
+    socket->streams[stream->set_id] = socket->streams[--(socket->streams_len)];
 
-  // TODO: Dealloc all remaning state such as
-  // - pending reads
-  // - destroy alloc'ed cirbufs
-  // (anything else from stream init)
+    // TODO: Dealloc all remaning state such as
+    // - pending reads
+    // - destroy alloc'ed cirbufs
+    // (anything else from stream init)
 
-  udx__cirbuf_remove(&(stream->socket->streams_by_id), stream->local_id);
-  // TODO: move the instance to a TIME_WAIT state, so we can handle retransmits
+    udx__cirbuf_remove(&(stream->socket->streams_by_id), stream->local_id);
+    // TODO: move the instance to a TIME_WAIT state, so we can handle retransmits
+  }
 
   if (stream->status & UDX_STREAM_READING) {
     udx_stream_read_stop(stream);
@@ -738,12 +740,8 @@ udx_bind (udx_t *handle, const struct sockaddr *addr) {
 
 int
 udx_preconnect (udx_t *handle, udx_preconnect_cb cb) {
-  if ((handle->status & UDX_SOCKET_BOUND) == 0) return UV_ENOTCONN;
-
   handle->on_preconnect = cb;
-  handle->readers++;
-
-  return update_poll(handle);
+  return 0;
 }
 
 int
@@ -1122,6 +1120,7 @@ int
 udx_stream_destroy (udx_stream_t *handle) {
   if ((handle->status & UDX_STREAM_CONNECTED) == 0) {
     handle->status |= UDX_STREAM_DESTROYED;
+    close_maybe(handle, 0);
     return 0;
   }
 
