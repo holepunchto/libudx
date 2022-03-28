@@ -196,6 +196,7 @@ test('destroy unconnected stream', async function (t) {
 
 test('preconnect', async function (t) {
   t.plan(4)
+
   const socket = new Socket()
   socket.bind(0)
 
