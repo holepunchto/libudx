@@ -463,6 +463,7 @@ process_packet (udx_t *socket, char *buf, ssize_t buf_len, struct sockaddr *addr
 
     memcpy(cpy, buf, buf_len);
 
+    pkt->type = type;
     pkt->seq = seq;
     pkt->buf.base = cpy;
     pkt->buf.len = buf_len;
@@ -502,7 +503,7 @@ process_packet (udx_t *socket, char *buf, ssize_t buf_len, struct sockaddr *addr
 
     stream->ack++;
 
-    if (pkt->buf.len > 0 && stream->on_read != NULL) {
+    if ((pkt->type & UDX_HEADER_DATA) && stream->on_read != NULL) {
       stream->on_read(stream, pkt->buf.len, &(pkt->buf));
     }
 

@@ -245,6 +245,19 @@ test('destroy streams and close socket in callback', async function (t) {
   b.write(Buffer.from('hello'))
 })
 
+test('write empty buffer', async function (t) {
+  t.plan(1)
+
+  const [a, b] = makeTwoStreams(t)
+
+  a.on('data', function (data) {
+    t.alike(data, Buffer.alloc(0))
+  })
+
+  b.end(Buffer.alloc(0))
+  a.end()
+})
+
 writeALot(1)
 
 writeALot(1024)
