@@ -9,6 +9,7 @@ add_library(udx OBJECT)
 set_target_properties(
   udx
   PROPERTIES
+  C_STANDARD 99
   POSITION_INDEPENDENT_CODE 1
 )
 
@@ -70,6 +71,16 @@ set_target_properties(
   OUTPUT_NAME udx
 )
 
+target_link_libraries(
+  udx_static
+  PUBLIC
+    uv_a
+)
+
 install(TARGETS udx_shared udx_static)
 
 install(FILES include/udx.h DESTINATION include)
+
+enable_testing()
+
+add_subdirectory(test)

@@ -44,6 +44,7 @@ typedef struct {
   napi_ref on_send;
   napi_ref on_message;
   napi_ref on_close;
+  napi_ref on_preconnect;
 } udx_napi_t;
 
 typedef struct {
@@ -96,6 +97,23 @@ on_udx_message (udx_t *self, ssize_t read_len, const uv_buf_t *buf, const struct
   UDX_NAPI_CALLBACK(n, n->on_message, {
     napi_value argv[3];
     napi_create_buffer_copy(n->env, buf->len, buf->base, NULL, &(argv[0]));
+    napi_create_uint32(env, port, &(argv[1]));
+    napi_create_string_utf8(env, ip, NAPI_AUTO_LENGTH, &(argv[2]));
+    NAPI_MAKE_CALLBACK(env, NULL, ctx, callback, 3, argv, NULL)
+  })
+}
+
+static void
+on_udx_preconnect (udx_t *self, uint32_t id, struct sockaddr *addr) {
+  udx_napi_t *n = (udx_napi_t *) self;
+
+  int port;
+  char ip[17];
+  parse_address((struct sockaddr *) addr, ip, &port);
+
+  UDX_NAPI_CALLBACK(n, n->on_preconnect, {
+    napi_value argv[3];
+    napi_create_uint32(env, id, &(argv[0]));
     napi_create_uint32(env, port, &(argv[1]));
     napi_create_string_utf8(env, ip, NAPI_AUTO_LENGTH, &(argv[2]));
     NAPI_MAKE_CALLBACK(env, NULL, ctx, callback, 3, argv, NULL)
@@ -204,7 +222,7 @@ on_udx_stream_close (udx_stream_t *stream, int status) {
 }
 
 NAPI_METHOD(udx_napi_init) {
-  NAPI_ARGV(5)
+  NAPI_ARGV(6)
   NAPI_ARGV_BUFFER_CAST(udx_napi_t *, self, 0)
 
   udx_t *udx = (udx_t *) self;
@@ -214,6 +232,7 @@ NAPI_METHOD(udx_napi_init) {
   napi_create_reference(env, argv[2], 1, &(self->on_send));
   napi_create_reference(env, argv[3], 1, &(self->on_message));
   napi_create_reference(env, argv[4], 1, &(self->on_close));
+  napi_create_reference(env, argv[5], 1, &(self->on_preconnect));
 
   struct uv_loop_s *loop;
   napi_get_uv_event_loop(env, &loop);
@@ -251,6 +270,10 @@ NAPI_METHOD(udx_napi_bind) {
 
   // wont error in practice
   err = udx_recv_start(self, on_udx_message);
+  if (err < 0) UDX_NAPI_THROW(err)
+
+  // wont error in practice
+  err = udx_preconnect(self, on_udx_preconnect);
   if (err < 0) UDX_NAPI_THROW(err)
 
   NAPI_RETURN_UINT32(local_port)
@@ -325,8 +348,8 @@ NAPI_METHOD(udx_napi_close) {
 
 NAPI_METHOD(udx_napi_stream_init) {
   NAPI_ARGV(10)
-  NAPI_ARGV_BUFFER_CAST(udx_t *, self, 0)
-  NAPI_ARGV_BUFFER_CAST(udx_napi_stream_t *, stream, 1)
+  NAPI_ARGV_BUFFER_CAST(udx_napi_stream_t *, stream, 0)
+  NAPI_ARGV_UINT32(id, 1)
 
   stream->mode = UDX_NAPI_INTERACTIVE;
 
@@ -345,18 +368,16 @@ NAPI_METHOD(udx_napi_stream_init) {
   napi_create_reference(env, argv[9], 1, &(stream->on_close));
 
   udx_stream_t *u = (udx_stream_t *) stream;
-  uint32_t local_id;
 
-  int err = udx_stream_init(self, u, &local_id, on_udx_stream_close);
+  struct uv_loop_s *loop;
+  napi_get_uv_event_loop(env, &loop);
+
+  int err = udx_stream_init(loop, u, id);
   if (err < 0) UDX_NAPI_THROW(err)
 
   udx_stream_write_resume((udx_stream_t *) stream, on_udx_stream_drain);
 
-  // TODO: should these be deferred?
-  udx_stream_read_start((udx_stream_t *) stream, on_udx_stream_read);
-  udx_stream_recv_start((udx_stream_t *) stream, on_udx_stream_recv);
-
-  NAPI_RETURN_UINT32(local_id)
+  return NULL;
 }
 
 NAPI_METHOD(udx_napi_stream_set_mode) {
@@ -370,12 +391,13 @@ NAPI_METHOD(udx_napi_stream_set_mode) {
 }
 
 NAPI_METHOD(udx_napi_stream_connect) {
-  NAPI_ARGV(5)
+  NAPI_ARGV(6)
   NAPI_ARGV_BUFFER_CAST(udx_napi_stream_t *, stream, 0)
-  NAPI_ARGV_BUFFER(read_buf, 1)
-  NAPI_ARGV_UINT32(remote_id, 2)
-  NAPI_ARGV_UINT32(remote_port, 3)
-  NAPI_ARGV_UTF8(remote_ip, 17, 4)
+  NAPI_ARGV_BUFFER_CAST(udx_t *, socket, 1)
+  NAPI_ARGV_BUFFER(read_buf, 2)
+  NAPI_ARGV_UINT32(remote_id, 3)
+  NAPI_ARGV_UINT32(remote_port, 4)
+  NAPI_ARGV_UTF8(remote_ip, 17, 5)
 
   struct sockaddr_in addr;
   int err = uv_ip4_addr(remote_ip, remote_port, &addr);
@@ -385,7 +407,10 @@ NAPI_METHOD(udx_napi_stream_connect) {
   stream->read_buf_head = read_buf;
   stream->read_buf_free = read_buf_len;
 
-  udx_stream_connect((udx_stream_t *) stream, remote_id, (const struct sockaddr *) &addr);
+  udx_stream_connect((udx_stream_t *) stream, socket, remote_id, (const struct sockaddr *) &addr, on_udx_stream_close);
+
+  udx_stream_read_start((udx_stream_t *) stream, on_udx_stream_read);
+  udx_stream_recv_start((udx_stream_t *) stream, on_udx_stream_recv);
 
   return NULL;
 }

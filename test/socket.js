@@ -111,7 +111,9 @@ test('close waits for all streams to close', async function (t) {
   t.plan(2)
 
   const a = new Socket()
-  const s = a.createStream()
+  const s = Socket.createStream(1)
+
+  s.connect(a, 2, 0)
 
   let aClosed = false
   let sClosed = false

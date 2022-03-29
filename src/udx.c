@@ -35,13 +35,6 @@ typedef struct {
   uv_buf_t buf;
 } udx_pending_read_t;
 
-static uint32_t
-random_id () {
-  uint32_t id;
-  uv_random(NULL, NULL, &id, sizeof(id), 0, NULL);
-  return id;
-}
-
 static uint64_t
 get_microseconds () {
   return uv_hrtime() / 1000;
@@ -88,7 +81,12 @@ on_uv_interval (uv_timer_t *handle) {
 
 static int
 update_poll (udx_t *socket) {
-  int events = (socket->send_queue.len > 0 ? UV_WRITABLE : 0) | (socket->readers ? UV_READABLE : 0);
+  int events = UV_READABLE;
+
+  if (socket->send_queue.len > 0) {
+    events |= UV_WRITABLE;
+  }
+
   if (events == socket->events) return 0;
 
   socket->events = events;
@@ -241,21 +239,21 @@ close_maybe (udx_stream_t *stream, int err) {
 
   stream->status |= UDX_STREAM_CLOSED;
 
-  udx_t *socket = stream->socket;
-  socket->streams[stream->set_id] = socket->streams[--(socket->streams_len)];
-
-  // TODO: Dealloc all remaning state such as
-  // - pending reads
-  // - destroy alloc'ed cirbufs
-  // (anything else from stream init)
-
-  udx__cirbuf_remove(&(stream->socket->streams_by_id), stream->local_id);
-  // TODO: move the instance to a TIME_WAIT state, so we can handle retransmits
-
   if (stream->status & UDX_STREAM_CONNECTED) {
-    // TODO: move this to read_stop
-    stream->socket->readers--;
-    update_poll(stream->socket);
+    udx_t *socket = stream->socket;
+    socket->streams[stream->set_id] = socket->streams[--(socket->streams_len)];
+
+    // TODO: Dealloc all remaning state such as
+    // - pending reads
+    // - destroy alloc'ed cirbufs
+    // (anything else from stream init)
+
+    udx__cirbuf_remove(&(stream->socket->streams_by_id), stream->local_id);
+    // TODO: move the instance to a TIME_WAIT state, so we can handle retransmits
+  }
+
+  if (stream->status & UDX_STREAM_READING) {
+    udx_stream_read_stop(stream);
   }
 
   if (stream->on_close != NULL) {
@@ -388,16 +386,23 @@ clear_outgoing_packets (udx_stream_t *stream) {
 
     udx_stream_write_t *w = (udx_stream_write_t *) pkt->ctx;
 
-    if (--(w->packets) == 0 && w->on_ack != NULL) {
-      w->on_ack(w, UV_ECANCELED, 0);
+    if (--(w->packets) == 0) {
+      if (w->on_ack != NULL) {
+        w->on_ack(w, UV_ECANCELED, 0);
+      }
     }
 
     free(pkt);
   }
 }
 
+static udx_stream_t *
+lookup_stream (udx_t *socket, uint32_t id) {
+  return (udx_stream_t *) udx__cirbuf_get(&(socket->streams_by_id), id);
+}
+
 static int
-process_packet (udx_t *socket, char *buf, ssize_t buf_len) {
+process_packet (udx_t *socket, char *buf, ssize_t buf_len, struct sockaddr *addr) {
   if (buf_len < UDX_HEADER_SIZE) return 0;
 
   uint8_t *b = (uint8_t *) buf;
@@ -417,8 +422,22 @@ process_packet (udx_t *socket, char *buf, ssize_t buf_len) {
   buf += UDX_HEADER_SIZE;
   buf_len -= UDX_HEADER_SIZE;
 
-  udx_stream_t *stream = (udx_stream_t *) udx__cirbuf_get(&(socket->streams_by_id), local_id);
-  if (stream == NULL || stream->status & UDX_STREAM_DEAD) return 0;
+  udx_stream_t *stream = lookup_stream(socket, local_id);
+
+  if (stream == NULL || (stream->status & UDX_STREAM_CONNECTED) == 0) {
+    if (socket->on_preconnect == NULL) return 0;
+
+    // give the caller a chance to connect to the stream and then try again
+    socket->on_preconnect(socket, local_id, addr);
+
+    stream = lookup_stream(socket, local_id);
+
+    if (stream == NULL || (stream->status & UDX_STREAM_CONNECTED) == 0) {
+      return 0;
+    }
+  }
+
+  if (stream->status & UDX_STREAM_DEAD) return 0;
 
   udx_cirbuf_t *inc = &(stream->incoming);
 
@@ -484,8 +503,7 @@ process_packet (udx_t *socket, char *buf, ssize_t buf_len) {
     stream->ack++;
 
     if (pkt->buf.len > 0 && stream->on_read != NULL) {
-      uv_buf_t b = uv_buf_init(pkt->buf.base, pkt->buf.len);
-      stream->on_read(stream, pkt->buf.len, &b);
+      stream->on_read(stream, pkt->buf.len, &(pkt->buf));
     }
 
     free(pkt);
@@ -620,7 +638,7 @@ on_uv_poll (uv_poll_t *handle, int status, int events) {
 
     ssize_t size = udx__recvmsg(socket, &buf, (struct sockaddr *) &addr, addr_len);
 
-    if (size > 0 && !process_packet(socket, b, size) && socket->on_recv != NULL) {
+    if (size > 0 && !process_packet(socket, b, size, (struct sockaddr *) &addr) && socket->on_recv != NULL) {
       buf.len = size;
       socket->on_recv(socket, size, &buf, (struct sockaddr *) &addr);
     }
@@ -628,7 +646,10 @@ on_uv_poll (uv_poll_t *handle, int status, int events) {
     return;
   }
 
-  update_poll(socket);
+  // update the poll if the socket is still active.
+  if (uv_is_active((uv_handle_t *) &socket->io_poll)) {
+    update_poll(socket);
+  }
 }
 
 int
@@ -643,6 +664,7 @@ udx_init (uv_loop_t *loop, udx_t *handle) {
 
   handle->loop = loop;
 
+  handle->on_preconnect = NULL;
   handle->on_recv = NULL;
   handle->on_close = NULL;
 
@@ -707,11 +729,17 @@ udx_bind (udx_t *handle, const struct sockaddr *addr) {
   handle->status |= UDX_SOCKET_BOUND;
   poll->data = handle;
 
+  return update_poll(handle);;
+}
+
+int
+udx_preconnect (udx_t *handle, udx_preconnect_cb cb) {
+  handle->on_preconnect = cb;
   return 0;
 }
 
 int
-udx_getsockname (udx_t *handle, struct sockaddr * name, int *name_len) {
+udx_getsockname (udx_t *handle, struct sockaddr *name, int *name_len) {
   return uv_udp_getsockname(&(handle->socket), name, name_len);
 }
 
@@ -742,10 +770,10 @@ udx_send (udx_send_t *req, udx_t *handle, const uv_buf_t bufs[], unsigned int bu
 
 int
 udx_recv_start (udx_t *handle, udx_recv_cb cb) {
-  if (handle->status & UDX_SOCKET_READING) return 0;
+  if (handle->status & UDX_SOCKET_RECEIVING) return UV_EALREADY;
 
   handle->on_recv = cb;
-  handle->status |= UDX_SOCKET_READING;
+  handle->status |= UDX_SOCKET_RECEIVING;
   handle->readers++;
 
   return update_poll(handle);
@@ -753,7 +781,7 @@ udx_recv_start (udx_t *handle, udx_recv_cb cb) {
 
 int
 udx_recv_stop (udx_t *handle) {
-  if ((handle->status & UDX_SOCKET_READING) == 0) return 0;
+  if ((handle->status & UDX_SOCKET_RECEIVING) == 0) return 0;
 
   handle->on_recv = NULL;
   handle->status ^= UDX_SOCKET_PAUSED;
@@ -806,30 +834,13 @@ udx_close (udx_t *handle, udx_close_cb cb) {
 }
 
 int
-udx_stream_init (udx_t *socket, udx_stream_t *handle, uint32_t *local_id, udx_stream_close_cb close_cb) {
-  if (socket->streams_len >= 65536) return -1;
-
-  // Get a free socket id (pick a random one until we get a free one)
-  uint32_t id;
-  while (1) {
-    id = random_id();
-    udx_cirbuf_val_t *v = udx__cirbuf_get(&(socket->streams_by_id), id);
-    if (v == NULL) break;
-  }
-
-  if (socket->streams_len == socket->streams_max_len) {
-    socket->streams_max_len *= 2;
-    socket->streams = realloc(socket->streams, socket->streams_max_len * sizeof(udx_stream_t *));
-  }
-
+udx_stream_init (uv_loop_t *loop, udx_stream_t *handle, uint32_t local_id) {
   handle->status = 0;
 
-  *local_id = handle->local_id = id;
+  handle->local_id = local_id;
   handle->remote_id = 0;
-  handle->set_id = socket->streams_len++;
-  handle->socket = socket;
-
-  socket->streams[handle->set_id] = handle;
+  handle->set_id = 0;
+  handle->socket = NULL;
 
   handle->seq = 0;
   handle->ack = 0;
@@ -846,7 +857,7 @@ udx_stream_init (udx_t *socket, udx_stream_t *handle, uint32_t *local_id, udx_st
   handle->retransmits_waiting = 0;
 
   handle->inflight = 0;
-  handle->ssthresh = 65535;
+  handle->ssthresh = 0xffff;
   handle->cwnd = 2 * UDX_MTU;
   handle->rwnd = 0;
 
@@ -858,10 +869,7 @@ udx_stream_init (udx_t *socket, udx_stream_t *handle, uint32_t *local_id, udx_st
   handle->on_read = NULL;
   handle->on_recv = NULL;
   handle->on_drain = NULL;
-  handle->on_close = close_cb;
-
-  // Add the socket to the active set
-  udx__cirbuf_set(&(socket->streams_by_id), (udx_cirbuf_val_t *) handle);
+  handle->on_close = NULL;
 
   // Init stream write/read buffers
   udx__cirbuf_init(&(handle->outgoing), 16);
@@ -870,28 +878,49 @@ udx_stream_init (udx_t *socket, udx_stream_t *handle, uint32_t *local_id, udx_st
   return 0;
 }
 
-// TODO: finish this
-void
+int
 udx_stream_recv_start (udx_stream_t *handle, udx_stream_recv_cb cb) {
+  if (handle->status & UDX_STREAM_RECEIVING) return UV_EALREADY;
+
   handle->on_recv = cb;
+  handle->status |= UDX_STREAM_RECEIVING;
+  handle->socket->readers++;
+
+  return update_poll(handle->socket);
 }
 
-// TODO: finish this
-void
+int
 udx_stream_recv_stop (udx_stream_t *handle) {
+  if ((handle->status & UDX_STREAM_RECEIVING) == 0) return 0;
+
   handle->on_recv = NULL;
+  handle->status ^= UDX_STREAM_RECEIVING;
+  handle->socket->readers--;
+
+  return update_poll(handle->socket);
 }
 
-// TODO: finish this
-void
+int
 udx_stream_read_start (udx_stream_t *handle, udx_stream_read_cb cb) {
+  if ((handle->status & UDX_STREAM_CONNECTED) == 0) return UV_ENOTCONN;
+  if (handle->status & UDX_STREAM_READING) return UV_EALREADY;
+
   handle->on_read = cb;
+  handle->status |= UDX_STREAM_READING;
+  handle->socket->readers++;
+
+  return update_poll(handle->socket);
 }
 
-// TODO: finish this
-void
+int
 udx_stream_read_stop (udx_stream_t *handle) {
+  if ((handle->status & UDX_STREAM_READING) == 0) return 0;
+
   handle->on_read = NULL;
+  handle->status ^= UDX_STREAM_READING;
+  handle->socket->readers--;
+
+  return update_poll(handle->socket);
 }
 
 int
@@ -934,20 +963,34 @@ udx_stream_check_timeouts (udx_stream_t *handle) {
   return err < 0 ? err : 0;
 }
 
-void
-udx_stream_connect (udx_stream_t *handle, uint32_t remote_id, const struct sockaddr *remote_addr) {
-  int already_connected = handle->status & UDX_STREAM_CONNECTED;
+int
+udx_stream_connect (udx_stream_t *handle, udx_t *socket, uint32_t remote_id, const struct sockaddr *remote_addr, udx_stream_close_cb close_cb) {
+  if (handle->status & UDX_STREAM_CONNECTED) {
+    return UV_EISCONN;
+  }
+
+  if (socket->streams_len > 0xffff) return UV_EBUSY;
+
+  if (socket->streams_len == socket->streams_max_len) {
+    socket->streams_max_len *= 2;
+    socket->streams = realloc(socket->streams, socket->streams_max_len * sizeof(udx_stream_t *));
+  }
 
   handle->status |= UDX_STREAM_CONNECTED;
 
   handle->remote_id = remote_id;
   handle->remote_addr = *remote_addr;
+  handle->set_id = socket->streams_len++;
+  handle->socket = socket;
 
-  if (already_connected == 0) {
-    // TODO: move this to read_start once we have that
-    handle->socket->readers++;
-    update_poll(handle->socket);
-  }
+  handle->on_close = close_cb;
+
+  socket->streams[handle->set_id] = handle;
+
+  // Add the socket to the active set
+  udx__cirbuf_set(&(socket->streams_by_id), (udx_cirbuf_val_t *) handle);
+
+  return 0;
 }
 
 int
@@ -971,9 +1014,10 @@ udx_stream_send (udx_stream_send_t *req, udx_stream_t *handle, const uv_buf_t bu
   return update_poll(socket);
 }
 
-void
+int
 udx_stream_write_resume (udx_stream_t *handle, udx_stream_drain_cb drain_cb) {
   handle->on_drain = drain_cb;
+  return 0;
 }
 
 int

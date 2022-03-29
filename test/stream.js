@@ -168,16 +168,81 @@ test('unordered messages', async function (t) {
 
 test('several streams on same socket', async function (t) {
   const socket = new Socket()
+  socket.bind(0)
 
   t.teardown(() => socket.close())
 
   for (let i = 0; i < 10; i++) {
-    const stream = socket.createStream()
+    const stream = Socket.createStream(i)
+    stream.connect(socket, i, socket.address().port)
 
     t.teardown(() => stream.destroy())
   }
 
   t.pass('halts')
+})
+
+test('destroy unconnected stream', async function (t) {
+  t.plan(1)
+
+  const stream = Socket.createStream(1)
+
+  stream.on('close', function () {
+    t.pass('closed')
+  })
+
+  stream.destroy()
+})
+
+test('preconnect', async function (t) {
+  t.plan(4)
+
+  const socket = new Socket()
+  socket.bind(0)
+
+  socket.on('preconnect', (id, address) => {
+    t.is(address.port, socket.address().port)
+    t.is(address.address, '127.0.0.1')
+    t.is(id, a.id)
+
+    a.connect(socket, 2, socket.address().port)
+    a.on('data', function (data) {
+      t.is(data.toString(), 'hello')
+
+      a.destroy()
+      b.destroy()
+
+      socket.close()
+    })
+  })
+
+  const a = Socket.createStream(1)
+  const b = Socket.createStream(2)
+
+  b.connect(socket, 1, socket.address().port)
+  b.write(Buffer.from('hello'))
+})
+
+test('destroy streams and close socket in callback', async function (t) {
+  t.plan(1)
+
+  const socket = new Socket()
+  socket.bind(0)
+
+  const a = Socket.createStream(1)
+  const b = Socket.createStream(2)
+
+  a.connect(socket, 2, socket.address().port)
+  b.connect(socket, 1, socket.address().port)
+
+  a.on('data', function (data) {
+    a.destroy()
+    b.destroy()
+
+    socket.close(() => t.pass('closed'))
+  })
+
+  b.write(Buffer.from('hello'))
 })
 
 writeALot(1)
@@ -259,11 +324,11 @@ function makeTwoStreams (t) {
   a.bind()
   b.bind()
 
-  const aStream = a.createStream()
-  const bStream = b.createStream()
+  const aStream = Socket.createStream(1)
+  const bStream = Socket.createStream(2)
 
-  aStream.connect(bStream.id, b.address().port, '127.0.0.1')
-  bStream.connect(aStream.id, a.address().port, '127.0.0.1')
+  aStream.connect(a, bStream.id, b.address().port, '127.0.0.1')
+  bStream.connect(b, aStream.id, a.address().port, '127.0.0.1')
 
   t.teardown(() => {
     a.close()
