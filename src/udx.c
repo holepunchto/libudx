@@ -729,7 +729,7 @@ udx_bind (udx_t *handle, const struct sockaddr *addr) {
   handle->status |= UDX_SOCKET_BOUND;
   poll->data = handle;
 
-  return 0;
+  return update_poll(handle);;
 }
 
 int

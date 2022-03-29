@@ -68,10 +68,6 @@ main () {
   e = udx_bind(&asock, (struct sockaddr *) &aaddr);
   assert(e == 0);
 
-  // Start receiving on the socket to enable preconnects.
-  e = udx_recv_start(&asock, NULL);
-  assert(e == 0);
-
   struct sockaddr_in baddr;
   uv_ip4_addr("127.0.0.1", 8082, &baddr);
   e = udx_bind(&bsock, (struct sockaddr *) &baddr);
