@@ -81,14 +81,10 @@ on_uv_interval (uv_timer_t *handle) {
 
 static int
 update_poll (udx_t *socket) {
-  int events = 0;
+  int events = UV_READABLE;
 
   if (socket->send_queue.len > 0) {
     events |= UV_WRITABLE;
-  }
-
-  if (socket->readers > 0 || socket->pending_acks > 0) {
-    events |= UV_READABLE;
   }
 
   if (events == socket->events) return 0;
@@ -319,8 +315,6 @@ ack_packet (udx_stream_t *stream, uint32_t seq, int sack) {
     w->on_ack(w, 0, sack);
   }
 
-  stream->socket->pending_acks--;
-
   if (stream->status & UDX_STREAM_DEAD) return 2;
 
   // TODO: the end condition needs work here to be more "stateless"
@@ -396,8 +390,6 @@ clear_outgoing_packets (udx_stream_t *stream) {
       if (w->on_ack != NULL) {
         w->on_ack(w, UV_ECANCELED, 0);
       }
-
-      stream->socket->pending_acks--;
     }
 
     free(pkt);
@@ -433,15 +425,14 @@ process_packet (udx_t *socket, char *buf, ssize_t buf_len, struct sockaddr *addr
   udx_stream_t *stream = lookup_stream(socket, local_id);
 
   if (stream == NULL || (stream->status & UDX_STREAM_CONNECTED) == 0) {
-    if (socket->on_preconnect != NULL) {
-      socket->on_preconnect(socket, local_id, addr);
+    if (socket->on_preconnect == NULL) return 0;
 
-      stream = lookup_stream(socket, local_id);
+    // give the caller a chance to connect to the stream and then try again
+    socket->on_preconnect(socket, local_id, addr);
 
-      if (stream == NULL || (stream->status & UDX_STREAM_CONNECTED) == 0) {
-        return 0;
-      }
-    } else {
+    stream = lookup_stream(socket, local_id);
+
+    if (stream == NULL || (stream->status & UDX_STREAM_CONNECTED) == 0) {
       return 0;
     }
   }
@@ -866,7 +857,7 @@ udx_stream_init (uv_loop_t *loop, udx_stream_t *handle, uint32_t local_id) {
   handle->retransmits_waiting = 0;
 
   handle->inflight = 0;
-  handle->ssthresh = 65535;
+  handle->ssthresh = 0xffff;
   handle->cwnd = 2 * UDX_MTU;
   handle->rwnd = 0;
 
@@ -978,7 +969,7 @@ udx_stream_connect (udx_stream_t *handle, udx_t *socket, uint32_t remote_id, con
     return UV_EISCONN;
   }
 
-  if (socket->streams_len >= 65536) return UV_EBUSY;
+  if (socket->streams_len > 0xffff) return UV_EBUSY;
 
   if (socket->streams_len == socket->streams_max_len) {
     socket->streams_max_len *= 2;
@@ -1037,8 +1028,6 @@ udx_stream_write (udx_stream_write_t *req, udx_stream_t *handle, const uv_buf_t 
   req->handle = handle;
   req->on_ack = ack_cb;
 
-  handle->socket->pending_acks++;
-
   // if this is the first inflight packet, we should "restart" rto timer
   if (handle->inflight == 0) {
     handle->rto_timeout = get_milliseconds() + handle->rto;
@@ -1085,8 +1074,6 @@ udx_stream_write_end (udx_stream_write_t *req, udx_stream_t *handle, const uv_bu
   req->packets = 0;
   req->handle = handle;
   req->on_ack = ack_cb;
-
-  handle->socket->pending_acks++;
 
   int err = 0;
 

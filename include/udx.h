@@ -100,7 +100,6 @@ struct udx {
   int status;
   int readers;
   int events;
-  int pending_acks;
   int pending_closes;
 
   void *data;
