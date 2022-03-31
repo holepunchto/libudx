@@ -258,6 +258,36 @@ test('write empty buffer', async function (t) {
   a.end()
 })
 
+test('close socket on stream close', async function (t) {
+  t.plan(2)
+
+  const aSocket = new Socket()
+  aSocket.bind(0)
+
+  const bSocket = new Socket()
+  bSocket.bind(0)
+
+  const a = Socket.createStream(1)
+  const b = Socket.createStream(2)
+
+  a.connect(aSocket, 2, bSocket.address().port)
+  b.connect(bSocket, 1, aSocket.address().port)
+
+  a
+    .on('close', function () {
+      aSocket.close(() => t.pass('a closed'))
+    })
+    .end()
+
+  b
+    .on('end', function () {
+      b.end()
+    })
+    .on('close', function () {
+      bSocket.close(() => t.pass('b closed'))
+    })
+})
+
 writeALot(1)
 
 writeALot(1024)
