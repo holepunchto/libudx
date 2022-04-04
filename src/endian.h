@@ -1,7 +1,8 @@
 #ifndef UDX_ENDIAN_H
 #define UDX_ENDIAN_H
 
-#include "../include/udx.h"
+#include <stdbool.h>
+#include <stdint.h>
 
 typedef enum udx__endianness udx__endianness_t;
 
