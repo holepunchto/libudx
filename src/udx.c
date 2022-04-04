@@ -105,13 +105,13 @@ init_stream_packet (udx_packet_t *pkt, int type, udx_stream_t *stream, const uv_
 
   uint32_t *i = (uint32_t *) b;
 
-  // 32 bit (le) remote id
+  // 32 bit (be) remote id
   *(i++) = htonl(stream->remote_id);
-  // 32 bit (le) recv window
+  // 32 bit (be) recv window
   *(i++) = 0xffffffff; // hardcode max recv window
-  // 32 bit (le) seq
+  // 32 bit (be) seq
   *(i++) = htonl(stream->seq);
-  // 32 bit (le) ack
+  // 32 bit (be) ack
   *(i++) = htonl(stream->ack);
 
   pkt->seq = stream->seq;
