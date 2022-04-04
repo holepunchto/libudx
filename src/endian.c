@@ -3,7 +3,7 @@
 udx__endianness_t
 udx__endianness () {
   // See https://github.com/nodejs/node/blob/master/src/util.h
-  const union {
+  static const union {
     uint8_t u8[2];
     uint16_t u16;
   } u = {{1, 0}};
