@@ -7,7 +7,6 @@ extern "C" {
 
 #include <stdlib.h>
 #include <stdint.h>
-#include <stdbool.h>
 #include <uv.h>
 
 // TODO: research the packets sizes a bit more
