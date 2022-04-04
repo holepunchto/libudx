@@ -1,6 +1,6 @@
 #include "endian.h"
 
-enum udx__endianness
+udx__endianness_t
 udx__endianness () {
   // See https://github.com/nodejs/node/blob/master/src/util.h
   const union {
