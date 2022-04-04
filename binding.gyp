@@ -10,6 +10,14 @@
       './src/udx.c',
       './binding.c',
     ],
+    'configurations': {
+      'Debug': {
+        'defines': ['DEBUG'],
+      },
+      'Release': {
+        'defines': ['NDEBUG'],
+      },
+    },
     'conditions': [
       ['OS=="win"', {
         'sources': [
