@@ -4,6 +4,7 @@
 #include "../include/udx.h"
 
 #include "cirbuf.h"
+#include "endian.h"
 #include "fifo.h"
 #include "io.h"
 
@@ -105,14 +106,14 @@ init_stream_packet (udx_packet_t *pkt, int type, udx_stream_t *stream, const uv_
 
   uint32_t *i = (uint32_t *) b;
 
-  // 32 bit (be) remote id
-  *(i++) = htonl(stream->remote_id);
-  // 32 bit (be) recv window
+  // 32 bit (le) remote id
+  *(i++) = udx__swap_uint32_if_be(stream->remote_id);
+  // 32 bit (le) recv window
   *(i++) = 0xffffffff; // hardcode max recv window
-  // 32 bit (be) seq
-  *(i++) = htonl(stream->seq);
-  // 32 bit (be) ack
-  *(i++) = htonl(stream->ack);
+  // 32 bit (le) seq
+  *(i++) = udx__swap_uint32_if_be(stream->seq);
+  // 32 bit (le) ack
+  *(i++) = udx__swap_uint32_if_be(stream->ack);
 
   pkt->seq = stream->seq;
   pkt->transmits = 0;
@@ -150,8 +151,8 @@ send_state_packet (udx_stream_t *stream) {
     } else if (seq == end) {
       end++;
     } else {
-      *(sacks++) = htonl(start);
-      *(sacks++) = htonl(end);
+      *(sacks++) = udx__swap_uint32_if_be(start);
+      *(sacks++) = udx__swap_uint32_if_be(end);
       start = seq;
       end = seq + 1;
       payload_len += 8;
@@ -161,8 +162,8 @@ send_state_packet (udx_stream_t *stream) {
   }
 
   if (start != end) {
-    *(sacks++) = htonl(start);
-    *(sacks++) = htonl(end);
+    *(sacks++) = udx__swap_uint32_if_be(start);
+    *(sacks++) = udx__swap_uint32_if_be(end);
     payload_len += 8;
   }
 
@@ -333,8 +334,8 @@ process_sacks (udx_stream_t *stream, char *buf, size_t buf_len) {
   uint32_t *sacks = (uint32_t *) buf;
 
   for (size_t i = 0; i + 8 <= buf_len; i += 8) {
-    uint32_t start = ntohl(*(sacks++));
-    uint32_t end = ntohl(*(sacks++));
+    uint32_t start = udx__swap_uint32_if_be(*(sacks++));
+    uint32_t end = udx__swap_uint32_if_be(*(sacks++));
     int32_t len = seq_diff(end, start);
 
     for (int32_t j = 0; j < len; j++) {
@@ -413,10 +414,10 @@ process_packet (udx_t *socket, char *buf, ssize_t buf_len, struct sockaddr *addr
 
   uint32_t *i = (uint32_t *) b;
 
-  uint32_t local_id = ntohl(*(i++));
-  /* recv_win */ ntohl(*(i++));
-  uint32_t seq = ntohl(*(i++));
-  uint32_t ack = ntohl(*i);
+  uint32_t local_id = udx__swap_uint32_if_be(*(i++));
+  /* recv_win */ udx__swap_uint32_if_be(*(i++));
+  uint32_t seq = udx__swap_uint32_if_be(*(i++));
+  uint32_t ack = udx__swap_uint32_if_be(*i);
 
   buf += UDX_HEADER_SIZE;
   buf_len -= UDX_HEADER_SIZE;
