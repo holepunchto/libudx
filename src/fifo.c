@@ -1,3 +1,7 @@
+#include <stdlib.h>
+
+#include "../include/udx.h"
+
 #include "fifo.h"
 
 void
