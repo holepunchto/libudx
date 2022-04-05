@@ -129,7 +129,7 @@ test('only one side writes', async function (t) {
 })
 
 test('unordered messages', async function (t) {
-  t.plan(1)
+  t.plan(2)
 
   const [a, b] = makeTwoStreams(t)
   const expected = []
@@ -139,11 +139,7 @@ test('unordered messages', async function (t) {
   })
 
   a.on('error', function () {
-    t.comment('a errored')
-  })
-
-  b.on('error', function () {
-    t.comment('b errored')
+    t.pass('a destroyed')
   })
 
   a.on('message', function (buf) {
@@ -170,16 +166,18 @@ test('several streams on same socket', async function (t) {
   const socket = new Socket()
   socket.bind(0)
 
-  t.teardown(() => socket.close())
+  const streams = []
 
   for (let i = 0; i < 10; i++) {
     const stream = Socket.createStream(i)
     stream.connect(socket, i, socket.address().port)
-
-    t.teardown(() => stream.destroy())
+    streams.push(stream)
   }
 
   t.pass('halts')
+
+  streams.forEach((stream) => stream.destroy())
+  socket.close()
 })
 
 test('destroy unconnected stream', async function (t) {
