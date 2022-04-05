@@ -223,6 +223,46 @@ test('preconnect', async function (t) {
   b.write(Buffer.from('hello'))
 })
 
+test('preconnect to same stream multiple times', async function (t) {
+  t.plan(5)
+
+  const server = new Socket()
+  server.bind()
+  t.teardown(() => server.close())
+
+  let preconnected = false
+
+  server.on('preconnect', function (id, addr) {
+    t.is(preconnected, false)
+    t.is(id, 1)
+
+    preconnected = true
+
+    const stream = Socket.createStream(1)
+    t.teardown(() => stream.destroy())
+
+    stream.connect(server, 2, addr.port)
+    stream.on('data', function ([i]) {
+      t.pass(`stream ${i} connected`)
+    })
+  })
+
+  for (let i = 0; i < 3; i++) {
+    const client = new Socket()
+    client.bind()
+    t.teardown(() => client.close())
+
+    const stream = Socket.createStream(2)
+    t.teardown(() => stream.destroy())
+
+    stream.connect(client, 1, server.address().port)
+    stream.write(Buffer.from([i]))
+    stream.on('error', function () {
+      t.pass(`stream ${i} timed out`)
+    })
+  }
+})
+
 test('destroy streams and close socket in callback', async function (t) {
   t.plan(1)
 
