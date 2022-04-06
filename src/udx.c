@@ -245,7 +245,11 @@ close_maybe (udx_stream_t *stream, int err) {
 
   if (stream->status & UDX_STREAM_CONNECTED) {
     udx_t *socket = stream->socket;
-    socket->streams[stream->set_id] = socket->streams[--(socket->streams_len)];
+
+    // Remove from the set, by array[i] = array.pop()
+    udx_stream_t *other = socket->streams[--(socket->streams_len)];
+    socket->streams[stream->set_id] = other;
+    other->set_id = stream->set_id;
 
     // TODO: Dealloc all remaning state such as
     // - pending reads
