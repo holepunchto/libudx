@@ -163,8 +163,6 @@ test('unordered messages', async function (t) {
 })
 
 test('several streams on same socket', async function (t) {
-  t.plan(1)
-
   const socket = new Socket()
   socket.bind(0)
 
