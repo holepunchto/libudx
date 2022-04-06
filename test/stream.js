@@ -163,21 +163,21 @@ test('unordered messages', async function (t) {
 })
 
 test('several streams on same socket', async function (t) {
+  t.plan(1)
+
   const socket = new Socket()
   socket.bind(0)
 
-  const streams = []
+  t.teardown(() => socket.close())
 
   for (let i = 0; i < 10; i++) {
     const stream = Socket.createStream(i)
     stream.connect(socket, i, socket.address().port)
-    streams.push(stream)
+
+    t.teardown(() => stream.destroy())
   }
 
   t.pass('halts')
-
-  streams.forEach((stream) => stream.destroy())
-  socket.close()
 })
 
 test('destroy unconnected stream', async function (t) {
