@@ -1,6 +1,8 @@
 #ifndef UDX_CIRBUF_H
 #define UDX_CIRBUF_H
 
+#include <stdint.h>
+
 #include "../include/udx.h"
 
 void

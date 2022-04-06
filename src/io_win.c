@@ -1,3 +1,5 @@
+#include <uv.h>
+
 #include "io.h"
 
 ssize_t

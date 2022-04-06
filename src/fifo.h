@@ -1,6 +1,8 @@
 #ifndef UDX_FIFO_H
 #define UDX_FIFO_H
 
+#include <stdint.h>
+
 #include "../include/udx.h"
 
 void
