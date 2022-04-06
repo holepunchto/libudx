@@ -789,7 +789,7 @@ udx_recv_stop (udx_t *handle) {
   if ((handle->status & UDX_SOCKET_RECEIVING) == 0) return 0;
 
   handle->on_recv = NULL;
-  handle->status ^= UDX_SOCKET_PAUSED;
+  handle->status ^= UDX_SOCKET_RECEIVING;
   handle->readers--;
 
   return update_poll(handle);

@@ -20,7 +20,6 @@ extern "C" {
 
 #define UDX_SOCKET_RECEIVING 0b01
 #define UDX_SOCKET_BOUND     0b10
-#define UDX_SOCKET_PAUSED    0b10 // ~RECEIVING truncated to bits
 
 #define UDX_STREAM_CONNECTED        0b00000000001
 #define UDX_STREAM_RECEIVING        0b00000000010
