@@ -6,6 +6,7 @@
     ],
     'sources': [
       './src/cirbuf.c',
+      './src/endian.c',
       './src/fifo.c',
       './src/udx.c',
       './binding.c',

@@ -7,6 +7,7 @@
 #include "../include/udx.h"
 
 #include "cirbuf.h"
+#include "endian.h"
 #include "fifo.h"
 #include "io.h"
 #include "debug.h"
@@ -109,17 +110,16 @@ init_stream_packet (udx_packet_t *pkt, int type, udx_stream_t *stream, const uv_
 
   uint32_t *i = (uint32_t *) b;
 
-  // TODO: the header is ALWAYS little endian, make this work on big endian archs also
-
   // 32 bit (le) remote id
-  *(i++) = stream->remote_id;
+  *(i++) = udx__swap_uint32_if_be(stream->remote_id);
   // 32 bit (le) recv window
   *(i++) = 0xffffffff; // hardcode max recv window
   // 32 bit (le) seq
-  *(i++) = pkt->seq = stream->seq;
+  *(i++) = udx__swap_uint32_if_be(stream->seq);
   // 32 bit (le) ack
-  *(i++) = stream->ack;
+  *(i++) = udx__swap_uint32_if_be(stream->ack);
 
+  pkt->seq = stream->seq;
   pkt->transmits = 0;
   pkt->size = (uint16_t) (UDX_HEADER_SIZE + buf->len);
   pkt->dest = stream->remote_addr;
@@ -155,8 +155,8 @@ send_state_packet (udx_stream_t *stream) {
     } else if (seq == end) {
       end++;
     } else {
-      *(sacks++) = start;
-      *(sacks++) = end;
+      *(sacks++) = udx__swap_uint32_if_be(start);
+      *(sacks++) = udx__swap_uint32_if_be(end);
       start = seq;
       end = seq + 1;
       payload_len += 8;
@@ -166,8 +166,8 @@ send_state_packet (udx_stream_t *stream) {
   }
 
   if (start != end) {
-    *(sacks++) = start;
-    *(sacks++) = end;
+    *(sacks++) = udx__swap_uint32_if_be(start);
+    *(sacks++) = udx__swap_uint32_if_be(end);
     payload_len += 8;
   }
 
@@ -338,8 +338,8 @@ process_sacks (udx_stream_t *stream, char *buf, size_t buf_len) {
   uint32_t *sacks = (uint32_t *) buf;
 
   for (size_t i = 0; i + 8 <= buf_len; i += 8) {
-    uint32_t start = *(sacks++);
-    uint32_t end = *(sacks++);
+    uint32_t start = udx__swap_uint32_if_be(*(sacks++));
+    uint32_t end = udx__swap_uint32_if_be(*(sacks++));
     int32_t len = seq_diff(end, start);
 
     for (int32_t j = 0; j < len; j++) {
@@ -418,10 +418,10 @@ process_packet (udx_t *socket, char *buf, ssize_t buf_len, struct sockaddr *addr
 
   uint32_t *i = (uint32_t *) b;
 
-  uint32_t local_id = *(i++);
-  uint32_t recv_win = *(i++);
-  uint32_t seq = *(i++);
-  uint32_t ack = *i;
+  uint32_t local_id = udx__swap_uint32_if_be(*(i++));
+  /* recv_win */ udx__swap_uint32_if_be(*(i++));
+  uint32_t seq = udx__swap_uint32_if_be(*(i++));
+  uint32_t ack = udx__swap_uint32_if_be(*i);
 
   buf += UDX_HEADER_SIZE;
   buf_len -= UDX_HEADER_SIZE;
@@ -734,7 +734,7 @@ udx_bind (udx_t *handle, const struct sockaddr *addr) {
   handle->status |= UDX_SOCKET_BOUND;
   poll->data = handle;
 
-  return update_poll(handle);;
+  return update_poll(handle);
 }
 
 int
