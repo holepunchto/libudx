@@ -13,6 +13,9 @@ const UDX_HEADER_MESSAGE = 0b01000
 const UDX_HEADER_DESTROY = 0b10000
 
 module.exports = function proxy ({ from, to, bind } = {}, drop) {
+  from = toPort(from)
+  to = toPort(to)
+
   const socket = dgram.createSocket('udp4')
 
   socket.bind(bind || 0)
@@ -37,6 +40,12 @@ module.exports = function proxy ({ from, to, bind } = {}, drop) {
       resolve(socket)
     })
   })
+}
+
+function toPort (n) {
+  if (typeof n === 'number') return n
+  if (n && n.address) return n.address().port
+  throw new Error('Pass a port or socket')
 }
 
 function echo (s) {
