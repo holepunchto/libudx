@@ -98,6 +98,7 @@ struct udx {
   int status;
   int readers;
   int events;
+  int ttl;
   int pending_closes;
 
   void *data;
@@ -167,6 +168,7 @@ struct udx_packet {
 
   int status;
   int type;
+  int ttl;
 
   uint32_t fifo_gc;
 
@@ -234,6 +236,9 @@ udx_getsockname (udx_t *handle, struct sockaddr * name, int *name_len);
 
 int
 udx_send (udx_send_t *req, udx_t *handle, const uv_buf_t bufs[], unsigned int bufs_len, const struct sockaddr *addr, udx_send_cb cb);
+
+int
+udx_send_ttl (udx_send_t *req, udx_t *handle, const uv_buf_t bufs[], unsigned int bufs_len, const struct sockaddr *addr, int ttl, udx_send_cb cb);
 
 int
 udx_recv_start (udx_t *handle, udx_recv_cb cb);

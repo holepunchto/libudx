@@ -1,6 +1,7 @@
 #include <assert.h>
 #include <stdlib.h>
 #include <stdint.h>
+#include <stdbool.h>
 #include <string.h>
 #include <uv.h>
 
@@ -29,6 +30,8 @@
 #define UDX_PACKET_FREE_ON_SEND (UDX_PACKET_STREAM_STATE | UDX_PACKET_STREAM_DESTROY)
 
 #define UDX_HEADER_DATA_OR_END (UDX_HEADER_DATA | UDX_HEADER_END)
+
+#define UDX_DEFAULT_TTL 64
 
 #define UDX_MAX_TRANSMITS 5
 
@@ -179,6 +182,7 @@ send_state_packet (udx_stream_t *stream) {
 
   pkt->status = UDX_PACKET_SENDING;
   pkt->type = UDX_PACKET_STREAM_STATE;
+  pkt->ttl = 0;
 
   stream->stats_pkts_sent++;
 
@@ -615,7 +619,13 @@ on_uv_poll (uv_poll_t *handle, int status, int events) {
     pkt->status = UDX_PACKET_INFLIGHT;
     pkt->transmits++;
 
+    bool adjust_ttl = pkt->ttl > 0 && socket->ttl != pkt->ttl;
+
+    if (adjust_ttl) uv_udp_set_ttl((uv_udp_t *) socket, pkt->ttl);
+
     udx__sendmsg(socket, pkt);
+
+    if (adjust_ttl) uv_udp_set_ttl((uv_udp_t *) socket, socket->ttl);
 
     int type = pkt->type;
 
@@ -666,6 +676,7 @@ udx_init (uv_loop_t *loop, udx_t *handle) {
   handle->status = 0;
   handle->readers = 0;
   handle->events = 0;
+  handle->ttl = UDX_DEFAULT_TTL;
 
   handle->streams_len = 0;
   handle->streams_max_len = 16;
@@ -710,6 +721,8 @@ udx_recv_buffer_size(udx_t *handle, int *value) {
 
 int
 udx_set_ttl(udx_t *handle, int ttl) {
+  if (ttl < 1 || ttl > 255) return UV_EINVAL;
+  handle->ttl = ttl;
   return uv_udp_set_ttl((uv_udp_t *) &(handle->socket), ttl);
 }
 
@@ -725,6 +738,9 @@ udx_bind (udx_t *handle, const struct sockaddr *addr) {
 
   // Asserting all the errors here as it massively simplifies error handling
   // and in practice non of these will fail, as all our handles are valid and alive.
+
+  err = uv_udp_set_ttl(socket, handle->ttl);
+  assert(err == 0);
 
   err = uv_fileno((const uv_handle_t *) socket, &fd);
   assert(err == 0);
@@ -754,6 +770,13 @@ udx_getsockname (udx_t *handle, struct sockaddr *name, int *name_len) {
 
 int
 udx_send (udx_send_t *req, udx_t *handle, const uv_buf_t bufs[], unsigned int bufs_len, const struct sockaddr *dest, udx_send_cb cb) {
+  return udx_send_ttl(req, handle, bufs, bufs_len, dest, 0, cb);
+}
+
+int
+udx_send_ttl (udx_send_t *req, udx_t *handle, const uv_buf_t bufs[], unsigned int bufs_len, const struct sockaddr *dest, int ttl, udx_send_cb cb) {
+  if (ttl < 0 /* 0 is "default" */ || ttl > 255) return UV_EINVAL;
+
   assert(bufs_len == 1);
 
   req->handle = handle;
@@ -763,6 +786,7 @@ udx_send (udx_send_t *req, udx_t *handle, const uv_buf_t bufs[], unsigned int bu
 
   pkt->status = UDX_PACKET_SENDING;
   pkt->type = UDX_PACKET_SEND;
+  pkt->ttl = ttl;
   pkt->ctx = req;
   pkt->dest = *dest;
 
@@ -1016,6 +1040,7 @@ udx_stream_send (udx_stream_send_t *req, udx_stream_t *handle, const uv_buf_t bu
 
   pkt->status = UDX_PACKET_SENDING;
   pkt->type = UDX_PACKET_STREAM_SEND;
+  pkt->ttl = 0;
   pkt->ctx = req;
   pkt->transmits = 0;
 
@@ -1056,6 +1081,7 @@ udx_stream_write (udx_stream_write_t *req, udx_stream_t *handle, const uv_buf_t 
 
     pkt->status = UDX_PACKET_WAITING;
     pkt->type = UDX_PACKET_STREAM_WRITE;
+    pkt->ttl = 0;
     pkt->ctx = req;
 
     handle->seq++;
@@ -1098,6 +1124,7 @@ udx_stream_write_end (udx_stream_write_t *req, udx_stream_t *handle, const uv_bu
 
     pkt->status = UDX_PACKET_WAITING;
     pkt->type = UDX_PACKET_STREAM_WRITE;
+    pkt->ttl = 0;
     pkt->ctx = req;
 
     handle->seq++;
@@ -1136,6 +1163,7 @@ udx_stream_destroy (udx_stream_t *handle) {
 
   pkt->status = UDX_PACKET_SENDING;
   pkt->type = UDX_PACKET_STREAM_DESTROY;
+  pkt->ttl = 0;
   pkt->ctx = handle;
 
   handle->seq++;
