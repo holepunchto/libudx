@@ -336,6 +336,31 @@ NAPI_METHOD(udx_napi_send) {
   return NULL;
 }
 
+NAPI_METHOD(udx_napi_send_ttl) {
+  NAPI_ARGV(7)
+  NAPI_ARGV_BUFFER_CAST(udx_t *, self, 0)
+  NAPI_ARGV_BUFFER_CAST(udx_send_t *, req, 1)
+  NAPI_ARGV_UINT32(rid, 2)
+  NAPI_ARGV_BUFFER(buf, 3)
+  NAPI_ARGV_UINT32(port, 4)
+  NAPI_ARGV_UTF8(ip, 17, 5)
+  NAPI_ARGV_UINT32(ttl, 6)
+
+  req->data = (void *)((uintptr_t) rid);
+
+  struct sockaddr_in addr;
+
+  int err = uv_ip4_addr((char *) &ip, port, &addr);
+  if (err < 0) UDX_NAPI_THROW(err)
+
+  uv_buf_t b = uv_buf_init(buf, buf_len);
+
+  err = udx_send_ttl(req, self, &b, 1, (const struct sockaddr *) &addr, ttl, on_udx_send);
+  if (err < 0) UDX_NAPI_THROW(err)
+
+  return NULL;
+}
+
 NAPI_METHOD(udx_napi_close) {
   NAPI_ARGV(1)
   NAPI_ARGV_BUFFER_CAST(udx_t *, self, 0)
@@ -496,6 +521,7 @@ NAPI_INIT() {
   NAPI_EXPORT_FUNCTION(udx_napi_recv_buffer_size)
   NAPI_EXPORT_FUNCTION(udx_napi_send_buffer_size)
   NAPI_EXPORT_FUNCTION(udx_napi_send)
+  NAPI_EXPORT_FUNCTION(udx_napi_send_ttl)
   NAPI_EXPORT_FUNCTION(udx_napi_close)
 
   NAPI_EXPORT_FUNCTION(udx_napi_stream_init)
