@@ -63,21 +63,19 @@ function prettyPrint (pkt, { peer }, opts) {
   s += ': '
 
   if (pkt.protocol !== 'udx') {
-    s += 'unknown data=' + inspect(pkt.data)
+    s += style('unknown', 'symbol') + ' data=' + inspect(pkt.data)
     return s
   }
 
-  s += 'udx' + pkt.version + ' '
-
   const flags = []
 
-  if (pkt.isData) flags.push('data')
-  if (pkt.isEnd) flags.push('end')
-  if (pkt.isSack) flags.push('sack')
-  if (pkt.isMessage) flags.push('message')
-  if (pkt.isDestroy) flags.push('destroy')
+  if (pkt.isData) flags.push(style('data', 'special'))
+  if (pkt.isEnd) flags.push(style('end', 'special'))
+  if (pkt.isSack) flags.push(style('sack', 'special'))
+  if (pkt.isMessage) flags.push(style('message', 'special'))
+  if (pkt.isDestroy) flags.push(style('destroy', 'special'))
 
-  if (!flags.length) flags.push('state')
+  if (!flags.length) flags.push(style('state', 'special'))
 
   s += flags.join('+') + ' '
   s += 'stream=' + inspect(pkt.stream, opts) + ' '
