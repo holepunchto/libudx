@@ -1,4 +1,5 @@
 const dgram = require('dgram')
+const { inspect } = require('util')
 
 // from udx.h
 
@@ -18,7 +19,7 @@ module.exports = function proxy ({ from, to, bind } = {}, drop) {
 
   socket.on('message', function (buf, rinfo) {
     const source = { host: rinfo.address, port: rinfo.port, peer: rinfo.port === from ? 'from' : (rinfo.port === to ? 'to' : 'unknown') }
-    const pkt = parsePacket(buf)
+    const pkt = parsePacket(buf, source)
     const dropping = drop(pkt, source)
     const port = rinfo.port === to ? from : to
 
@@ -38,7 +39,52 @@ module.exports = function proxy ({ from, to, bind } = {}, drop) {
   })
 }
 
-function parsePacket (buf) {
+function echo (s) {
+  return s
+}
+
+function prettyPrint (pkt, { peer }, opts) {
+  const style = (opts && opts.stylize) || echo
+
+  let s = ''
+  if (peer === 'from') s += 'from ' + style('-->', 'symbol') + ' to'
+  else if (peer === 'to') s += 'from ' + style('<--', 'date') + ' to'
+  else s += 'unknown'
+
+  s += ': '
+
+  if (pkt.protocol !== 'udx') {
+    s += 'unknown data=' + inspect(pkt.data)
+    return s
+  }
+
+  s += 'udx' + pkt.version + ' '
+
+  const flags = []
+
+  if (pkt.isData) flags.push('data')
+  if (pkt.isEnd) flags.push('end')
+  if (pkt.isSack) flags.push('sack')
+  if (pkt.isMessage) flags.push('message')
+  if (pkt.isDestroy) flags.push('destroy')
+
+  if (!flags.length) flags.push('state')
+
+  s += flags.join('+') + ' '
+  s += 'stream=' + inspect(pkt.stream, opts) + ' '
+  s += 'recv=' + inspect(pkt.recv, opts) + ' '
+  s += 'seq=' + inspect(pkt.seq, opts) + ' '
+  s += 'ack=' + inspect(pkt.ack, opts) + ' '
+
+  if (pkt.additionalHeader.byteLength) s += 'additional = ' + inspect(pkt.additionalHeader, opts) + ' '
+  if (pkt.data.byteLength) s += 'data=' + inspect(pkt.data, opts)
+
+  s = s.trim()
+
+  return s
+}
+
+function parsePacket (buf, source) {
   if (buf.byteLength < UDX_HEADER_SIZE || buf[0] !== UDX_MAGIC_BYTE || buf[1] !== UDX_VERSION) return { protocol: 'unknown', buffer: buf }
 
   const type = buf[2]
@@ -57,6 +103,9 @@ function parsePacket (buf) {
     seq: buf.readUint32LE(12),
     ack: buf.readUint32LE(16),
     additionalHeader: buf.subarray(UDX_HEADER_SIZE, UDX_HEADER_SIZE + dataOffset),
-    data: buf.subarray(UDX_HEADER_SIZE + dataOffset)
+    data: buf.subarray(UDX_HEADER_SIZE + dataOffset),
+    [inspect.custom] (depth, opts) {
+      return prettyPrint(this, source, opts)
+    }
   }
 }
