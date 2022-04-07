@@ -102,6 +102,45 @@ update_poll (udx_t *socket) {
 }
 
 static void
+clear_incoming_packets (udx_stream_t *stream) {
+  uint32_t seq = stream->ack;
+  udx_cirbuf_t *inc = &(stream->incoming);
+
+  while (stream->pkts_buffered) {
+    udx_pending_read_t *pkt = (udx_pending_read_t *) udx__cirbuf_remove(inc, seq++);
+    if (pkt == NULL) continue;
+
+    stream->pkts_buffered--;
+    free(pkt);
+  }
+}
+
+static void
+clear_outgoing_packets (udx_stream_t *stream) {
+  // We should make sure all existing packets do not send, and notify the user that they failed
+  for (uint32_t seq = stream->remote_acked; seq != stream->seq; seq++) {
+    udx_packet_t *pkt = (udx_packet_t *) udx__cirbuf_remove(&(stream->outgoing), seq);
+
+    if (pkt == NULL) continue;
+
+    // Make sure to remove it from the fifo, if it was added
+    if (pkt->status == UDX_PACKET_SENDING) {
+      udx__fifo_remove(&(stream->socket->send_queue), pkt, pkt->fifo_gc);
+    }
+
+    udx_stream_write_t *w = (udx_stream_write_t *) pkt->ctx;
+
+    if (--(w->packets) == 0) {
+      if (w->on_ack != NULL) {
+        w->on_ack(w, UV_ECANCELED, 0);
+      }
+    }
+
+    free(pkt);
+  }
+}
+
+static void
 init_stream_packet (udx_packet_t *pkt, int type, udx_stream_t *stream, const uv_buf_t *buf) {
   uint8_t *b = (uint8_t *) &(pkt->header);
 
@@ -255,18 +294,19 @@ close_maybe (udx_stream_t *stream, int err) {
     socket->streams[stream->set_id] = other;
     other->set_id = stream->set_id;
 
-    // TODO: Dealloc all remaning state such as
-    // - pending reads
-    // - destroy alloc'ed cirbufs
-    // (anything else from stream init)
-
     udx__cirbuf_remove(&(stream->socket->streams_by_id), stream->local_id);
+    clear_incoming_packets(stream);
     // TODO: move the instance to a TIME_WAIT state, so we can handle retransmits
   }
 
   if (stream->status & UDX_STREAM_READING) {
     udx_stream_read_stop(stream);
   }
+
+  // destroy anything we created, so the user can gc the stream instance
+
+  udx__cirbuf_destroy(&(stream->incoming));
+  udx__cirbuf_destroy(&(stream->outgoing));
 
   if (stream->on_close != NULL) {
     stream->on_close(stream, err);
@@ -383,31 +423,6 @@ fast_retransmit (udx_stream_t *stream) {
   stream->cwnd = max_uint32(UDX_MTU, stream->cwnd / 2);
 }
 
-static void
-clear_outgoing_packets (udx_stream_t *stream) {
-  // We should make sure all existing packets do not send, and notify the user that they failed
-  for (uint32_t seq = stream->remote_acked; seq != stream->seq; seq++) {
-    udx_packet_t *pkt = (udx_packet_t *) udx__cirbuf_remove(&(stream->outgoing), seq);
-
-    if (pkt == NULL) continue;
-
-    // Make sure to remove it from the fifo, if it was added
-    if (pkt->status == UDX_PACKET_SENDING) {
-      udx__fifo_remove(&(stream->socket->send_queue), pkt, pkt->fifo_gc);
-    }
-
-    udx_stream_write_t *w = (udx_stream_write_t *) pkt->ctx;
-
-    if (--(w->packets) == 0) {
-      if (w->on_ack != NULL) {
-        w->on_ack(w, UV_ECANCELED, 0);
-      }
-    }
-
-    free(pkt);
-  }
-}
-
 static udx_stream_t *
 lookup_stream (udx_t *socket, uint32_t id) {
   return (udx_stream_t *) udx__cirbuf_get(&(socket->streams_by_id), id);
@@ -480,6 +495,7 @@ process_packet (udx_t *socket, char *buf, ssize_t buf_len, struct sockaddr *addr
     pkt->buf.base = cpy;
     pkt->buf.len = buf_len;
 
+    stream->pkts_buffered++;
     udx__cirbuf_set(inc, (udx_cirbuf_val_t *) pkt);
   }
 
@@ -513,6 +529,7 @@ process_packet (udx_t *socket, char *buf, ssize_t buf_len, struct sockaddr *addr
     udx_pending_read_t *pkt = (udx_pending_read_t *) udx__cirbuf_remove(inc, stream->ack);
     if (pkt == NULL) break;
 
+    stream->pkts_buffered--;
     stream->ack++;
 
     if ((pkt->type & UDX_HEADER_DATA) && stream->on_read != NULL) {
@@ -886,6 +903,7 @@ udx_stream_init (uv_loop_t *loop, udx_stream_t *handle, uint32_t local_id) {
 
   handle->pkts_waiting = 0;
   handle->pkts_inflight = 0;
+  handle->pkts_buffered = 0;
   handle->dup_acks = 0;
   handle->retransmits_waiting = 0;
 
@@ -897,7 +915,6 @@ udx_stream_init (uv_loop_t *loop, udx_stream_t *handle, uint32_t local_id) {
   handle->stats_sacks = 0;
   handle->stats_pkts_sent = 0;
   handle->stats_fast_rt = 0;
-  handle->stats_last_seq = 0;
 
   handle->on_read = NULL;
   handle->on_recv = NULL;
