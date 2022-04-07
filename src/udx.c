@@ -766,12 +766,12 @@ udx_getsockname (udx_t *handle, struct sockaddr *name, int *name_len) {
 
 int
 udx_send (udx_send_t *req, udx_t *handle, const uv_buf_t bufs[], unsigned int bufs_len, const struct sockaddr *dest, udx_send_cb cb) {
-  return udx_send_ttl(req, handle, bufs, bufs_len, dest, handle->ttl, cb);
+  return udx_send_ttl(req, handle, bufs, bufs_len, dest, 0, cb);
 }
 
 int
 udx_send_ttl (udx_send_t *req, udx_t *handle, const uv_buf_t bufs[], unsigned int bufs_len, const struct sockaddr *dest, int ttl, udx_send_cb cb) {
-  if (ttl < 1 || ttl > 255) return UV_EINVAL;
+  if (ttl < 0 /* 0 is "default" */ || ttl > 255) return UV_EINVAL;
 
   assert(bufs_len == 1);
 
