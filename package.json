@@ -1,6 +1,6 @@
 {
   "name": "udx-native",
-  "version": "0.0.4",
+  "version": "0.0.5",
   "description": "udx is reliable, multiplex, and congestion controlled streams over udp",
   "main": "lib/socket.js",
   "files": [
