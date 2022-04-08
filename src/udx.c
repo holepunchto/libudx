@@ -450,10 +450,7 @@ process_data_packet (udx_stream_t *stream, int type, uint32_t seq, char *data, s
     // Fast path - next in line, no need to memcpy it, stack allocate the struct and call on_read...
     stream->ack++;
     if (stream->on_read != NULL) {
-      uv_buf_t buf = {
-        .base = data,
-        .len = data_len
-      };
+      uv_buf_t buf = uv_buf_init(data, data_len);
       stream->on_read(stream, data_len, &buf);
     }
     return;
