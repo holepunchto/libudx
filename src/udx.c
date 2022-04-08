@@ -472,36 +472,45 @@ process_packet (udx_t *socket, char *buf, ssize_t buf_len, struct sockaddr *addr
     process_sacks(stream, buf, buf_len);
   }
 
-  if (type & UDX_HEADER_DATA_OR_END && seq_compare(stream->ack, seq) <= 0 && udx__cirbuf_get(inc, seq) == NULL && (stream->status & UDX_STREAM_SHOULD_READ) == UDX_STREAM_READ) {
-    // Copy over incoming buffer as we CURRENTLY do not own it (stack allocated upstream)
-    // TODO: if this is the next packet we expect (it usually is!), then there is no need
-    // for the malloc and memcpy - we just need a way to not free it then
+  if (seq_compare(stream->ack, seq) <= 0) {
+    if (type & UDX_HEADER_DATA_OR_END && udx__cirbuf_get(inc, seq) == NULL && (stream->status & UDX_STREAM_SHOULD_READ) == UDX_STREAM_READ) {
+      // Copy over incoming buffer as we CURRENTLY do not own it (stack allocated upstream)
+      // TODO: if this is the next packet we expect (it usually is!), then there is no need
+      // for the malloc and memcpy - we just need a way to not free it then
 
-    if (data_offset) {
-      if (data_offset > buf_len) return 0;
-      buf += data_offset;
-      buf_len -= data_offset;
+      if (data_offset) {
+        if (data_offset > buf_len) return 0;
+        buf += data_offset;
+        buf_len -= data_offset;
+      }
+
+      char *ptr = malloc(sizeof(udx_pending_read_t) + buf_len);
+
+      udx_pending_read_t *pkt = (udx_pending_read_t *) ptr;
+      char *cpy = ptr + sizeof(udx_pending_read_t);
+
+      memcpy(cpy, buf, buf_len);
+
+      pkt->type = type;
+      pkt->seq = seq;
+      pkt->buf.base = cpy;
+      pkt->buf.len = buf_len;
+
+      stream->pkts_buffered++;
+      udx__cirbuf_set(inc, (udx_cirbuf_val_t *) pkt);
     }
 
-    char *ptr = malloc(sizeof(udx_pending_read_t) + buf_len);
+    if (type & UDX_HEADER_END) {
+      stream->status |= UDX_STREAM_ENDING_REMOTE;
+      stream->remote_ended = seq;
+    }
 
-    udx_pending_read_t *pkt = (udx_pending_read_t *) ptr;
-    char *cpy = ptr + sizeof(udx_pending_read_t);
-
-    memcpy(cpy, buf, buf_len);
-
-    pkt->type = type;
-    pkt->seq = seq;
-    pkt->buf.base = cpy;
-    pkt->buf.len = buf_len;
-
-    stream->pkts_buffered++;
-    udx__cirbuf_set(inc, (udx_cirbuf_val_t *) pkt);
-  }
-
-  if (type & UDX_HEADER_END) {
-    stream->status |= UDX_STREAM_ENDING_REMOTE;
-    stream->remote_ended = seq;
+    if (type & UDX_HEADER_DESTROY) {
+      stream->status |= UDX_STREAM_DESTROYED_REMOTE;
+      clear_outgoing_packets(stream);
+      close_maybe(stream, UV_ECONNRESET);
+      return 1;
+    }
   }
 
   if (type & UDX_HEADER_MESSAGE) {
@@ -515,13 +524,6 @@ process_packet (udx_t *socket, char *buf, ssize_t buf_len, struct sockaddr *addr
       uv_buf_t b = uv_buf_init(buf, buf_len);
       stream->on_recv(stream, buf_len, &b);
     }
-  }
-
-  if (type & UDX_HEADER_DESTROY) {
-    stream->status |= UDX_STREAM_DESTROYED_REMOTE;
-    clear_outgoing_packets(stream);
-    close_maybe(stream, UV_ECONNRESET);
-    return 1;
   }
 
   // process the read queue
