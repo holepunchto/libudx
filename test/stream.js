@@ -197,7 +197,7 @@ test('preconnect', async function (t) {
   const socket = new Socket()
   socket.bind(0)
 
-  socket.on('preconnect', (id, address) => {
+  socket.once('preconnect', (id, address) => {
     t.is(address.port, socket.address().port)
     t.is(address.address, '127.0.0.1')
     t.is(id, a.id)

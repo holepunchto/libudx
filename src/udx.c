@@ -82,6 +82,22 @@ on_uv_close (uv_handle_t *handle) {
 }
 
 static void
+close_handles (udx_t *handle) {
+  if (handle->status & UDX_SOCKET_CLOSING_HANDLES) return;
+  handle->status |= UDX_SOCKET_CLOSING_HANDLES;
+
+  if (handle->status & UDX_SOCKET_BOUND) {
+    handle->pending_closes++;
+    uv_poll_stop(&(handle->io_poll));
+    uv_close((uv_handle_t *) &(handle->io_poll), on_uv_close);
+  }
+
+  handle->pending_closes += 2;
+  uv_close((uv_handle_t *) &(handle->socket), on_uv_close);
+  uv_close((uv_handle_t *) &(handle->timer), on_uv_close);
+}
+
+static void
 on_uv_interval (uv_timer_t *handle) {
   udx_t *socket = handle->data;
   udx_check_timeouts(socket);
@@ -659,6 +675,12 @@ on_uv_poll (uv_poll_t *handle, int status, int events) {
     if (socket->send_queue.len > 0) {
       return;
     }
+
+    // if the socket is under closure, we need to trigger shutdown now since no important writes are pending
+    if (socket->status & UDX_SOCKET_CLOSING) {
+      close_handles(socket);
+      return;
+    }
   }
 
   if (events & UV_READABLE) {
@@ -693,6 +715,7 @@ udx_init (uv_loop_t *loop, udx_t *handle) {
   handle->status = 0;
   handle->readers = 0;
   handle->events = 0;
+  handle->pending_closes = 0;
   handle->ttl = UDX_DEFAULT_TTL;
 
   handle->streams_len = 0;
@@ -854,21 +877,17 @@ int
 udx_close (udx_t *handle, udx_close_cb cb) {
   if (handle->streams_len > 0) return UV_EBUSY;
 
+  handle->status |= UDX_SOCKET_CLOSING;
+
   handle->on_close = cb;
-  handle->pending_closes = 2;
+
   uv_timer_stop(&(handle->timer));
 
-  if (handle->status & UDX_SOCKET_BOUND) {
-    handle->pending_closes++;
-    uv_poll_stop(&(handle->io_poll));
-    uv_close((uv_handle_t *) &(handle->io_poll), on_uv_close);
-  }
+  // allow stream packets to flush, but cancel anything else
+  int queued = handle->send_queue.len;
 
-  uv_close((uv_handle_t *) &(handle->socket), on_uv_close);
-  uv_close((uv_handle_t *) &(handle->timer), on_uv_close);
-
-  while (1) {
-    udx_packet_t *pkt = udx__fifo_shift(&handle->send_queue);
+  while (queued--) {
+    udx_packet_t *pkt = udx__fifo_shift(&(handle->send_queue));
     if (pkt == NULL) break;
 
     if (pkt->type == UDX_PACKET_SEND) {
@@ -877,7 +896,17 @@ udx_close (udx_t *handle, udx_close_cb cb) {
       if (req->on_send != NULL) {
         req->on_send(req, UV_ECANCELED);
       }
+
+      continue;
     }
+
+    // stream packet, allow them to flush, by requeueing them
+    // flips the order but these are all state packets so whatevs
+    udx__fifo_push(&(handle->send_queue), pkt);
+  }
+
+  if (handle->send_queue.len == 0) {
+    close_handles(handle);
   }
 
   return 0;
