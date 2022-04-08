@@ -16,5 +16,7 @@ main () {
   e = udx_stream_destroy(&stream);
   assert(e == 0);
 
+  uv_loop_close(&loop);
+
   return 0;
 }

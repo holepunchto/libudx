@@ -4,6 +4,7 @@
 #include "../include/udx.h"
 
 uv_loop_t loop;
+udx_t sock;
 
 bool close_called = false;
 
@@ -11,7 +12,7 @@ void
 on_close (udx_stream_t *handle, int status) {
   assert(status == 0);
 
-  uv_stop(&loop);
+  udx_close(&sock, NULL);
 
   close_called = true;
 }
@@ -22,7 +23,6 @@ main () {
 
   uv_loop_init(&loop);
 
-  udx_t sock;
   e = udx_init(&loop, &sock);
   assert(e == 0);
 
