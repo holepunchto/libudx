@@ -444,6 +444,39 @@ lookup_stream (udx_t *socket, uint32_t id) {
   return (udx_stream_t *) udx__cirbuf_get(&(socket->streams_by_id), id);
 }
 
+static void
+process_data_packet (udx_stream_t *stream, int type, uint32_t seq, char *data, ssize_t data_len) {
+  if (seq == stream->ack && type == UDX_HEADER_DATA) {
+    // Fast path - next in line, no need to memcpy it, stack allocate the struct and call on_read...
+    stream->ack++;
+    if (stream->on_read != NULL) {
+      uv_buf_t buf = {
+        .base = data,
+        .len = data_len
+      };
+      stream->on_read(stream, data_len, &buf);
+    }
+    return;
+  }
+
+  // Slow path, packet out of order.
+  // Copy over incoming buffer as we do not own it (stack allocated upstream)
+  char *ptr = malloc(sizeof(udx_pending_read_t) + data_len);
+
+  udx_pending_read_t *pkt = (udx_pending_read_t *) ptr;
+  char *cpy = ptr + sizeof(udx_pending_read_t);
+
+  memcpy(cpy, data, data_len);
+
+  pkt->type = type;
+  pkt->seq = seq;
+  pkt->buf.base = cpy;
+  pkt->buf.len = data_len;
+
+  stream->pkts_buffered++;
+  udx__cirbuf_set(&(stream->incoming), (udx_cirbuf_val_t *) pkt);
+}
+
 static int
 process_packet (udx_t *socket, char *buf, ssize_t buf_len, struct sockaddr *addr) {
   if (buf_len < UDX_HEADER_SIZE) return 0;
@@ -488,32 +521,18 @@ process_packet (udx_t *socket, char *buf, ssize_t buf_len, struct sockaddr *addr
     process_sacks(stream, buf, buf_len);
   }
 
+  // Done with header processing now.
+  // For future compat, make sure we are now pointing at the actual data using the data_offset
+  if (data_offset) {
+    if (data_offset > buf_len) return 0;
+    buf += data_offset;
+    buf_len -= data_offset;
+  }
+
+  // For all stream packets, ensure that they are causally newer (or same)
   if (seq_compare(stream->ack, seq) <= 0) {
     if (type & UDX_HEADER_DATA_OR_END && udx__cirbuf_get(inc, seq) == NULL && (stream->status & UDX_STREAM_SHOULD_READ) == UDX_STREAM_READ) {
-      // Copy over incoming buffer as we CURRENTLY do not own it (stack allocated upstream)
-      // TODO: if this is the next packet we expect (it usually is!), then there is no need
-      // for the malloc and memcpy - we just need a way to not free it then
-
-      if (data_offset) {
-        if (data_offset > buf_len) return 0;
-        buf += data_offset;
-        buf_len -= data_offset;
-      }
-
-      char *ptr = malloc(sizeof(udx_pending_read_t) + buf_len);
-
-      udx_pending_read_t *pkt = (udx_pending_read_t *) ptr;
-      char *cpy = ptr + sizeof(udx_pending_read_t);
-
-      memcpy(cpy, buf, buf_len);
-
-      pkt->type = type;
-      pkt->seq = seq;
-      pkt->buf.base = cpy;
-      pkt->buf.len = buf_len;
-
-      stream->pkts_buffered++;
-      udx__cirbuf_set(inc, (udx_cirbuf_val_t *) pkt);
+      process_data_packet(stream, type, seq, buf, buf_len);
     }
 
     if (type & UDX_HEADER_END) {
@@ -530,12 +549,6 @@ process_packet (udx_t *socket, char *buf, ssize_t buf_len, struct sockaddr *addr
   }
 
   if (type & UDX_HEADER_MESSAGE) {
-    if (data_offset) {
-      if (data_offset > buf_len) return 0;
-      buf += data_offset;
-      buf_len -= data_offset;
-    }
-
     if (stream->on_recv != NULL) {
       uv_buf_t b = uv_buf_init(buf, buf_len);
       stream->on_recv(stream, buf_len, &b);
