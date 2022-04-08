@@ -20,6 +20,8 @@ target_sources(
   PRIVATE
     src/cirbuf.h
     src/cirbuf.c
+    src/endian.h
+    src/endian.c
     src/fifo.h
     src/fifo.c
     src/io.h

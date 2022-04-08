@@ -6,10 +6,19 @@
     ],
     'sources': [
       './src/cirbuf.c',
+      './src/endian.c',
       './src/fifo.c',
       './src/udx.c',
       './binding.c',
     ],
+    'configurations': {
+      'Debug': {
+        'defines': ['DEBUG'],
+      },
+      'Release': {
+        'defines': ['NDEBUG'],
+      },
+    },
     'conditions': [
       ['OS=="win"', {
         'sources': [

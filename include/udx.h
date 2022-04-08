@@ -5,7 +5,6 @@
 extern "C" {
 #endif
 
-#include <stdlib.h>
 #include <stdint.h>
 #include <uv.h>
 
@@ -19,9 +18,10 @@ extern "C" {
 #define UDX_MAGIC_BYTE 255
 #define UDX_VERSION 1
 
-#define UDX_SOCKET_RECEIVING 0b01
-#define UDX_SOCKET_BOUND     0b10
-#define UDX_SOCKET_PAUSED    0b10 // ~RECEIVING truncated to bits
+#define UDX_SOCKET_RECEIVING       0b0001
+#define UDX_SOCKET_BOUND           0b0010
+#define UDX_SOCKET_CLOSING         0b0100
+#define UDX_SOCKET_CLOSING_HANDLES 0b1000
 
 #define UDX_STREAM_CONNECTED        0b00000000001
 #define UDX_STREAM_RECEIVING        0b00000000010
@@ -100,6 +100,7 @@ struct udx {
   int status;
   int readers;
   int events;
+  int ttl;
   int pending_closes;
 
   void *data;
@@ -145,10 +146,11 @@ struct udx_stream {
 
   uint64_t rto_timeout;
 
-  uint32_t pkts_waiting;
-  uint32_t pkts_inflight;
-  uint32_t dup_acks;
-  uint32_t retransmits_waiting;
+  uint32_t pkts_waiting; // how many packets are added locally but not sent?
+  uint32_t pkts_inflight; // packets inflight to the other peer
+  uint32_t pkts_buffered; // how many (data) packets received but not processed (out of order)?
+  uint32_t dup_acks; // how many duplicate acks received? Used for fast retransmit
+  uint32_t retransmits_waiting; // how many retransmits are waiting to be sent? if 0, then inflight iteration is faster
 
   size_t inflight;
   size_t ssthresh;
@@ -158,7 +160,6 @@ struct udx_stream {
   size_t stats_sacks;
   size_t stats_pkts_sent;
   size_t stats_fast_rt;
-  uint32_t stats_last_seq;
 
   udx_cirbuf_t outgoing;
   udx_cirbuf_t incoming;
@@ -169,6 +170,7 @@ struct udx_packet {
 
   int status;
   int type;
+  int ttl;
 
   uint32_t fifo_gc;
 
@@ -236,6 +238,9 @@ udx_getsockname (udx_t *handle, struct sockaddr * name, int *name_len);
 
 int
 udx_send (udx_send_t *req, udx_t *handle, const uv_buf_t bufs[], unsigned int bufs_len, const struct sockaddr *addr, udx_send_cb cb);
+
+int
+udx_send_ttl (udx_send_t *req, udx_t *handle, const uv_buf_t bufs[], unsigned int bufs_len, const struct sockaddr *addr, int ttl, udx_send_cb cb);
 
 int
 udx_recv_start (udx_t *handle, udx_recv_cb cb);

@@ -1,6 +1,7 @@
 const test = require('brittle')
-const isCI = require('is-ci')
+const proxy = require('./helpers/proxy')
 const Socket = require('../')
+const { makeTwoStreams } = require('./helpers')
 
 test('tiny echo stream', async function (t) {
   t.plan(8)
@@ -129,7 +130,7 @@ test('only one side writes', async function (t) {
 })
 
 test('unordered messages', async function (t) {
-  t.plan(1)
+  t.plan(2)
 
   const [a, b] = makeTwoStreams(t)
   const expected = []
@@ -139,11 +140,7 @@ test('unordered messages', async function (t) {
   })
 
   a.on('error', function () {
-    t.comment('a errored')
-  })
-
-  b.on('error', function () {
-    t.comment('b errored')
+    t.pass('a destroyed')
   })
 
   a.on('message', function (buf) {
@@ -200,7 +197,7 @@ test('preconnect', async function (t) {
   const socket = new Socket()
   socket.bind(0)
 
-  socket.on('preconnect', (id, address) => {
+  socket.once('preconnect', (id, address) => {
     t.is(address.port, socket.address().port)
     t.is(address.address, '127.0.0.1')
     t.is(id, a.id)
@@ -246,16 +243,68 @@ test('destroy streams and close socket in callback', async function (t) {
 })
 
 test('write empty buffer', async function (t) {
-  t.plan(1)
+  t.plan(3)
 
   const [a, b] = makeTwoStreams(t)
 
-  a.on('data', function (data) {
-    t.alike(data, Buffer.alloc(0))
+  a
+    .on('data', function (data) {
+      t.alike(data, Buffer.alloc(0))
+    })
+    .on('close', function () {
+      t.pass('a closed')
+    })
+    .end()
+
+  b
+    .on('close', function () {
+      t.pass('b closed')
+    })
+    .end(Buffer.alloc(0))
+})
+
+test('out of order reads but can destroy (memleak test)', async function (t) {
+  t.plan(3)
+
+  const a = new Socket()
+  const b = new Socket()
+
+  a.bind(0)
+  b.bind(0)
+
+  let processed = 0
+
+  const p = await proxy({ from: a, to: b }, function (pkt) {
+    if (pkt.data.toString() === 'a' && processed > 0) {
+      // destroy with out or order packets delivered
+      t.pass('close while streams have out of order state')
+      p.close()
+      aStream.destroy()
+      bStream.destroy()
+      return true
+    }
+
+    return processed++ === 0 // drop first packet
   })
 
-  b.end(Buffer.alloc(0))
-  a.end()
+  const aStream = Socket.createStream(1)
+  const bStream = Socket.createStream(2)
+
+  aStream.connect(a, 2, p.address().port)
+  bStream.connect(b, 1, p.address().port)
+
+  aStream.write(Buffer.from('a'))
+  aStream.write(Buffer.from('b'))
+
+  aStream.on('close', function () {
+    t.pass('a stream closed')
+    b.close()
+  })
+
+  bStream.on('close', function () {
+    t.pass('b stream closed')
+    a.close()
+  })
 })
 
 test('close socket on stream close', async function (t) {
@@ -287,96 +336,3 @@ test('close socket on stream close', async function (t) {
       bSocket.close(() => t.pass('b closed'))
     })
 })
-
-writeALot(1)
-
-writeALot(1024)
-
-writeALot(1024 * 1024)
-
-writeALot(1024 * 1024 * 1024)
-
-writeALot(5 * 1024 * 1024 * 1024)
-
-function writeALot (send) {
-  test('write as fast as possible (' + fmt(send) + ')', { skip: isCI }, async function (t) {
-    t.timeout(10 * 60 * 1000)
-    t.plan(5)
-
-    const [a, b] = makeTwoStreams(t)
-
-    const then = Date.now()
-
-    let chunks = 0
-    let recvBytes = 0
-    let sentBytes = 0
-
-    const buf = Buffer.alloc(Math.min(send, 65536))
-
-    a.setInteractive(false)
-
-    a.on('data', function (data) {
-      chunks++
-      recvBytes += data.byteLength
-    })
-
-    a.on('end', function () {
-      const delta = Date.now() - then
-      const perSec = Math.floor(sentBytes / delta * 1000)
-
-      t.is(recvBytes, sentBytes, 'sent and recv ' + fmt(send))
-      t.pass('total time was ' + delta + ' ms')
-      t.pass('send rate was ' + fmt(perSec) + '/s (' + chunks + ' chunk[s])')
-
-      a.end()
-    })
-
-    write()
-    b.on('drain', write)
-
-    a.on('close', function () {
-      t.pass('a closed')
-    })
-
-    b.on('close', function () {
-      t.pass('b closed')
-    })
-
-    function write () {
-      while (sentBytes < send) {
-        sentBytes += buf.byteLength
-        if (!b.write(buf)) break
-      }
-
-      if (sentBytes >= send) b.end()
-    }
-  })
-
-  function fmt (bytes) {
-    if (bytes >= 1024 * 1024 * 1024) return (bytes / 1024 / 1024 / 1024).toFixed(1).replace(/\.0$/, '') + ' GB'
-    if (bytes >= 1024 * 1024) return (bytes / 1024 / 1024).toFixed(1).replace(/\.0$/, '') + ' MB'
-    if (bytes >= 1024) return (bytes / 1024).toFixed(1).replace(/\.0$/, '') + ' KB'
-    return bytes + ' B'
-  }
-}
-
-function makeTwoStreams (t) {
-  const a = new Socket()
-  const b = new Socket()
-
-  a.bind()
-  b.bind()
-
-  const aStream = Socket.createStream(1)
-  const bStream = Socket.createStream(2)
-
-  aStream.connect(a, bStream.id, b.address().port, '127.0.0.1')
-  bStream.connect(b, aStream.id, a.address().port, '127.0.0.1')
-
-  t.teardown(() => {
-    a.close()
-    b.close()
-  })
-
-  return [aStream, bStream]
-}
