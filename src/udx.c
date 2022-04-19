@@ -668,7 +668,9 @@ on_uv_poll (uv_poll_t *handle, int status, int events) {
 
     if (adjust_ttl) uv_udp_set_ttl((uv_udp_t *) socket, pkt->ttl);
 
-    udx__sendmsg(socket, pkt);
+    udx__sendmsg(socket, pkt->bufs, pkt->bufs_len, &(pkt->dest), sizeof(pkt->dest));
+
+    pkt->time_sent = uv_hrtime() / 1e6;
 
     if (adjust_ttl) uv_udp_set_ttl((uv_udp_t *) socket, socket->ttl);
 

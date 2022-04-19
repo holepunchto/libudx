@@ -4,7 +4,7 @@
 #include "../include/udx.h"
 
 ssize_t
-udx__sendmsg (udx_t *handle, udx_packet_t *pkt);
+udx__sendmsg (udx_t *handle, const uv_buf_t bufs[], unsigned int bufs_len, struct sockaddr *addr, int addr_len);
 
 ssize_t
 udx__recvmsg (udx_t *handle, uv_buf_t *buf, struct sockaddr *addr, int addr_len);
