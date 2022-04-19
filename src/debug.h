@@ -7,6 +7,9 @@
 #define DEBUG 0
 #endif
 
-#define debug_printf(...) do { if (DEBUG) fprintf(stderr, __VA_ARGS__); } while (0)
+#define debug_printf(...)                    \
+  do {                                       \
+    if (DEBUG) fprintf(stderr, __VA_ARGS__); \
+  } while (0)
 
 #endif // UDX_DEBUG_H
