@@ -5,6 +5,8 @@ const STREAM_COUNTS = [1, 2, 4, 8]
 const MESSAGE_SIZES = [1024 * 64, 1024]
 const TRANSFER_SIZE = 1024 * 1024 * 64// send 64MB in total
 
+let STREAM_ID = 1
+
 for (const messageSize of MESSAGE_SIZES) {
   for (const streamCount of STREAM_COUNTS) {
     bench(`throughput with ${streamCount} streams and message size ${messageSize}`, b => {
@@ -91,11 +93,10 @@ function makePairs (n) {
 
   const sockets = [a, b]
   const streams = []
-  let i = 0
   while (streams.length < n) {
-    i += 1
-    const aStream = Socket.createStream(i)
-    const bStream = Socket.createStream(1000 + i)
+    const streamId = STREAM_ID++
+    const aStream = Socket.createStream(streamId)
+    const bStream = Socket.createStream(streamId)
     aStream.connect(a, bStream.id, b.address().port, '127.0.0.1')
     bStream.connect(b, aStream.id, a.address().port, '127.0.0.1')
     streams.push([aStream, bStream])
