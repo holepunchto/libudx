@@ -9,14 +9,19 @@ let STREAM_ID = 1
 
 for (const messageSize of MESSAGE_SIZES) {
   for (const streamCount of STREAM_COUNTS) {
-    bench(`throughput with ${streamCount} streams and message size ${messageSize}`, b => {
-      benchmarkThroughput(b, streamCount, messageSize, TRANSFER_SIZE)
+    bench(`throughput, ${streamCount} streams, 1 socket, message size ${messageSize}`, b => {
+      benchmarkThroughput(b, streamCount, 'single', messageSize, TRANSFER_SIZE)
     })
+    if (streamCount > 1) {
+      bench(`throughput, ${streamCount} streams, ${streamCount} sockets, message size ${messageSize}`, b => {
+        benchmarkThroughput(b, streamCount, 'multi', messageSize, TRANSFER_SIZE)
+      })
+    }
   }
 }
 
-function benchmarkThroughput (b, streamCount, messageSize, total) {
-  const { sockets, streams } = makePairs(streamCount)
+function benchmarkThroughput (b, streamCount, multiplexMode, messageSize, total) {
+  const { sockets, streams, close } = makePairs(streamCount, multiplexMode)
   const msg = Buffer.alloc(messageSize).fill('x')
   const limit = total / streamCount
 
@@ -34,18 +39,14 @@ function benchmarkThroughput (b, streamCount, messageSize, total) {
   Promise.all(readProms).then(onend).catch(onerror)
 
   function onend () {
-    onerror()
+    b.end()
+    close()
   }
 
   function onerror (err) {
-    if (err) b.error(err)
+    b.error(err)
     b.end()
-    for (const pair of streams) {
-      pair[0].destroy()
-      pair[1].destroy()
-    }
-    sockets[0].close()
-    sockets[1].close()
+    close()
   }
 }
 
@@ -84,23 +85,46 @@ function read (s, limit) {
   })
 }
 
-function makePairs (n) {
-  const a = new Socket()
-  const b = new Socket()
-
-  a.bind()
-  b.bind()
-
-  const sockets = [a, b]
+function makePairs (n, multiplexMode) {
+  const sockets = []
   const streams = []
+  let a, b
+  if (multiplexMode === 'single') {
+    a = new Socket()
+    b = new Socket()
+    a.bind()
+    b.bind()
+    sockets.push(a, b)
+  }
   while (streams.length < n) {
+    let sa, sb
+    if (multiplexMode === 'single') {
+      sa = a
+      sb = b
+    } else {
+      sa = new Socket()
+      sb = new Socket()
+      sa.bind()
+      sb.bind()
+      sockets.push(sa, sb)
+    }
     const streamId = STREAM_ID++
     const aStream = Socket.createStream(streamId)
     const bStream = Socket.createStream(streamId)
-    aStream.connect(a, bStream.id, b.address().port, '127.0.0.1')
-    bStream.connect(b, aStream.id, a.address().port, '127.0.0.1')
+    aStream.connect(sa, bStream.id, sb.address().port, '127.0.0.1')
+    bStream.connect(sb, aStream.id, sa.address().port, '127.0.0.1')
     streams.push([aStream, bStream])
   }
 
-  return { sockets, streams }
+  function close () {
+    for (const pair of streams) {
+      pair[0].end()
+      pair[1].end()
+    }
+    for (const socket of sockets) {
+      socket.close()
+    }
+  }
+
+  return { sockets, streams, close }
 }
