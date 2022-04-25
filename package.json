@@ -11,7 +11,8 @@
     "binding.gyp"
   ],
   "scripts": {
-    "test": "standard && brittle test/*.js"
+    "test": "standard && brittle test/*.js",
+    "bench": "node test/bench/bench.js"
   },
   "repository": {
     "type": "git",
