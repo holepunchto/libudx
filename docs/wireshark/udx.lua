@@ -6,6 +6,7 @@ udx_protocol.fields.id = ProtoField.uint32("udx.id", "Stream", base.DEC)
 udx_protocol.fields.seq = ProtoField.uint32("udx.seq", "Seq", base.DEC)
 udx_protocol.fields.ack = ProtoField.uint32("udx.ack", "Ack", base.DEC)
 udx_protocol.fields.length = ProtoField.uint32("udx.length", "Length", base.DEC)
+udx_protocol.fields.sacks = ProtoField.none("udx.sacks", "Sacks")
 udx_protocol.fields.data = ProtoField.protocol("udx.data", "UDX payload")
 
 local TYPE_DATA = 1
@@ -15,15 +16,18 @@ local TYPE_MSG = 8
 local TYPE_DESTROY = 16
 
 local function get_typ_names(typ)
-    local txt = "STATE,"
+    local txt = "ACK,"
 
-    if bit.band(typ, TYPE_DATA) == 1 then txt = txt .. "DATA," end
-    if bit.band(typ, TYPE_END) == 1 then txt = txt .. "END," end
-    if bit.band(typ, TYPE_SACK) == 1 then txt = txt .. "SACK," end
-    if bit.band(typ, TYPE_MSG) == 1 then txt = txt .. "MSG," end
-    if bit.band(typ, TYPE_DESTROY) == 1 then txt = txt .. "DESTROY," end
+    if bit.band(typ, TYPE_DATA) > 0 then txt = txt .. "DATA," end
+    if bit.band(typ, TYPE_END) > 0 then txt = txt .. "END," end
+    if bit.band(typ, TYPE_SACK) > 0 then txt = txt .. "SACK," end
+    if bit.band(typ, TYPE_MSG) > 0 then txt = txt .. "MSG," end
+    if bit.band(typ, TYPE_DESTROY) > 0 then txt = txt .. "DESTROY," end
 
     return txt:sub(1,-2)
+end
+
+local function get_sacks(buffer)
 end
 
 
@@ -43,8 +47,23 @@ function udx_protocol.dissector(buffer, pinfo, tree)
   subtree:add_le(udx_protocol.fields.id, buffer(4,4))
   subtree:add_le(udx_protocol.fields.seq, buffer(12,4))
   subtree:add_le(udx_protocol.fields.ack, buffer(16,4))
-  subtree:add(udx_protocol.fields.length, data_len):set_generated(true)
-  subtree:add(udx_protocol.fields.data, buffer(20,data_len)):append_text(" (" .. data_len .. " bytes)")
+
+  if bit.band(typ, TYPE_SACK) > 0 then
+    local sacks
+    local pos = 20
+    local sacks = ": "
+    while (pos + 8) <= len do
+      local from = buffer(pos,4):le_int()
+      local to = buffer(pos + 4,4):le_int()
+      pos = pos + 8
+      sacks = sacks .. from .. "-" .. to .. " "
+    end
+    sacks = sacks:sub(1,-2)
+    subtree:add(udx_protocol.fields.sacks, buffer(20,data_len)):append_text(sacks)
+  elseif data_len > 0 then
+    subtree:add(udx_protocol.fields.length, data_len):set_generated(true)
+    subtree:add(udx_protocol.fields.data, buffer(20,data_len)):append_text(" (" .. data_len .. " bytes)")
+  end
 
   local id = buffer(4,4):le_int()
   local seq = buffer(12,4):le_int()
