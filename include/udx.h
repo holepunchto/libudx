@@ -171,6 +171,7 @@ struct udx_packet {
   int status;
   int type;
   int ttl;
+  int is_retransmit;
 
   uint32_t fifo_gc;
 

@@ -178,6 +178,7 @@ init_stream_packet (udx_packet_t *pkt, int type, udx_stream_t *stream, const uv_
   *(i++) = udx__swap_uint32_if_be(stream->ack);
 
   pkt->seq = stream->seq;
+  pkt->is_retransmit = 0;
   pkt->transmits = 0;
   pkt->size = (uint16_t) (UDX_HEADER_SIZE + buf->len);
   pkt->dest = stream->remote_addr;
@@ -258,7 +259,11 @@ send_data_packet (udx_stream_t *stream, udx_packet_t *pkt) {
   stream->pkts_waiting--;
   stream->pkts_inflight++;
   stream->inflight += pkt->size;
-  if (pkt->transmits > 0) stream->retransmits_waiting--;
+
+  if (pkt->is_retransmit) {
+    pkt->is_retransmit = 0;
+    stream->retransmits_waiting--;
+  }
 
   stream->stats_pkts_sent++;
   pkt->fifo_gc = udx__fifo_push(&(stream->socket->send_queue), pkt);
@@ -337,6 +342,12 @@ ack_packet (udx_stream_t *stream, uint32_t seq, int sack) {
   udx_packet_t *pkt = (udx_packet_t *) udx__cirbuf_remove(out, seq);
 
   if (pkt == NULL) return 0;
+
+  if (pkt->is_retransmit) {
+    pkt->is_retransmit = 0;
+    stream->retransmits_waiting--;
+    stream->pkts_waiting--;
+  }
 
   if (pkt->status == UDX_PACKET_INFLIGHT) {
     stream->pkts_inflight--;
@@ -425,9 +436,10 @@ fast_retransmit (udx_stream_t *stream) {
   udx_cirbuf_t *out = &(stream->outgoing);
   udx_packet_t *pkt = (udx_packet_t *) udx__cirbuf_get(out, stream->remote_acked);
 
-  if (pkt == NULL || pkt->transmits != 1 || pkt->status != UDX_PACKET_INFLIGHT) return;
+  if (pkt == NULL || pkt->transmits != 1 || pkt->status != UDX_PACKET_INFLIGHT || pkt->is_retransmit) return;
 
   pkt->status = UDX_PACKET_WAITING;
+  pkt->is_retransmit = 1;
 
   stream->inflight -= pkt->size;
   stream->pkts_waiting++;
@@ -844,6 +856,7 @@ udx_send_ttl (udx_send_t *req, udx_t *handle, const uv_buf_t bufs[], unsigned in
   pkt->ctx = req;
   pkt->dest = *dest;
 
+  pkt->is_retransmit = 0;
   pkt->transmits = 0;
 
   pkt->bufs_len = 1;
@@ -1031,7 +1044,7 @@ udx_stream_check_timeouts (udx_stream_t *handle) {
     for (uint32_t seq = handle->remote_acked; seq != handle->seq; seq++) {
       udx_packet_t *pkt = (udx_packet_t *) udx__cirbuf_get(&(handle->outgoing), seq);
 
-      if (pkt == NULL || pkt->status != UDX_PACKET_INFLIGHT) continue;
+      if (pkt == NULL || pkt->status != UDX_PACKET_INFLIGHT || pkt->is_retransmit) continue;
 
       if (pkt->transmits >= UDX_MAX_TRANSMITS) {
         handle->status |= UDX_STREAM_DESTROYED;
@@ -1040,6 +1053,7 @@ udx_stream_check_timeouts (udx_stream_t *handle) {
       }
 
       pkt->status = UDX_PACKET_WAITING;
+      pkt->is_retransmit = 1;
 
       handle->inflight -= pkt->size;
       handle->pkts_waiting++;
@@ -1102,6 +1116,7 @@ udx_stream_send (udx_stream_send_t *req, udx_stream_t *handle, const uv_buf_t bu
   pkt->type = UDX_PACKET_STREAM_SEND;
   pkt->ttl = 0;
   pkt->ctx = req;
+  pkt->is_retransmit = 0;
   pkt->transmits = 0;
 
   pkt->fifo_gc = udx__fifo_push(&(socket->send_queue), pkt);
