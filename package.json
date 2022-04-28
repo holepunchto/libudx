@@ -11,7 +11,8 @@
     "binding.gyp"
   ],
   "scripts": {
-    "test": "standard && brittle test/*.js"
+    "test": "standard && brittle test/*.js",
+    "bench": "node test/bench/bench.js"
   },
   "repository": {
     "type": "git",
@@ -38,6 +39,7 @@
   "devDependencies": {
     "brittle": "^2.0.3",
     "is-ci": "^3.0.1",
+    "nanobench-utils": "^1.0.0",
     "standard": "^16.0.4"
   }
 }
