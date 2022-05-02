@@ -94,6 +94,7 @@ struct udx {
   uv_timer_t timer;
   uv_loop_t *loop;
 
+  uint32_t refs;
   uint32_t sockets;
   udx_socket_t *timer_closed_by;
 
