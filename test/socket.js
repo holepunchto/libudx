@@ -1,10 +1,11 @@
 const test = require('brittle')
-const Socket = require('../')
+const UDX = require('../')
 
 test('can bind and close', async function (t) {
   t.plan(2)
 
-  const s = new Socket()
+  const u = new UDX()
+  const s = u.createSocket()
 
   s.bind(0, function () {
     t.pass('socket is listening')
@@ -19,8 +20,10 @@ test('can bind and close', async function (t) {
 test('bind is effectively sync', async function (t) {
   t.plan(4)
 
-  const a = new Socket()
-  const b = new Socket()
+  const u = new UDX()
+
+  const a = u.createSocket()
+  const b = u.createSocket()
 
   a.bind(0)
 
@@ -37,7 +40,9 @@ test('bind is effectively sync', async function (t) {
 test('simple message', async function (t) {
   t.plan(3)
 
-  const a = new Socket()
+  const u = new UDX()
+
+  const a = u.createSocket()
 
   a.on('message', function (message, { address, port }) {
     t.alike(message, Buffer.from('hello'))
@@ -53,8 +58,10 @@ test('simple message', async function (t) {
 test('echo sockets (250 messages)', async function (t) {
   t.plan(3)
 
-  const a = new Socket()
-  const b = new Socket()
+  const u = new UDX()
+
+  const a = u.createSocket()
+  const b = u.createSocket()
 
   const send = []
   const recv = []
@@ -92,7 +99,9 @@ test('echo sockets (250 messages)', async function (t) {
 test('close socket while sending', async function (t) {
   t.plan(2)
 
-  const a = new Socket()
+  const u = new UDX()
+
+  const a = u.createSocket()
 
   a.bind()
 
@@ -110,8 +119,10 @@ test('close socket while sending', async function (t) {
 test('close waits for all streams to close', async function (t) {
   t.plan(2)
 
-  const a = new Socket()
-  const s = Socket.createStream(1)
+  const u = new UDX()
+
+  const a = u.createSocket()
+  const s = u.createStream(1)
 
   s.connect(a, 2, 0)
 

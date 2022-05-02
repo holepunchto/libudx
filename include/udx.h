@@ -94,6 +94,9 @@ struct udx {
   uv_timer_t timer;
   uv_loop_t *loop;
 
+  uint32_t sockets;
+  udx_socket_t *timer_closed_by;
+
   uint32_t streams_len;
   uint32_t streams_max_len;
   udx_stream_t **streams;
@@ -223,9 +226,6 @@ struct udx_stream_send {
 
 int
 udx_init (uv_loop_t *loop, udx_t *handle);
-
-int
-udx_destroy (udx_t *handle);
 
 int
 udx_socket_init (udx_t *handle, udx_socket_t *socket);
