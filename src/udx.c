@@ -73,12 +73,49 @@ static void
 on_uv_poll (uv_poll_t *handle, int status, int events);
 
 static void
-on_uv_close (uv_handle_t *handle) {
-  udx_socket_t *socket = (udx_socket_t *) handle->data;
-
+trigger_socket_close (udx_socket_t *socket) {
   if (--socket->pending_closes == 0 && socket->on_close != NULL) {
     socket->on_close(socket);
   }
+}
+
+static void
+on_uv_close (uv_handle_t *handle) {
+  trigger_socket_close((udx_socket_t *) handle->data);
+}
+
+static void
+on_uv_interval (uv_timer_t *handle) {
+  udx_t *udx = handle->data;
+  udx_check_timeouts(udx);
+}
+
+static void
+udx_start_timer (udx_t *udx) {
+  uv_timer_t *timer = &(udx->timer);
+
+  int err = uv_timer_init(udx->loop, timer);
+  assert(err == 0);
+
+  err = uv_timer_start(timer, on_uv_interval, UDX_CLOCK_GRANULARITY_MS, UDX_CLOCK_GRANULARITY_MS);
+  assert(err == 0);
+
+  timer->data = udx;
+}
+
+static void
+on_udx_timer_close (uv_handle_t *handle) {
+  udx_t *udx = (udx_t *) handle->data;
+  udx_socket_t *socket = udx->timer_closed_by;
+
+  memset(&(udx->timer), 0, sizeof(uv_timer_t));
+
+  if (udx->sockets > 0) { // re-open
+    udx->timer_closed_by = NULL;
+    udx_start_timer(udx);
+  }
+
+  trigger_socket_close(socket);
 }
 
 static void
@@ -92,14 +129,22 @@ close_handles (udx_socket_t *handle) {
     uv_close((uv_handle_t *) &(handle->io_poll), on_uv_close);
   }
 
-  handle->pending_closes++;
+  handle->pending_closes += 2; // one below and one in trigger_socket_close
   uv_close((uv_handle_t *) &(handle->socket), on_uv_close);
-}
 
-static void
-on_uv_interval (uv_timer_t *handle) {
-  udx_t *udx = handle->data;
-  udx_check_timeouts(udx);
+  udx_t *udx = handle->udx;
+
+  udx->sockets--;
+
+  if (udx->sockets > 0 || udx->timer_closed_by) {
+    trigger_socket_close(handle);
+    return;
+  }
+
+  udx->timer_closed_by = handle;
+
+  uv_timer_stop(&(udx->timer));
+  uv_close((uv_handle_t *) &(udx->timer), on_udx_timer_close);
 }
 
 static int
@@ -450,11 +495,6 @@ fast_retransmit (udx_stream_t *stream) {
   stream->cwnd = max_uint32(UDX_MTU, stream->cwnd / 2);
 }
 
-static udx_stream_t *
-lookup_stream (udx_socket_t *socket, uint32_t id) {
-  return (udx_stream_t *) udx__cirbuf_get(socket->streams_by_id, id);
-}
-
 static void
 process_data_packet (udx_stream_t *stream, int type, uint32_t seq, char *data, ssize_t data_len) {
   if (seq == stream->ack && type == UDX_HEADER_DATA) {
@@ -507,18 +547,9 @@ process_packet (udx_socket_t *socket, char *buf, ssize_t buf_len, struct sockadd
   buf += UDX_HEADER_SIZE;
   buf_len -= UDX_HEADER_SIZE;
 
-  udx_stream_t *stream = lookup_stream(socket, local_id);
+  udx_stream_t *stream = (udx_stream_t *) udx__cirbuf_get(socket->streams_by_id, local_id);
 
-  // TODO: replace me with something else hook wise if not connected (accept_remote?)
-  // if (stream == NULL || (stream->status & UDX_STREAM_CONNECTED) == 0) {
-  //   stream = lookup_stream(socket, local_id);
-
-  //   if (stream == NULL || (stream->status & UDX_STREAM_CONNECTED) == 0) {
-  //     return 0;
-  //   }
-  // }
-
-  if (stream->status & UDX_STREAM_DEAD) return 0;
+  if (stream == NULL || stream->status & UDX_STREAM_DEAD) return 0;
 
   udx_cirbuf_t *inc = &(stream->incoming);
 
@@ -734,24 +765,15 @@ on_uv_poll (uv_poll_t *handle, int status, int events) {
 
 int
 udx_init (uv_loop_t *loop, udx_t *handle) {
+  handle->sockets = 0;
+  handle->timer_closed_by = NULL;
+
   handle->streams_len = 0;
   handle->streams_max_len = 16;
   handle->streams = malloc(handle->streams_max_len * sizeof(udx_stream_t *));
 
   handle->loop = loop;
 
-  uv_timer_t *timer = &(handle->timer);
-
-  // Asserting all the errors here as it massively simplifies error handling.
-  // In practice these will never fail.
-
-  int err = uv_timer_init(loop, timer);
-  assert(err == 0);
-
-  err = uv_timer_start(&(handle->timer), on_uv_interval, UDX_CLOCK_GRANULARITY_MS, UDX_CLOCK_GRANULARITY_MS);
-  assert(err == 0);
-
-  timer->data = handle;
   udx__cirbuf_init(&(handle->streams_by_id), 1);
 
   return 0;
@@ -768,16 +790,6 @@ udx_check_timeouts (udx_t *handle) {
 }
 
 int
-udx_destroy (udx_t *handle) {
-  uv_timer_stop(&(handle->timer));
-  udx__cirbuf_destroy(&(handle->streams_by_id));
-
-  // TODO:
-  //uv_close((uv_handle_t *) &(handle->timer), on_uv_close);
-  return 0;
-}
-
-int
 udx_socket_init (udx_t *udx, udx_socket_t *handle) {
   handle->status = 0;
   handle->events = 0;
@@ -786,6 +798,15 @@ udx_socket_init (udx_t *udx, udx_socket_t *handle) {
 
   handle->udx = udx;
   handle->streams_by_id = &(udx->streams_by_id);
+
+  udx->sockets++;
+
+  // If first open...
+  if (udx->sockets == 1 && udx->timer_closed_by == NULL) {
+    // Asserting all the errors here as it massively simplifies error handling.
+    // In practice these will never fail.
+    udx_start_timer(udx);
+  }
 
   handle->on_recv = NULL;
   handle->on_close = NULL;

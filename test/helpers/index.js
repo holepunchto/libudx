@@ -1,36 +1,42 @@
-const Socket = require('../../')
+const UDX = require('../../')
 
 module.exports = { makeTwoStreams, makePairs, pipeStreamPairs }
 
 function makeTwoStreams (t) {
-  const a = new Socket()
-  const b = new Socket()
+  const a = new UDX()
+  const b = new UDX()
 
-  a.bind()
-  b.bind()
+  const aSocket = a.createSocket()
+  const bSocket = b.createSocket()
 
-  const aStream = Socket.createStream(1)
-  const bStream = Socket.createStream(2)
+  aSocket.bind()
+  bSocket.bind()
 
-  aStream.connect(a, bStream.id, b.address().port, '127.0.0.1')
-  bStream.connect(b, aStream.id, a.address().port, '127.0.0.1')
+  const aStream = a.createStream(1)
+  const bStream = b.createStream(2)
+
+  aStream.connect(aSocket, bStream.id, bSocket.address().port, '127.0.0.1')
+  bStream.connect(bSocket, aStream.id, aSocket.address().port, '127.0.0.1')
 
   t.teardown(() => {
-    a.close()
-    b.close()
+    aSocket.close()
+    bSocket.close()
   })
 
   return [aStream, bStream]
 }
 
 function makePairs (n, multiplexMode = 'single') {
+  const ua = new UDX()
+  const ub = new UDX()
+
   let id = 1
   const sockets = []
   const streams = []
   let a, b
   if (multiplexMode === 'single') {
-    a = new Socket()
-    b = new Socket()
+    a = ua.createSocket()
+    b = ub.createSocket()
     a.bind()
     b.bind()
     sockets.push(a, b)
@@ -41,15 +47,15 @@ function makePairs (n, multiplexMode = 'single') {
       sa = a
       sb = b
     } else {
-      sa = new Socket()
-      sb = new Socket()
+      sa = ua.createSocket()
+      sb = ub.createSocket()
       sa.bind()
       sb.bind()
       sockets.push(sa, sb)
     }
     const streamId = id++
-    const aStream = Socket.createStream(streamId)
-    const bStream = Socket.createStream(streamId)
+    const aStream = ua.createStream(streamId)
+    const bStream = ub.createStream(streamId)
     aStream.connect(sa, bStream.id, sb.address().port, '127.0.0.1')
     bStream.connect(sb, aStream.id, sa.address().port, '127.0.0.1')
     streams.push([aStream, bStream])

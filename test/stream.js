@@ -1,6 +1,6 @@
 const test = require('brittle')
 const proxy = require('./helpers/proxy')
-const Socket = require('../')
+const UDX = require('../')
 const { makeTwoStreams } = require('./helpers')
 
 test('tiny echo stream', async function (t) {
@@ -164,13 +164,15 @@ test('unordered messages', async function (t) {
 })
 
 test('several streams on same socket', async function (t) {
-  const socket = new Socket()
+  const u = new UDX()
+
+  const socket = u.createSocket()
   socket.bind(0)
 
   t.teardown(() => socket.close())
 
   for (let i = 0; i < 10; i++) {
-    const stream = Socket.createStream(i)
+    const stream = u.createStream(i)
     stream.connect(socket, i, socket.address().port)
 
     t.teardown(() => stream.destroy())
@@ -182,7 +184,9 @@ test('several streams on same socket', async function (t) {
 test('destroy unconnected stream', async function (t) {
   t.plan(1)
 
-  const stream = Socket.createStream(1)
+  const u = new UDX()
+
+  const stream = u.createStream(1)
 
   stream.on('close', function () {
     t.pass('closed')
@@ -191,10 +195,12 @@ test('destroy unconnected stream', async function (t) {
   stream.destroy()
 })
 
-test('preconnect', async function (t) {
+test.skip('preconnect', async function (t) {
   t.plan(4)
 
-  const socket = new Socket()
+  const u = new UDX()
+
+  const socket = u.createSocket()
   socket.bind(0)
 
   socket.once('preconnect', (id, address) => {
@@ -213,8 +219,8 @@ test('preconnect', async function (t) {
     })
   })
 
-  const a = Socket.createStream(1)
-  const b = Socket.createStream(2)
+  const a = u.createStream(1)
+  const b = u.createStream(2)
 
   b.connect(socket, 1, socket.address().port)
   b.write(Buffer.from('hello'))
@@ -223,11 +229,13 @@ test('preconnect', async function (t) {
 test('destroy streams and close socket in callback', async function (t) {
   t.plan(1)
 
-  const socket = new Socket()
+  const u = new UDX()
+
+  const socket = u.createSocket()
   socket.bind(0)
 
-  const a = Socket.createStream(1)
-  const b = Socket.createStream(2)
+  const a = u.createStream(1)
+  const b = u.createStream(2)
 
   a.connect(socket, 2, socket.address().port)
   b.connect(socket, 1, socket.address().port)
@@ -266,8 +274,10 @@ test('write empty buffer', async function (t) {
 test('out of order reads but can destroy (memleak test)', async function (t) {
   t.plan(3)
 
-  const a = new Socket()
-  const b = new Socket()
+  const u = new UDX()
+
+  const a = u.createSocket()
+  const b = u.createSocket()
 
   a.bind(0)
   b.bind(0)
@@ -287,8 +297,8 @@ test('out of order reads but can destroy (memleak test)', async function (t) {
     return processed++ === 0 // drop first packet
   })
 
-  const aStream = Socket.createStream(1)
-  const bStream = Socket.createStream(2)
+  const aStream = u.createStream(1)
+  const bStream = u.createStream(2)
 
   aStream.connect(a, 2, p.address().port)
   bStream.connect(b, 1, p.address().port)
@@ -310,14 +320,16 @@ test('out of order reads but can destroy (memleak test)', async function (t) {
 test('close socket on stream close', async function (t) {
   t.plan(2)
 
-  const aSocket = new Socket()
+  const u = new UDX()
+
+  const aSocket = u.createSocket()
   aSocket.bind(0)
 
-  const bSocket = new Socket()
+  const bSocket = u.createSocket()
   bSocket.bind(0)
 
-  const a = Socket.createStream(1)
-  const b = Socket.createStream(2)
+  const a = u.createStream(1)
+  const b = u.createStream(2)
 
   a.connect(aSocket, 2, bSocket.address().port)
   b.connect(bSocket, 1, aSocket.address().port)
