@@ -145,3 +145,41 @@ test('close waits for all streams to close', async function (t) {
     s.destroy()
   }, 100)
 })
+
+test('open + close a bunch of sockets', async function (t) {
+  const u = new UDX()
+
+  const l = t.test('linear')
+  let count = 0
+
+  l.plan(5)
+  loop()
+
+  function loop () {
+    count++
+
+    const a = u.createSocket()
+
+    a.bind(0)
+    l.pass('opened socket')
+    a.close(function () {
+      if (count === 5) return
+      loop()
+    })
+  }
+
+  await l
+
+  const p = t.test('parallel')
+  p.plan(5)
+
+  for (let i = 0; i < 5; i++) {
+    const a = u.createSocket()
+    a.bind(0)
+    a.close(function () {
+      p.pass('opened and closed socket')
+    })
+  }
+
+  await p
+})
