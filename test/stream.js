@@ -195,7 +195,7 @@ test('destroy unconnected stream', async function (t) {
   stream.destroy()
 })
 
-test.skip('preconnect', async function (t) {
+test('preconnect flow', async function (t) {
   t.plan(4)
 
   const u = new UDX()
@@ -203,27 +203,37 @@ test.skip('preconnect', async function (t) {
   const socket = u.createSocket()
   socket.bind(0)
 
-  socket.once('preconnect', (id, address) => {
-    t.is(address.port, socket.address().port)
-    t.is(address.address, '127.0.0.1')
-    t.is(id, a.id)
+  const a = u.createStream(1)
+
+  a.on('data', function (data) {
+    t.is(data.toString(), 'hello', 'can receive data preconnect')
 
     a.connect(socket, 2, socket.address().port)
-    a.on('data', function (data) {
-      t.is(data.toString(), 'hello')
-
-      a.destroy()
-      b.destroy()
-
-      socket.close()
-    })
+    a.end()
   })
 
-  const a = u.createStream(1)
   const b = u.createStream(2)
 
   b.connect(socket, 1, socket.address().port)
   b.write(Buffer.from('hello'))
+  b.end()
+
+  let closed = 0
+
+  b.resume()
+  b.on('close', function () {
+    t.pass('b closed')
+    if (++closed === 2) socket.close()
+  })
+
+  a.on('close', function () {
+    t.pass('a closed')
+    if (++closed === 2) socket.close()
+  })
+
+  socket.on('close', function () {
+    t.pass('socket closed')
+  })
 })
 
 test('destroy streams and close socket in callback', async function (t) {
