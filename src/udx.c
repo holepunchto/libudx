@@ -73,10 +73,40 @@ static void
 on_uv_poll (uv_poll_t *handle, int status, int events);
 
 static void
+ref_inc (udx_t *udx) {
+  udx->refs++;
+
+  if (udx->streams != NULL) return;
+
+  udx->streams_len = 0;
+  udx->streams_max_len = 16;
+  udx->streams = malloc(udx->streams_max_len * sizeof(udx_stream_t *));
+
+  udx__cirbuf_init(&(udx->streams_by_id), 16);
+}
+
+static void
+ref_dec (udx_t *udx) {
+  udx->refs--;
+
+  if (udx->refs || udx->streams == NULL) return;
+
+  free(udx->streams);
+  udx->streams = NULL;
+  udx->streams_max_len = 0;
+
+  udx__cirbuf_destroy(&(udx->streams_by_id));
+}
+
+static void
 trigger_socket_close (udx_socket_t *socket) {
-  if (--socket->pending_closes == 0 && socket->on_close != NULL) {
+  if (--socket->pending_closes) return;
+
+  if (socket->on_close != NULL) {
     socket->on_close(socket);
   }
+
+  ref_dec(socket->udx);
 }
 
 static void
@@ -86,13 +116,14 @@ on_uv_close (uv_handle_t *handle) {
 
 static void
 on_uv_interval (uv_timer_t *handle) {
-  udx_t *udx = handle->data;
-  udx_check_timeouts(udx);
+  udx_check_timeouts((udx_t *) handle->data);
 }
 
 static int
 udx_start_timer (udx_t *udx) {
   uv_timer_t *timer = &(udx->timer);
+
+  memset(timer, 0, sizeof(uv_timer_t));
 
   int err = uv_timer_init(udx->loop, timer);
   assert(err == 0);
@@ -109,8 +140,6 @@ static void
 on_udx_timer_close (uv_handle_t *handle) {
   udx_t *udx = (udx_t *) handle->data;
   udx_socket_t *socket = udx->timer_closed_by;
-
-  memset(&(udx->timer), 0, sizeof(uv_timer_t));
 
   if (udx->sockets > 0) { // re-open
     udx->timer_closed_by = NULL;
@@ -362,15 +391,14 @@ close_maybe (udx_stream_t *stream, int err) {
   udx->streams[stream->set_id] = other;
   other->set_id = stream->set_id;
 
-  udx__cirbuf_remove(&(stream->udx->streams_by_id), stream->local_id);
+  udx__cirbuf_remove(&(udx->streams_by_id), stream->local_id);
   clear_incoming_packets(stream);
+
   // TODO: move the instance to a TIME_WAIT state, so we can handle retransmits
 
   if (stream->status & UDX_STREAM_READING) {
     udx_stream_read_stop(stream);
   }
-
-  // destroy anything we created, so the user can gc the stream instance
 
   udx__cirbuf_destroy(&(stream->incoming));
   udx__cirbuf_destroy(&(stream->outgoing));
@@ -378,6 +406,8 @@ close_maybe (udx_stream_t *stream, int err) {
   if (stream->on_close != NULL) {
     stream->on_close(stream, err);
   }
+
+  ref_dec(udx);
 
   return 1;
 }
@@ -767,16 +797,15 @@ on_uv_poll (uv_poll_t *handle, int status, int events) {
 
 int
 udx_init (uv_loop_t *loop, udx_t *handle) {
+  handle->refs = 0;
   handle->sockets = 0;
   handle->timer_closed_by = NULL;
 
   handle->streams_len = 0;
-  handle->streams_max_len = 16;
-  handle->streams = malloc(handle->streams_max_len * sizeof(udx_stream_t *));
+  handle->streams_max_len = 0;
+  handle->streams = NULL;
 
   handle->loop = loop;
-
-  udx__cirbuf_init(&(handle->streams_by_id), 1);
 
   return 0;
 }
@@ -793,6 +822,8 @@ udx_check_timeouts (udx_t *handle) {
 
 int
 udx_socket_init (udx_t *udx, udx_socket_t *handle) {
+  ref_inc(udx);
+
   handle->status = 0;
   handle->events = 0;
   handle->pending_closes = 0;
@@ -971,6 +1002,8 @@ udx_socket_close (udx_socket_t *handle, udx_socket_close_cb cb) {
 
 int
 udx_stream_init (udx_t *udx, udx_stream_t *handle, uint32_t local_id) {
+  ref_inc(udx);
+
   handle->status = 0;
 
   handle->local_id = local_id;
@@ -1022,6 +1055,7 @@ udx_stream_init (udx_t *udx, udx_stream_t *handle, uint32_t local_id) {
   udx->streams[handle->set_id] = handle;
 
   // Add the socket to the active set
+
   udx__cirbuf_set(&(udx->streams_by_id), (udx_cirbuf_val_t *) handle);
 
   return 0;
