@@ -5,11 +5,12 @@
 #include "../include/udx.h"
 
 uv_loop_t loop;
+udx_t udx;
 
-udx_t asock;
+udx_socket_t asock;
 udx_stream_t astream;
 
-udx_t bsock;
+udx_socket_t bsock;
 udx_stream_t bstream;
 
 udx_stream_send_t req;
@@ -42,26 +43,29 @@ main () {
 
   uv_loop_init(&loop);
 
-  e = udx_init(&loop, &asock);
+  e = udx_init(&loop, &udx);
   assert(e == 0);
 
-  e = udx_init(&loop, &bsock);
+  e = udx_socket_init(&udx, &asock);
+  assert(e == 0);
+
+  e = udx_socket_init(&udx, &bsock);
   assert(e == 0);
 
   struct sockaddr_in baddr;
   uv_ip4_addr("127.0.0.1", 8082, &baddr);
-  e = udx_bind(&bsock, (struct sockaddr *) &baddr);
+  e = udx_socket_bind(&bsock, (struct sockaddr *) &baddr);
   assert(e == 0);
 
   struct sockaddr_in aaddr;
   uv_ip4_addr("127.0.0.1", 8081, &aaddr);
-  e = udx_bind(&asock, (struct sockaddr *) &aaddr);
+  e = udx_socket_bind(&asock, (struct sockaddr *) &aaddr);
   assert(e == 0);
 
-  e = udx_stream_init(&loop, &astream, 1);
+  e = udx_stream_init(&udx, &astream, 1);
   assert(e == 0);
 
-  e = udx_stream_init(&loop, &bstream, 2);
+  e = udx_stream_init(&udx, &bstream, 2);
   assert(e == 0);
 
   e = udx_stream_connect(&astream, &asock, 2, (struct sockaddr *) &baddr, NULL);
