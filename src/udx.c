@@ -90,7 +90,7 @@ on_uv_interval (uv_timer_t *handle) {
   udx_check_timeouts(udx);
 }
 
-static void
+static int
 udx_start_timer (udx_t *udx) {
   uv_timer_t *timer = &(udx->timer);
 
@@ -101,6 +101,8 @@ udx_start_timer (udx_t *udx) {
   assert(err == 0);
 
   timer->data = udx;
+
+  return err;
 }
 
 static void
@@ -823,7 +825,7 @@ udx_socket_init (udx_t *udx, udx_socket_t *handle) {
 
   socket->data = handle;
 
-  return 0;
+  return err;
 }
 
 int
