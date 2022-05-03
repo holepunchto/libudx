@@ -358,3 +358,10 @@ test('close socket on stream close', async function (t) {
       bSocket.close(() => t.pass('b closed'))
     })
 })
+
+test('write before connect', async function (t) {
+  const u = new UDX()
+  const stream = u.createStream(1)
+
+  t.execution(() => stream.write(Buffer.from('hello world')))
+})
