@@ -360,8 +360,29 @@ test('close socket on stream close', async function (t) {
 })
 
 test('write before connect', async function (t) {
-  const u = new UDX()
-  const stream = u.createStream(1)
+  t.plan(1)
 
-  t.execution(() => stream.write(Buffer.from('hello world')))
+  const u = new UDX()
+
+  const socket = u.createSocket()
+  socket.bind(0)
+
+  const a = u.createStream(1)
+  const b = u.createStream(2)
+
+  a.on('data', function (data) {
+    t.alike(data, Buffer.from('hello world'))
+
+    a.destroy()
+    b.destroy()
+
+    socket.close()
+  })
+
+  b.write(Buffer.from('hello world'))
+
+  process.nextTick(() => {
+    a.connect(socket, 2, socket.address().port)
+    b.connect(socket, 1, socket.address().port)
+  })
 })
