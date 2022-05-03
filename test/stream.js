@@ -358,3 +358,10 @@ test('close socket on stream close', async function (t) {
       bSocket.close(() => t.pass('b closed'))
     })
 })
+
+test('write non-buffer', async function (t) {
+  const u = new UDX()
+  const stream = u.createStream(1)
+
+  t.exception(() => stream.write('hello'))
+})
