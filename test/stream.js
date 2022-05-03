@@ -359,9 +359,32 @@ test('close socket on stream close', async function (t) {
     })
 })
 
-test('write non-buffer', async function (t) {
-  const u = new UDX()
-  const stream = u.createStream(1)
+test('write string', async function (t) {
+  t.plan(3)
 
-  t.exception(() => stream.write('hello'))
+  const [a, b] = makeTwoStreams(t)
+
+  a
+    .on('data', function (data) {
+      t.alike(data, Buffer.from('hello world'))
+    })
+    .on('close', function () {
+      t.pass('a closed')
+    })
+    .end()
+
+  b
+    .on('close', function () {
+      t.pass('b closed')
+    })
+    .end('hello world')
+})
+
+test('write object', async function (t) {
+  const [a, b] = makeTwoStreams(t)
+
+  t.exception.all(() => a.write({ hello: 'world' }))
+
+  a.destroy()
+  b.destroy()
 })
