@@ -379,12 +379,3 @@ test('write string', async function (t) {
     })
     .end('hello world')
 })
-
-test('write object', async function (t) {
-  const [a, b] = makeTwoStreams(t)
-
-  t.exception.all(() => a.write({ hello: 'world' }))
-
-  a.destroy()
-  b.destroy()
-})
