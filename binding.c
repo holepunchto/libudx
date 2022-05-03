@@ -32,7 +32,7 @@
     napi_fatal_exception(env, fatal_exception); \
     printf("oh no add that realloc\n"); \
   } else { \
-    napi_get_buffer_info(env, ret, (void **) &(self->read_buf), &(self->read_buf_free)); \
+    napi_get_buffer_info(env, res, (void **) &(self->read_buf), &(self->read_buf_free)); \
     self->read_buf_head = self->read_buf; \
   }
 
@@ -44,7 +44,6 @@ typedef struct {
   napi_ref on_send;
   napi_ref on_message;
   napi_ref on_close;
-  napi_ref on_preconnect;
 } udx_napi_socket_t;
 
 typedef struct {
@@ -65,6 +64,7 @@ typedef struct {
   napi_ref on_send;
   napi_ref on_message;
   napi_ref on_close;
+  napi_ref on_firewall;
 } udx_napi_stream_t;
 
 inline static void
@@ -204,6 +204,37 @@ on_udx_stream_close (udx_stream_t *stream, int status) {
   })
 }
 
+static int
+on_udx_stream_firewall (udx_stream_t *stream, udx_socket_t *socket, const struct sockaddr *from) {
+  udx_napi_stream_t *n = (udx_napi_stream_t *) stream;
+  udx_napi_socket_t *s = (udx_napi_socket_t *) socket;
+
+  uint32_t fw = 1; // assume error means firewall it, whilst reporting the uncaught
+
+  int port;
+  char ip[17];
+  parse_address((struct sockaddr *) from, ip, &port);
+
+  UDX_NAPI_CALLBACK(n, n->on_firewall, {
+    napi_value res;
+    napi_value argv[3];
+
+    napi_get_reference_value(env, s->ctx, &(argv[0]));
+    napi_create_uint32(env, port, &(argv[1]));
+    napi_create_string_utf8(env, ip, NAPI_AUTO_LENGTH, &(argv[2]));
+
+    if (napi_make_callback(env, NULL, ctx, callback, 3, argv, &res) == napi_pending_exception) {
+      napi_value fatal_exception;
+      napi_get_and_clear_last_exception(env, &fatal_exception);
+      napi_fatal_exception(env, fatal_exception);
+    } else {
+      napi_get_value_uint32(env, res, &fw);
+    }
+  })
+
+  return fw;
+}
+
 NAPI_METHOD(udx_napi_init) {
   NAPI_ARGV(1)
   NAPI_ARGV_BUFFER_CAST(udx_t *, self, 0)
@@ -217,7 +248,7 @@ NAPI_METHOD(udx_napi_init) {
 }
 
 NAPI_METHOD(udx_napi_socket_init) {
-  NAPI_ARGV(7)
+  NAPI_ARGV(6)
   NAPI_ARGV_BUFFER_CAST(udx_t *, udx, 0)
   NAPI_ARGV_BUFFER_CAST(udx_napi_socket_t *, self, 1)
 
@@ -228,7 +259,6 @@ NAPI_METHOD(udx_napi_socket_init) {
   napi_create_reference(env, argv[3], 1, &(self->on_send));
   napi_create_reference(env, argv[4], 1, &(self->on_message));
   napi_create_reference(env, argv[5], 1, &(self->on_close));
-  napi_create_reference(env, argv[6], 1, &(self->on_preconnect));
 
   int err = udx_socket_init(udx, socket);
   if (err < 0) UDX_NAPI_THROW(err)
@@ -338,7 +368,7 @@ NAPI_METHOD(udx_napi_socket_close) {
 }
 
 NAPI_METHOD(udx_napi_stream_init) {
-  NAPI_ARGV(11)
+  NAPI_ARGV(12)
   NAPI_ARGV_BUFFER_CAST(udx_t *, udx, 0)
   NAPI_ARGV_BUFFER_CAST(udx_napi_stream_t *, stream, 1)
   NAPI_ARGV_UINT32(id, 2)
@@ -358,10 +388,12 @@ NAPI_METHOD(udx_napi_stream_init) {
   napi_create_reference(env, argv[8], 1, &(stream->on_send));
   napi_create_reference(env, argv[9], 1, &(stream->on_message));
   napi_create_reference(env, argv[10], 1, &(stream->on_close));
+  napi_create_reference(env, argv[11], 1, &(stream->on_firewall));
 
   int err = udx_stream_init(udx, (udx_stream_t *) stream, id);
   if (err < 0) UDX_NAPI_THROW(err)
 
+  udx_stream_firewall((udx_stream_t *) stream, on_udx_stream_firewall);
   udx_stream_write_resume((udx_stream_t *) stream, on_udx_stream_drain);
 
   return NULL;
