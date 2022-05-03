@@ -358,3 +358,24 @@ test('close socket on stream close', async function (t) {
       bSocket.close(() => t.pass('b closed'))
     })
 })
+
+test('write string', async function (t) {
+  t.plan(3)
+
+  const [a, b] = makeTwoStreams(t)
+
+  a
+    .on('data', function (data) {
+      t.alike(data, Buffer.from('hello world'))
+    })
+    .on('close', function () {
+      t.pass('a closed')
+    })
+    .end()
+
+  b
+    .on('close', function () {
+      t.pass('b closed')
+    })
+    .end('hello world')
+})
