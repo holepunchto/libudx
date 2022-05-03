@@ -381,7 +381,7 @@ test('write before connect', async function (t) {
 
   b.write(Buffer.from('hello world'))
 
-  process.nextTick(() => {
+  setImmediate(() => {
     a.connect(socket, 2, socket.address().port)
     b.connect(socket, 1, socket.address().port)
   })
