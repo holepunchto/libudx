@@ -358,3 +358,33 @@ test('close socket on stream close', async function (t) {
       bSocket.close(() => t.pass('b closed'))
     })
 })
+
+test('throw in data callback', async function (t) {
+  t.plan(2)
+
+  const u = new UDX()
+
+  const socket = u.createSocket()
+  socket.bind(0)
+
+  const a = u.createStream(1)
+  const b = u.createStream(2)
+
+  a.connect(socket, 2, socket.address().port)
+  b.connect(socket, 1, socket.address().port)
+
+  a.on('data', function () {
+    throw new Error('boom')
+  })
+
+  b.end(Buffer.from('hello'))
+
+  process.once('uncaughtException', (err) => {
+    t.is(err.message, 'boom')
+
+    a.destroy()
+    b.destroy()
+
+    socket.close(() => t.pass('socket closed'))
+  })
+})
