@@ -205,8 +205,9 @@ on_udx_stream_close (udx_stream_t *stream, int status) {
 }
 
 static int
-on_udx_stream_firewall (udx_stream_t *stream, const struct sockaddr *from) {
+on_udx_stream_firewall (udx_stream_t *stream, udx_socket_t *socket, const struct sockaddr *from) {
   udx_napi_stream_t *n = (udx_napi_stream_t *) stream;
+  udx_napi_socket_t *s = (udx_napi_socket_t *) socket;
 
   uint32_t fw = 1; // assume error means firewall it, whilst reporting the uncaught
 
@@ -216,12 +217,13 @@ on_udx_stream_firewall (udx_stream_t *stream, const struct sockaddr *from) {
 
   UDX_NAPI_CALLBACK(n, n->on_firewall, {
     napi_value res;
-    napi_value argv[2];
+    napi_value argv[3];
 
-    napi_create_uint32(env, port, &(argv[0]));
-    napi_create_string_utf8(env, ip, NAPI_AUTO_LENGTH, &(argv[1]));
+    napi_get_reference_value(env, s->ctx, &(argv[0]));
+    napi_create_uint32(env, port, &(argv[1]));
+    napi_create_string_utf8(env, ip, NAPI_AUTO_LENGTH, &(argv[2]));
 
-    if (napi_make_callback(env, NULL, ctx, callback, 2, argv, &res) == napi_pending_exception) {
+    if (napi_make_callback(env, NULL, ctx, callback, 3, argv, &res) == napi_pending_exception) {
       napi_value fatal_exception;
       napi_get_and_clear_last_exception(env, &fatal_exception);
       napi_fatal_exception(env, fatal_exception);

@@ -83,7 +83,7 @@ typedef void (*udx_socket_send_cb)(udx_socket_send_t *req, int status);
 typedef void (*udx_socket_recv_cb)(udx_socket_t *handle, ssize_t read_len, const uv_buf_t *buf, const struct sockaddr *from);
 typedef void (*udx_socket_close_cb)(udx_socket_t *handle);
 
-typedef int (*udx_stream_firewall_cb)(udx_stream_t *handle, const struct sockaddr *from);
+typedef int (*udx_stream_firewall_cb)(udx_stream_t *handle, udx_socket_t *socket, const struct sockaddr *from);
 typedef void (*udx_stream_read_cb)(udx_stream_t *handle, ssize_t read_len, const uv_buf_t *buf);
 typedef void (*udx_stream_drain_cb)(udx_stream_t *handle);
 typedef void (*udx_stream_ack_cb)(udx_stream_write_t *req, int status, int unordered);
