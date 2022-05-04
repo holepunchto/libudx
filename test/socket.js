@@ -55,6 +55,22 @@ test('simple message', async function (t) {
   a.send(Buffer.from('hello'), 0, 5, a.address().port, '127.0.0.1')
 })
 
+test('empty message', async function (t) {
+  t.plan(1)
+
+  const u = new UDX()
+
+  const a = u.createSocket()
+
+  a.on('message', function (message) {
+    t.alike(message, Buffer.alloc(0))
+    a.close()
+  })
+
+  a.bind(0)
+  a.send(Buffer.alloc(0), 0, 0, a.address().port, '127.0.0.1')
+})
+
 test('echo sockets (250 messages)', async function (t) {
   t.plan(3)
 
