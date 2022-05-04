@@ -583,6 +583,12 @@ process_packet (udx_socket_t *socket, char *buf, ssize_t buf_len, struct sockadd
 
   if (stream == NULL || stream->status & UDX_STREAM_DEAD) return 0;
 
+  // We expect this to be a stream packet from now on
+
+  if (!(stream->status & UDX_STREAM_CONNECTED) && (stream->on_firewall != NULL && stream->on_firewall(stream, socket, addr))) {
+    return 1;
+  }
+
   udx_cirbuf_t *inc = &(stream->incoming);
 
   if (type & UDX_HEADER_SACK) {
@@ -592,7 +598,7 @@ process_packet (udx_socket_t *socket, char *buf, ssize_t buf_len, struct sockadd
   // Done with header processing now.
   // For future compat, make sure we are now pointing at the actual data using the data_offset
   if (data_offset) {
-    if (data_offset > buf_len) return 0;
+    if (data_offset > buf_len) return 1;
     buf += data_offset;
     buf_len -= data_offset;
   }
@@ -665,7 +671,7 @@ process_packet (udx_socket_t *socket, char *buf, ssize_t buf_len, struct sockadd
     if (a == 1) continue;
     if (a == 2) { // it ended, so ack that and trigger close
       // TODO: make this work as well, if the ack packet is lost, ie
-      // have some internal (capped) queue of "gracefully closed" streams
+      // have some internal (capped) queue of "gracefully closed" streams (TIME_WAIT)
       send_state_packet(stream);
       close_maybe(stream, 0);
     }
@@ -1036,6 +1042,7 @@ udx_stream_init (udx_t *udx, udx_stream_t *handle, uint32_t local_id) {
   handle->stats_pkts_sent = 0;
   handle->stats_fast_rt = 0;
 
+  handle->on_firewall = NULL;
   handle->on_read = NULL;
   handle->on_recv = NULL;
   handle->on_drain = NULL;
@@ -1057,6 +1064,13 @@ udx_stream_init (udx_t *udx, udx_stream_t *handle, uint32_t local_id) {
   // Add the socket to the active set
 
   udx__cirbuf_set(&(udx->streams_by_id), (udx_cirbuf_val_t *) handle);
+
+  return 0;
+}
+
+int
+udx_stream_firewall (udx_stream_t *handle, udx_stream_firewall_cb cb) {
+  handle->on_firewall = cb;
 
   return 0;
 }

@@ -196,14 +196,26 @@ test('destroy unconnected stream', async function (t) {
 })
 
 test('preconnect flow', async function (t) {
-  t.plan(4)
+  t.plan(8)
 
   const u = new UDX()
 
   const socket = u.createSocket()
   socket.bind(0)
 
-  const a = u.createStream(1)
+  let once = true
+
+  const a = u.createStream(1, {
+    firewall (sock, port, host) {
+      t.ok(once)
+      t.is(sock, socket)
+      t.is(port, socket.address().port)
+      t.is(host, '127.0.0.1')
+      once = false
+
+      return false
+    }
+  })
 
   a.on('data', function (data) {
     t.is(data.toString(), 'hello', 'can receive data preconnect')
@@ -357,6 +369,27 @@ test('close socket on stream close', async function (t) {
     .on('close', function () {
       bSocket.close(() => t.pass('b closed'))
     })
+})
+
+test('write string', async function (t) {
+  t.plan(3)
+
+  const [a, b] = makeTwoStreams(t)
+
+  a
+    .on('data', function (data) {
+      t.alike(data, Buffer.from('hello world'))
+    })
+    .on('close', function () {
+      t.pass('a closed')
+    })
+    .end()
+
+  b
+    .on('close', function () {
+      t.pass('b closed')
+    })
+    .end('hello world')
 })
 
 test('write before connect', async function (t) {
