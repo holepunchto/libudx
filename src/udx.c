@@ -1241,7 +1241,7 @@ udx_stream_write (udx_stream_write_t *req, udx_stream_t *handle, const uv_buf_t 
     udx__cirbuf_set(&(handle->outgoing), (udx_cirbuf_val_t *) pkt);
 
     // If we are not the first packet in the queue, wait to send us until the queue is flushed...
-    if (handle->pkts_waiting++ > 0) continue;
+    if (handle->socket == NULL || handle->pkts_waiting++ > 0) continue;
     err = send_data_packet(handle, pkt);
   } while (buf.len > 0 || err < 0);
 
