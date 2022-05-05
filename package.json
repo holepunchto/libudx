@@ -12,7 +12,9 @@
   ],
   "scripts": {
     "test": "standard && brittle test/*.js",
-    "bench": "node test/bench/bench.js"
+    "bench": "node test/bench/bench.js",
+    "prebuild": "prebuildify --napi --strip",
+    "prebuild-ia32": "prebuildify --napi --strip --arch=ia32"
   },
   "repository": {
     "type": "git",
@@ -34,13 +36,14 @@
   "dependencies": {
     "b4a": "^1.5.0",
     "napi-macros": "^2.0.0",
-    "node-gyp-build": "^4.3.0",
+    "node-gyp-build": "^4.4.0",
     "streamx": "^2.12.0"
   },
   "devDependencies": {
     "brittle": "^2.0.3",
     "is-ci": "^3.0.1",
     "nanobench-utils": "^1.0.0",
+    "prebuildify": "^5.0.0",
     "standard": "^16.0.4"
   }
 }
