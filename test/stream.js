@@ -419,3 +419,29 @@ test('write before connect', async function (t) {
     b.connect(socket, 1, socket.address().port)
   })
 })
+
+test('end before connect', async function (t) {
+  t.plan(1)
+
+  const u = new UDX()
+
+  const socket = u.createSocket()
+  socket.bind(0)
+
+  const a = u.createStream(1)
+  const b = u.createStream(2)
+
+  a.on('end', function () {
+    a.destroy()
+    b.destroy()
+
+    socket.close()
+  })
+
+  b.end()
+
+  setImmediate(() => {
+    a.connect(socket, 2, socket.address().port)
+    b.connect(socket, 1, socket.address().port)
+  })
+})
