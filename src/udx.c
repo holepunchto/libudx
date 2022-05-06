@@ -1211,7 +1211,7 @@ udx_stream_write (udx_stream_write_t *req, udx_stream_t *handle, const uv_buf_t 
   req->on_ack = ack_cb;
 
   // if this is the first inflight packet, we should "restart" rto timer
-  if (handle->inflight == 0) {
+  if (handle->socket != NULL && handle->inflight == 0) {
     handle->rto_timeout = get_milliseconds() + handle->rto;
   }
 
