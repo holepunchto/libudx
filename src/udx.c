@@ -1286,7 +1286,8 @@ udx_stream_write_end (udx_stream_write_t *req, udx_stream_t *handle, const uv_bu
 
     // If we are not the first packet in the queue, wait to send us until the queue is flushed...
     if (handle->pkts_waiting++ > 0) continue;
-    err = send_data_packet(handle, pkt);
+
+    if (handle->socket != NULL) err = send_data_packet(handle, pkt);
   } while (buf.len > 0 || err < 0);
 
   return err;
