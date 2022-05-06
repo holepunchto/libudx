@@ -199,3 +199,18 @@ test('open + close a bunch of sockets', async function (t) {
 
   await p
 })
+
+test('send after close', async function (t) {
+  t.plan(1)
+
+  const u = new UDX()
+
+  const a = u.createSocket()
+
+  a.bind(0)
+  a.close()
+
+  a.send(Buffer.from('hello'), 0, 5, a.address().port, '127.0.0.1', function (err) {
+    t.ok(err)
+  })
+})
