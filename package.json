@@ -14,7 +14,6 @@
     "test": "standard && brittle test/*.js",
     "bench": "node test/bench/bench.js",
     "prebuild": "prebuildify --napi --strip",
-    "prebuild-ia32": "prebuildify --napi --strip --arch=ia32",
     "install": "node-gyp-build"
   },
   "repository": {
