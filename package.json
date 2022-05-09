@@ -1,17 +1,21 @@
 {
   "name": "udx-native",
-  "version": "0.0.5",
+  "version": "0.0.11",
   "description": "udx is reliable, multiplex, and congestion controlled streams over udp",
-  "main": "lib/socket.js",
+  "main": "lib/udx.js",
   "files": [
     "include",
     "lib",
     "src",
+    "prebuilds",
     "binding.c",
     "binding.gyp"
   ],
   "scripts": {
-    "test": "standard && brittle test/*.js"
+    "test": "standard && brittle test/*.js",
+    "bench": "node test/bench/bench.js",
+    "prebuild": "prebuildify --napi --strip",
+    "install": "node-gyp-build"
   },
   "repository": {
     "type": "git",
@@ -31,13 +35,16 @@
   },
   "homepage": "https://github.com/mafintosh/libudx#readme",
   "dependencies": {
+    "b4a": "^1.5.0",
     "napi-macros": "^2.0.0",
-    "node-gyp-build": "^4.3.0",
+    "node-gyp-build": "^4.4.0",
     "streamx": "^2.12.0"
   },
   "devDependencies": {
     "brittle": "^2.0.3",
     "is-ci": "^3.0.1",
+    "nanobench-utils": "^1.0.0",
+    "prebuildify": "^5.0.0",
     "standard": "^16.0.4"
   }
 }

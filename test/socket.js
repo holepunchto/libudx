@@ -1,10 +1,11 @@
 const test = require('brittle')
-const Socket = require('../')
+const UDX = require('../')
 
 test('can bind and close', async function (t) {
   t.plan(2)
 
-  const s = new Socket()
+  const u = new UDX()
+  const s = u.createSocket()
 
   s.bind(0, function () {
     t.pass('socket is listening')
@@ -19,8 +20,10 @@ test('can bind and close', async function (t) {
 test('bind is effectively sync', async function (t) {
   t.plan(4)
 
-  const a = new Socket()
-  const b = new Socket()
+  const u = new UDX()
+
+  const a = u.createSocket()
+  const b = u.createSocket()
 
   a.bind(0)
 
@@ -37,7 +40,9 @@ test('bind is effectively sync', async function (t) {
 test('simple message', async function (t) {
   t.plan(3)
 
-  const a = new Socket()
+  const u = new UDX()
+
+  const a = u.createSocket()
 
   a.on('message', function (message, { address, port }) {
     t.alike(message, Buffer.from('hello'))
@@ -50,11 +55,29 @@ test('simple message', async function (t) {
   a.send(Buffer.from('hello'), 0, 5, a.address().port, '127.0.0.1')
 })
 
+test('empty message', async function (t) {
+  t.plan(1)
+
+  const u = new UDX()
+
+  const a = u.createSocket()
+
+  a.on('message', function (message) {
+    t.alike(message, Buffer.alloc(0))
+    a.close()
+  })
+
+  a.bind(0)
+  a.send(Buffer.alloc(0), 0, 0, a.address().port, '127.0.0.1')
+})
+
 test('echo sockets (250 messages)', async function (t) {
   t.plan(3)
 
-  const a = new Socket()
-  const b = new Socket()
+  const u = new UDX()
+
+  const a = u.createSocket()
+  const b = u.createSocket()
 
   const send = []
   const recv = []
@@ -92,7 +115,9 @@ test('echo sockets (250 messages)', async function (t) {
 test('close socket while sending', async function (t) {
   t.plan(2)
 
-  const a = new Socket()
+  const u = new UDX()
+
+  const a = u.createSocket()
 
   a.bind()
 
@@ -110,8 +135,10 @@ test('close socket while sending', async function (t) {
 test('close waits for all streams to close', async function (t) {
   t.plan(2)
 
-  const a = new Socket()
-  const s = Socket.createStream(1)
+  const u = new UDX()
+
+  const a = u.createSocket()
+  const s = u.createStream(1)
 
   s.connect(a, 2, 0)
 
@@ -133,4 +160,57 @@ test('close waits for all streams to close', async function (t) {
   setTimeout(function () {
     s.destroy()
   }, 100)
+})
+
+test('open + close a bunch of sockets', async function (t) {
+  const u = new UDX()
+
+  const l = t.test('linear')
+  let count = 0
+
+  l.plan(5)
+  loop()
+
+  function loop () {
+    count++
+
+    const a = u.createSocket()
+
+    a.bind(0)
+    l.pass('opened socket')
+    a.close(function () {
+      if (count === 5) return
+      loop()
+    })
+  }
+
+  await l
+
+  const p = t.test('parallel')
+  p.plan(5)
+
+  for (let i = 0; i < 5; i++) {
+    const a = u.createSocket()
+    a.bind(0)
+    a.close(function () {
+      p.pass('opened and closed socket')
+    })
+  }
+
+  await p
+})
+
+test('send after close', async function (t) {
+  t.plan(1)
+
+  const u = new UDX()
+
+  const a = u.createSocket()
+
+  a.bind(0)
+  a.close()
+
+  a.send(Buffer.from('hello'), 0, 5, a.address().port, '127.0.0.1', function (err) {
+    t.ok(err)
+  })
 })
