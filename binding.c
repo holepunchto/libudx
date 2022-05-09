@@ -1,5 +1,5 @@
-#include <node_api.h>
 #include <napi-macros.h>
+#include <node_api.h>
 #include <string.h>
 #include <uv.h>
 
@@ -11,7 +11,7 @@
     return NULL; \
   }
 
-#define UDX_NAPI_INTERACTIVE 0
+#define UDX_NAPI_INTERACTIVE     0
 #define UDX_NAPI_NON_INTERACTIVE 1
 
 #define UDX_NAPI_CALLBACK(self, fn, src) \
@@ -23,7 +23,7 @@
   napi_value callback; \
   napi_get_reference_value(env, fn, &callback); \
   src \
-  napi_close_handle_scope(env, scope);
+    napi_close_handle_scope(env, scope);
 
 #define UDX_NAPI_MAKE_ALLOC_CALLBACK(self, env, nil, ctx, cb, n, argv, res) \
   if (napi_make_callback(env, nil, ctx, cb, n, argv, &res) == napi_pending_exception) { \
@@ -107,9 +107,7 @@ static void
 on_udx_close (udx_socket_t *self) {
   udx_napi_socket_t *n = (udx_napi_socket_t *) self;
 
-  UDX_NAPI_CALLBACK(n, n->on_close, {
-    NAPI_MAKE_CALLBACK(env, NULL, ctx, callback, 0, NULL, NULL)
-  })
+  UDX_NAPI_CALLBACK(n, n->on_close, {NAPI_MAKE_CALLBACK(env, NULL, ctx, callback, 0, NULL, NULL)})
 }
 
 static void
@@ -154,9 +152,7 @@ static void
 on_udx_stream_drain (udx_stream_t *stream) {
   udx_napi_stream_t *n = (udx_napi_stream_t *) stream;
 
-  UDX_NAPI_CALLBACK(n, n->on_drain, {
-    NAPI_MAKE_CALLBACK(env, NULL, ctx, callback, 0, NULL, NULL)
-  })
+  UDX_NAPI_CALLBACK(n, n->on_drain, {NAPI_MAKE_CALLBACK(env, NULL, ctx, callback, 0, NULL, NULL)})
 }
 
 static void
@@ -341,7 +337,7 @@ NAPI_METHOD(udx_napi_socket_send_ttl) {
   NAPI_ARGV_UTF8(ip, 17, 5)
   NAPI_ARGV_UINT32(ttl, 6)
 
-  req->data = (void *)((uintptr_t) rid);
+  req->data = (void *) ((uintptr_t) rid);
 
   struct sockaddr_in addr;
 
@@ -448,7 +444,7 @@ NAPI_METHOD(udx_napi_stream_send) {
   NAPI_ARGV_UINT32(rid, 2)
   NAPI_ARGV_BUFFER(buf, 3)
 
-  req->data = (void *)((uintptr_t) rid);
+  req->data = (void *) ((uintptr_t) rid);
 
   uv_buf_t b = uv_buf_init(buf, buf_len);
 
@@ -465,7 +461,7 @@ NAPI_METHOD(udx_napi_stream_write) {
   NAPI_ARGV_UINT32(rid, 2)
   NAPI_ARGV_BUFFER(buf, 3)
 
-  req->data = (void *)((uintptr_t) rid);
+  req->data = (void *) ((uintptr_t) rid);
 
   uv_buf_t b = uv_buf_init(buf, buf_len);
 
@@ -482,7 +478,7 @@ NAPI_METHOD(udx_napi_stream_write_end) {
   NAPI_ARGV_UINT32(rid, 2)
   NAPI_ARGV_BUFFER(buf, 3)
 
-  req->data = (void *)((uintptr_t) rid);
+  req->data = (void *) ((uintptr_t) rid);
 
   uv_buf_t b = uv_buf_init(buf, buf_len);
 

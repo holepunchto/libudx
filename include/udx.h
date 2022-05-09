@@ -9,14 +9,14 @@ extern "C" {
 #include <uv.h>
 
 // TODO: research the packets sizes a bit more
-#define UDX_MTU 1400
-#define UDX_HEADER_SIZE 20
+#define UDX_MTU           1400
+#define UDX_HEADER_SIZE   20
 #define UDX_MAX_DATA_SIZE (UDX_MTU - UDX_HEADER_SIZE)
 
 #define UDX_CLOCK_GRANULARITY_MS 20
 
 #define UDX_MAGIC_BYTE 255
-#define UDX_VERSION 1
+#define UDX_VERSION    1
 
 #define UDX_SOCKET_RECEIVING       0b0001
 #define UDX_SOCKET_BOUND           0b0010
@@ -157,10 +157,10 @@ struct udx_stream {
 
   uint64_t rto_timeout;
 
-  uint32_t pkts_waiting; // how many packets are added locally but not sent?
-  uint32_t pkts_inflight; // packets inflight to the other peer
-  uint32_t pkts_buffered; // how many (data) packets received but not processed (out of order)?
-  uint32_t dup_acks; // how many duplicate acks received? Used for fast retransmit
+  uint32_t pkts_waiting;        // how many packets are added locally but not sent?
+  uint32_t pkts_inflight;       // packets inflight to the other peer
+  uint32_t pkts_buffered;       // how many (data) packets received but not processed (out of order)?
+  uint32_t dup_acks;            // how many duplicate acks received? Used for fast retransmit
   uint32_t retransmits_waiting; // how many retransmits are waiting to be sent? if 0, then inflight iteration is faster
 
   size_t inflight;
@@ -246,7 +246,7 @@ int
 udx_socket_bind (udx_socket_t *handle, const struct sockaddr *addr);
 
 int
-udx_socket_getsockname (udx_socket_t *handle, struct sockaddr * name, int *name_len);
+udx_socket_getsockname (udx_socket_t *handle, struct sockaddr *name, int *name_len);
 
 int
 udx_socket_send (udx_socket_send_t *req, udx_socket_t *handle, const uv_buf_t bufs[], unsigned int bufs_len, const struct sockaddr *addr, udx_socket_send_cb cb);
