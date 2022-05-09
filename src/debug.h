@@ -7,8 +7,8 @@
 #define DEBUG 0
 #endif
 
-#define debug_printf(...)                    \
-  do {                                       \
+#define debug_printf(...) \
+  do { \
     if (DEBUG) fprintf(stderr, __VA_ARGS__); \
   } while (0)
 
