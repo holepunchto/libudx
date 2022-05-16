@@ -6,7 +6,7 @@ test('network interfaces', async function (t) {
 
   const interfaces = udx.networkInterfaces()
 
-  t.ok(interfaces.length > 1, 'has at least 1')
+  t.ok(interfaces.length >= 1, 'has at least 1')
 
   for (let i = 0; i < interfaces.length; i++) {
     const n = interfaces[i]
