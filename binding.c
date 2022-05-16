@@ -514,21 +514,21 @@ NAPI_METHOD(udx_napi_network_interfaces) {
   napi_create_array(env, &result);
 
   while (i < count) {
-    uv_interface_address_t interface = interfaces[i++];
+    uv_interface_address_t network = interfaces[i++];
 
     // We only care about IPv4 addresses for now.
-    if (interface.address.address4.sin_family != AF_INET) {
+    if (network.address.address4.sin_family != AF_INET) {
       continue;
     }
 
-    uv_ip4_name(&interface.address.address4, ip, sizeof(ip));
+    uv_ip4_name(&network.address.address4, ip, sizeof(ip));
 
     napi_value item;
     napi_create_object(env, &item);
     napi_set_element(env, result, j++, item);
 
     napi_value name;
-    napi_create_string_utf8(env, interface.name, NAPI_AUTO_LENGTH, &name);
+    napi_create_string_utf8(env, network.name, NAPI_AUTO_LENGTH, &name);
     napi_set_named_property(env, item, "name", name);
 
     napi_value host;
@@ -540,7 +540,7 @@ NAPI_METHOD(udx_napi_network_interfaces) {
     napi_set_named_property(env, item, "family", family);
 
     napi_value internal;
-    napi_get_boolean(env, interface.is_internal, &internal);
+    napi_get_boolean(env, network.is_internal, &internal);
     napi_set_named_property(env, item, "internal", internal);
   }
 
