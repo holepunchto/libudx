@@ -504,7 +504,7 @@ NAPI_METHOD(udx_napi_stream_destroy) {
 
 NAPI_METHOD(udx_napi_network_interfaces) {
   uv_interface_address_t* interfaces;
-  int count;
+  int count, i = 0, j = 0;
   char ip[17];
 
   int err = uv_interface_addresses(&interfaces, &count);
@@ -513,8 +513,8 @@ NAPI_METHOD(udx_napi_network_interfaces) {
   napi_value result;
   napi_create_array(env, &result);
 
-  for (int i = 0, j = 0; i < count; i++) {
-    uv_interface_address_t interface = interfaces[i];
+  while (i < count) {
+    uv_interface_address_t interface = interfaces[i++];
 
     // We only care about IPv4 addresses for now.
     if (interface.address.address4.sin_family != AF_INET) {
