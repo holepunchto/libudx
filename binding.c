@@ -37,7 +37,7 @@
   }
 
 typedef struct {
-  udx_socket_t udx;
+  udx_socket_t socket;
 
   napi_env env;
   napi_ref ctx;
@@ -502,6 +502,53 @@ NAPI_METHOD(udx_napi_stream_destroy) {
   NAPI_RETURN_UINT32(err);
 }
 
+NAPI_METHOD(udx_napi_network_interfaces) {
+  uv_interface_address_t* interfaces;
+  int count, i = 0, j = 0;
+  char ip[17];
+
+  int err = uv_interface_addresses(&interfaces, &count);
+  if (err < 0) UDX_NAPI_THROW(err)
+
+  napi_value result;
+  napi_create_array(env, &result);
+
+  while (i < count) {
+    uv_interface_address_t network = interfaces[i++];
+
+    // We only care about IPv4 addresses for now.
+    if (network.address.address4.sin_family != AF_INET) {
+      continue;
+    }
+
+    uv_ip4_name(&network.address.address4, ip, sizeof(ip));
+
+    napi_value item;
+    napi_create_object(env, &item);
+    napi_set_element(env, result, j++, item);
+
+    napi_value name;
+    napi_create_string_utf8(env, network.name, NAPI_AUTO_LENGTH, &name);
+    napi_set_named_property(env, item, "name", name);
+
+    napi_value host;
+    napi_create_string_utf8(env, ip, NAPI_AUTO_LENGTH, &host);
+    napi_set_named_property(env, item, "host", host);
+
+    napi_value family;
+    napi_create_uint32(env, 4, &family);
+    napi_set_named_property(env, item, "family", family);
+
+    napi_value internal;
+    napi_get_boolean(env, network.is_internal, &internal);
+    napi_set_named_property(env, item, "internal", internal);
+  }
+
+  uv_free_interface_addresses(interfaces, count);
+
+  return result;
+}
+
 NAPI_INIT() {
   NAPI_EXPORT_OFFSETOF(udx_stream_t, inflight)
   NAPI_EXPORT_OFFSETOF(udx_stream_t, cwnd)
@@ -535,4 +582,6 @@ NAPI_INIT() {
   NAPI_EXPORT_FUNCTION(udx_napi_stream_write)
   NAPI_EXPORT_FUNCTION(udx_napi_stream_write_end)
   NAPI_EXPORT_FUNCTION(udx_napi_stream_destroy)
+
+  NAPI_EXPORT_FUNCTION(udx_napi_network_interfaces)
 }
