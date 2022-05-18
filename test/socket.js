@@ -105,17 +105,11 @@ test('close socket while sending', async function (t) {
 
   a.bind()
 
-  t.exception(
-    a.send(Buffer.from('hello'), a.address().port),
-    /Send failed/
-  )
-
-  t.exception(
-    a.send(Buffer.from('world'), a.address().port),
-    /Send failed/
-  )
+  const flushed = a.send(Buffer.from('hello'), a.address().port)
 
   a.close()
+
+  t.is(await flushed, false)
 })
 
 test('close waits for all streams to close', async function (t) {
@@ -193,8 +187,5 @@ test('send after close', async function (t) {
   a.bind(0)
   a.close()
 
-  t.exception(
-    a.send(Buffer.from('hello'), a.address().port),
-    /Socket is closed/
-  )
+  t.is(await a.send(Buffer.from('hello'), a.address().port), false)
 })
