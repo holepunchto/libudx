@@ -2,24 +2,16 @@ const test = require('brittle')
 const UDX = require('../')
 
 test('can bind and close', async function (t) {
-  t.plan(2)
-
   const u = new UDX()
   const s = u.createSocket()
 
-  s.bind(0, function () {
-    t.pass('socket is listening')
-    s.close()
-  })
+  s.bind(0)
+  await s.close()
 
-  s.on('close', function () {
-    t.pass('socket closed')
-  })
+  t.pass()
 })
 
 test('bind is effectively sync', async function (t) {
-  t.plan(4)
-
   const u = new UDX()
 
   const a = u.createSocket()
@@ -30,36 +22,31 @@ test('bind is effectively sync', async function (t) {
   t.ok(a.address().port, 'has bound')
   t.exception(() => b.bind(a.address().port))
 
-  a.close()
-  b.close()
-
-  a.on('close', () => t.pass('a closed'))
-  b.on('close', () => t.pass('b closed'))
+  await a.close()
+  await b.close()
 })
 
 test('simple message', async function (t) {
   t.plan(3)
 
   const u = new UDX()
-
   const a = u.createSocket()
 
-  a.on('message', function (message, { address, port }) {
+  a.on('message', function (message, { host, port }) {
     t.alike(message, Buffer.from('hello'))
-    t.is(address, '127.0.0.1')
+    t.is(host, '127.0.0.1')
     t.is(port, a.address().port)
     a.close()
   })
 
   a.bind(0)
-  a.send(Buffer.from('hello'), 0, 5, a.address().port, '127.0.0.1')
+  await a.send(Buffer.from('hello'), a.address().port)
 })
 
 test('empty message', async function (t) {
   t.plan(1)
 
   const u = new UDX()
-
   const a = u.createSocket()
 
   a.on('message', function (message) {
@@ -68,7 +55,7 @@ test('empty message', async function (t) {
   })
 
   a.bind(0)
-  a.send(Buffer.alloc(0), 0, 0, a.address().port, '127.0.0.1')
+  await a.send(Buffer.alloc(0), a.address().port)
 })
 
 test('echo sockets (250 messages)', async function (t) {
@@ -84,9 +71,9 @@ test('echo sockets (250 messages)', async function (t) {
   let echoed = 0
   let flushed = 0
 
-  a.on('message', function (buf, { address, port }) {
+  a.on('message', function (buf, { host, port }) {
     echoed++
-    a.send(buf, 0, buf.byteLength, port, address)
+    a.send(buf, port, host)
   })
 
   b.on('message', function (buf) {
@@ -106,30 +93,23 @@ test('echo sockets (250 messages)', async function (t) {
   while (send.length < 250) {
     const buf = Buffer.from('a message')
     send.push(buf)
-    b.send(buf, 0, buf.byteLength, a.address().port, '127.0.0.1', function () {
+    b.send(buf, a.address().port).then(function () {
       flushed++
     })
   }
 })
 
 test('close socket while sending', async function (t) {
-  t.plan(2)
-
   const u = new UDX()
-
   const a = u.createSocket()
 
   a.bind()
 
-  a.send(Buffer.from('hello'), 0, 5, a.address().port, '127.0.0.1', function (err) {
-    t.ok(err, 'send was not flushed')
-  })
-
-  a.send(Buffer.from('world'), 0, 5, a.address().port, '127.0.0.1', function (err) {
-    t.ok(err, 'send was not flushed')
-  })
+  const flushed = a.send(Buffer.from('hello'), a.address().port)
 
   a.close()
+
+  t.is(await flushed, false)
 })
 
 test('close waits for all streams to close', async function (t) {
@@ -171,17 +151,16 @@ test('open + close a bunch of sockets', async function (t) {
   l.plan(5)
   loop()
 
-  function loop () {
+  async function loop () {
     count++
 
     const a = u.createSocket()
 
     a.bind(0)
     l.pass('opened socket')
-    a.close(function () {
-      if (count === 5) return
-      loop()
-    })
+    await a.close()
+
+    if (count < 5) loop()
   }
 
   await l
@@ -192,7 +171,7 @@ test('open + close a bunch of sockets', async function (t) {
   for (let i = 0; i < 5; i++) {
     const a = u.createSocket()
     a.bind(0)
-    a.close(function () {
+    a.close().then(function () {
       p.pass('opened and closed socket')
     })
   }
@@ -201,8 +180,6 @@ test('open + close a bunch of sockets', async function (t) {
 })
 
 test('send after close', async function (t) {
-  t.plan(1)
-
   const u = new UDX()
 
   const a = u.createSocket()
@@ -210,7 +187,5 @@ test('send after close', async function (t) {
   a.bind(0)
   a.close()
 
-  a.send(Buffer.from('hello'), 0, 5, a.address().port, '127.0.0.1', function (err) {
-    t.ok(err)
-  })
+  t.is(await a.send(Buffer.from('hello'), a.address().port), false)
 })
