@@ -395,8 +395,9 @@ test('write string', async function (t) {
     .end('hello world')
 })
 
-test('throw in data callback', async function (t) {
-  t.plan(2)
+// Unskip once https://github.com/nodejs/node/issues/38155 is solved
+test.skip('throw in data callback', async function (t) {
+  t.plan(1)
 
   const u = new UDX()
 
@@ -415,12 +416,12 @@ test('throw in data callback', async function (t) {
 
   b.end(Buffer.from('hello'))
 
-  process.once('uncaughtException', (err) => {
+  process.once('uncaughtException', async (err) => {
     t.is(err.message, 'boom')
 
     a.destroy()
     b.destroy()
 
-    socket.close(() => t.pass('socket closed'))
+    await socket.close()
   })
 })
