@@ -169,8 +169,6 @@ test('several streams on same socket', async function (t) {
   const socket = u.createSocket()
   socket.bind(0)
 
-  t.teardown(() => socket.close())
-
   for (let i = 0; i < 10; i++) {
     const stream = u.createStream(i)
     stream.connect(socket, i, socket.address().port)
@@ -178,6 +176,7 @@ test('several streams on same socket', async function (t) {
     t.teardown(() => stream.destroy())
   }
 
+  t.teardown(() => socket.close())
   t.pass('halts')
 })
 
@@ -196,14 +195,26 @@ test('destroy unconnected stream', async function (t) {
 })
 
 test('preconnect flow', async function (t) {
-  t.plan(4)
+  t.plan(8)
 
   const u = new UDX()
 
   const socket = u.createSocket()
   socket.bind(0)
 
-  const a = u.createStream(1)
+  let once = true
+
+  const a = u.createStream(1, {
+    firewall (sock, port, host) {
+      t.ok(once)
+      t.is(sock, socket)
+      t.is(port, socket.address().port)
+      t.is(host, '127.0.0.1')
+      once = false
+
+      return false
+    }
+  })
 
   a.on('data', function (data) {
     t.is(data.toString(), 'hello', 'can receive data preconnect')
@@ -250,11 +261,13 @@ test('destroy streams and close socket in callback', async function (t) {
   a.connect(socket, 2, socket.address().port)
   b.connect(socket, 1, socket.address().port)
 
-  a.on('data', function (data) {
+  a.on('data', async function (data) {
     a.destroy()
     b.destroy()
 
-    socket.close(() => t.pass('closed'))
+    await socket.close()
+
+    t.pass('closed')
   })
 
   b.write(Buffer.from('hello'))
@@ -345,8 +358,9 @@ test('close socket on stream close', async function (t) {
   b.connect(bSocket, 1, aSocket.address().port)
 
   a
-    .on('close', function () {
-      aSocket.close(() => t.pass('a closed'))
+    .on('close', async function () {
+      await aSocket.close()
+      t.pass('a closed')
     })
     .end()
 
@@ -354,9 +368,31 @@ test('close socket on stream close', async function (t) {
     .on('end', function () {
       b.end()
     })
-    .on('close', function () {
-      bSocket.close(() => t.pass('b closed'))
+    .on('close', async function () {
+      await bSocket.close()
+      t.pass('b closed')
     })
+})
+
+test('write string', async function (t) {
+  t.plan(3)
+
+  const [a, b] = makeTwoStreams(t)
+
+  a
+    .on('data', function (data) {
+      t.alike(data, Buffer.from('hello world'))
+    })
+    .on('close', function () {
+      t.pass('a closed')
+    })
+    .end()
+
+  b
+    .on('close', function () {
+      t.pass('b closed')
+    })
+    .end('hello world')
 })
 
 test('throw in data callback', async function (t) {
