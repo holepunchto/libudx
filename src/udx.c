@@ -668,7 +668,7 @@ process_packet (udx_socket_t *socket, char *buf, ssize_t buf_len, struct sockadd
 
   for (int32_t j = 0; j < len; j++) {
     int a = ack_packet(stream, stream->remote_acked++, 0);
-    if (a == 1) continue;
+    if (a == 0 || a == 1) continue;
     if (a == 2) { // it ended, so ack that and trigger close
       // TODO: make this work as well, if the ack packet is lost, ie
       // have some internal (capped) queue of "gracefully closed" streams (TIME_WAIT)
