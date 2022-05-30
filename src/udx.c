@@ -206,6 +206,9 @@ clear_incoming_packets (udx_stream_t *stream) {
   }
 }
 
+static int congested = 0;
+
+
 static void
 clear_outgoing_packets (udx_stream_t *stream) {
   // We should make sure all existing packets do not send, and notify the user that they failed
@@ -360,8 +363,11 @@ flush_waiting_packets (udx_stream_t *stream) {
     udx_packet_t *pkt = (udx_packet_t *) udx__cirbuf_get(&(stream->outgoing), seq++);
 
     if (pkt == NULL || pkt->status != UDX_PACKET_WAITING) continue;
-
+int is_retransmit = pkt->is_retransmit == 1;
     sent = send_data_packet(stream, pkt);
+if (stream->retransmits_waiting && congested && is_retransmit && sent > 0) {
+  // printf("retrans, sent %i, %i\n", pkt->seq, sent);
+}
     if (sent <= 0) break;
   }
 
@@ -425,7 +431,7 @@ ack_packet (udx_stream_t *stream, uint32_t seq, int sack) {
     stream->pkts_waiting--;
   }
 
-  if (pkt->status == UDX_PACKET_INFLIGHT) {
+  if (pkt->status == UDX_PACKET_INFLIGHT || pkt->status == UDX_PACKET_SENDING) {
     stream->pkts_inflight--;
     stream->inflight -= pkt->size;
   }
@@ -451,8 +457,18 @@ ack_packet (udx_stream_t *stream, uint32_t seq, int sack) {
     stream->rto = max_uint32(stream->srtt + max_uint32(UDX_CLOCK_GRANULARITY_MS, 4 * stream->rttvar), 1000);
   }
 
+  if (sack && seq == stream->remote_acked) {
+    printf("not sack\n\n\n\n");
+  }
+
   if (!sack) { // Reset rto timer when new data is ack'ed (inorder)
-    stream->rto_timeout = get_milliseconds() + stream->rto;
+    uint64_t to = get_milliseconds() + stream->rto;
+    // if (to > stream->rto_timeout) stream->rto_timeout = to;
+    if (stream->rto_timeout == to) stream->rto_timeout++;
+    else stream->rto_timeout = to;
+    // printf("update to\n");
+  } else {
+    // printf("skip, sack...\n");
   }
 
   // If this packet was queued for sending we need to remove it from the queue.
@@ -492,7 +508,7 @@ process_sacks (udx_stream_t *stream, char *buf, size_t buf_len) {
     uint32_t start = udx__swap_uint32_if_be(*(sacks++));
     uint32_t end = udx__swap_uint32_if_be(*(sacks++));
     int32_t len = seq_diff(end, start);
-
+// printf("sack process %i %i\n", start, end);
     for (int32_t j = 0; j < len; j++) {
       int a = ack_packet(stream, start + j, 1);
       if (a == 2) return; // ended
@@ -509,22 +525,63 @@ process_sacks (udx_stream_t *stream, char *buf, size_t buf_len) {
 
 static void
 fast_retransmit (udx_stream_t *stream) {
+if (congested) {
+  // printf("skipping fast retransmit due to prev congetsion\n");
+  // return;
+}
   udx_cirbuf_t *out = &(stream->outgoing);
   udx_packet_t *pkt = (udx_packet_t *) udx__cirbuf_get(out, stream->remote_acked);
 
   if (pkt == NULL || pkt->transmits != 1 || pkt->status != UDX_PACKET_INFLIGHT || pkt->is_retransmit) return;
 
-  pkt->status = UDX_PACKET_WAITING;
-  pkt->is_retransmit = 1;
+    const uint32_t rtt = (uint32_t) (get_milliseconds() - pkt->time_sent);
 
-  stream->inflight -= pkt->size;
-  stream->pkts_waiting++;
-  stream->pkts_inflight--;
-  stream->retransmits_waiting++;
-  stream->stats_fast_rt++;
+printf("fast retransmit %i (time %u)\n", pkt->seq, rtt);
+int total = 0;
+int inf = stream->inflight;
+
+  int hole = 0;
+  for (int i = stream->remote_acked; i < stream->seq; i++) {
+    pkt = (udx_packet_t *) udx__cirbuf_get(out, i);
+    if (!pkt) {
+      hole = 1;
+      break;
+    }
+  }
+
+  if (!hole) {
+    printf("skipping retransmit as no hole exists\n");
+    return;
+  }
+
+  for (int i = 0; i < 1024; i++) {
+    pkt = (udx_packet_t *) udx__cirbuf_get(out, stream->remote_acked + i);
+    if (pkt == NULL || pkt->transmits != 1 || pkt->status != UDX_PACKET_INFLIGHT || pkt->is_retransmit) break;
+total++;
+    pkt->status = UDX_PACKET_WAITING;
+    pkt->is_retransmit = 2;
+
+    stream->inflight -= pkt->size;
+    stream->pkts_waiting++;
+    stream->pkts_inflight--;
+    stream->retransmits_waiting++;
+    stream->stats_fast_rt++;
+
+    if (stream->cwnd > UDX_MTU) stream->cwnd -= UDX_MTU / 2;
+  }
+
+  if (total > 0) {
+    stream->rto_timeout = get_milliseconds() + 2 * stream->rto;
+  }
 
   // Shrink the window
-  stream->cwnd = max_uint32(UDX_MTU, stream->cwnd / 2);
+  stream->cwnd = max_uint32(UDX_MTU, stream->cwnd); // max_uint32(UDX_MTU, stream->cwnd / 2);
+
+  // if (stream->cwnd > 1024 * 1024) {
+  //   stream->cwnd = 1024 * 1024;
+  // }
+
+  printf("fast retransmit, gap is %i, cwnd %i vs %i vs old %i\n", total, stream->cwnd, stream->inflight, inf);
 }
 
 static void
@@ -575,7 +632,7 @@ process_packet (udx_socket_t *socket, char *buf, ssize_t buf_len, struct sockadd
   /* recv_win */ udx__swap_uint32_if_be(*(i++));
   uint32_t seq = udx__swap_uint32_if_be(*(i++));
   uint32_t ack = udx__swap_uint32_if_be(*i);
-
+// printf("got packet seq=%i ack=%i\n", seq, ack);
   buf += UDX_HEADER_SIZE;
   buf_len -= UDX_HEADER_SIZE;
 
@@ -590,6 +647,8 @@ process_packet (udx_socket_t *socket, char *buf, ssize_t buf_len, struct sockadd
   }
 
   udx_cirbuf_t *inc = &(stream->incoming);
+
+  uint64_t to = stream->rto_timeout;
 
   if (type & UDX_HEADER_SACK) {
     process_sacks(stream, buf, buf_len);
@@ -649,22 +708,26 @@ process_packet (udx_socket_t *socket, char *buf, ssize_t buf_len, struct sockadd
     return 1;
   }
 
+  int32_t len = seq_diff(ack, stream->remote_acked);
+
   // Congestion control...
-  if (stream->remote_acked != ack) {
-    if (stream->cwnd < stream->ssthresh) {
-      stream->cwnd += UDX_MTU;
-    } else {
-      stream->cwnd += max_uint32((UDX_MTU * UDX_MTU) / stream->cwnd, 1);
+  if (len) {
+    int c = stream->cwnd;
+    for (int32_t j = 0; j < len; j++) {
+      if (stream->cwnd < stream->ssthresh) {
+        stream->cwnd += UDX_MTU;
+      } else {
+        stream->cwnd += max_uint32((UDX_MTU * UDX_MTU) / stream->cwnd, 1);
+      }
     }
+    // printf("bump %i, cwnd=%i (%i), inf=%i (%i)\n", len, stream->cwnd, stream->cwnd - c, stream->inflight, stream->pkts_inflight);
     stream->dup_acks = 0;
   } else if ((type & UDX_HEADER_DATA_OR_END) == 0) {
     stream->dup_acks++;
-    if (stream->dup_acks >= 3) {
+    if (stream->dup_acks == 3) {
       fast_retransmit(stream);
     }
   }
-
-  int32_t len = seq_diff(ack, stream->remote_acked);
 
   for (int32_t j = 0; j < len; j++) {
     int a = ack_packet(stream, stream->remote_acked++, 0);
@@ -676,6 +739,10 @@ process_packet (udx_socket_t *socket, char *buf, ssize_t buf_len, struct sockadd
       close_maybe(stream, 0);
     }
     return 1;
+  }
+
+  if (len && stream->rto_timeout == to) {
+    // printf("missing timeout update!! sack=%i acked=%i \n\n", type & UDX_HEADER_SACK ? 1 : 0, len);
   }
 
   // if data pkt, send an ack - use deferred acks as well...
@@ -1124,31 +1191,43 @@ udx_stream_check_timeouts (udx_stream_t *handle) {
   if (now > handle->rto_timeout) {
     // Ensure it backs off until data is acked...
     handle->rto_timeout = now + 2 * handle->rto;
-
+udx_packet_t *f = NULL;
+udx_packet_t *a = NULL;
+int w = 0;
+int q = 0;
+int b = 0;
     // Consider all packet losts - seems to be the simple consensus across different stream impls
     // which we like cause it is nice and simple to implement.
     for (uint32_t seq = handle->remote_acked; seq != handle->seq; seq++) {
       udx_packet_t *pkt = (udx_packet_t *) udx__cirbuf_get(&(handle->outgoing), seq);
-
+if (pkt != NULL) {
+  if (pkt->status == UDX_PACKET_WAITING) w++;
+  if (pkt->is_retransmit) a = pkt;
+}
       if (pkt == NULL || pkt->status != UDX_PACKET_INFLIGHT || pkt->is_retransmit) continue;
 
       if (pkt->transmits >= UDX_MAX_TRANSMITS) {
+        printf("destroyed, %zu\n", handle->rto_timeout);
         handle->status |= UDX_STREAM_DESTROYED;
         close_maybe(handle, UV_ETIMEDOUT);
         return 1;
       }
-
+if (f == NULL) f= pkt;
       pkt->status = UDX_PACKET_WAITING;
       pkt->is_retransmit = 1;
-
+q++;
       handle->inflight -= pkt->size;
       handle->pkts_waiting++;
       handle->pkts_inflight--;
       handle->retransmits_waiting++;
+
+      b += pkt->size;
     }
 
+    handle->dup_acks = 0;
     handle->cwnd = max_uint32(UDX_MTU, handle->cwnd / 2);
-
+congested++;
+printf("congetsion, re_waiting = %i, re=(%i, %i, %i, %i b) (seq = %i) pkts_waiting=(%i + %i), queue_len=%i actual_waiting=%i inflight=(%i, %i), cwnd=%i timeout=%zu h->remote-acked=%i, h->seq=%i cons=%i\n", handle->retransmits_waiting, a ? a->seq : 0, a ? a->status : 0, a ? a->transmits : 0, b, f ? f->seq : 0, w, q, handle->socket->send_queue.len, handle->pkts_waiting, handle->inflight, handle->pkts_inflight, handle->cwnd, handle->rto_timeout, handle->remote_acked, handle->seq, congested);
     debug_printf("pkt loss! stream is congested, scaling back (requeued the full window)\n");
   }
 
@@ -1244,6 +1323,12 @@ udx_stream_write (udx_stream_write_t *req, udx_stream_t *handle, const uv_buf_t 
     if (handle->pkts_waiting++ > 0) continue;
     err = send_data_packet(handle, pkt);
   } while (buf.len > 0 || err < 0);
+
+  // if (handle->pkts_waiting) {
+    // printf("packets waiting...\n");
+  // } else {
+    // printf("no packets waiting!\n");
+  // }
 
   return err;
 }

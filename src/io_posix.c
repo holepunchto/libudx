@@ -16,9 +16,15 @@ udx__sendmsg (udx_socket_t *handle, const uv_buf_t bufs[], unsigned int bufs_len
   h.msg_iov = (struct iovec *) bufs;
   h.msg_iovlen = bufs_len;
 
+int tries = 0;
   do {
+  tries++;
     size = sendmsg(handle->io_poll.io_watcher.fd, &h, 0);
   } while (size == -1 && errno == EINTR);
+
+if (tries > 1 || size < 0) {
+  printf("multitry\n");
+}
 
   return size == -1 ? uv_translate_sys_error(errno) : size;
 }
