@@ -394,3 +394,25 @@ test('write string', async function (t) {
     })
     .end('hello world')
 })
+
+test('destroy before connect', async function (t) {
+  t.plan(1)
+
+  const u = new UDX()
+
+  const socket = u.createSocket()
+  socket.bind(0)
+
+  const a = u.createStream(1)
+  const b = u.createStream(2)
+
+  a.connect(socket, 2, socket.address().port)
+  a.destroy()
+
+  b.on('error', async function (err) {
+    t.is(err.code, 'ECONNRESET')
+
+    b.destroy()
+    await socket.close()
+  })
+})
