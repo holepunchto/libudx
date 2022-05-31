@@ -693,7 +693,7 @@ process_packet (udx_socket_t *socket, char *buf, ssize_t buf_len, struct sockadd
     stream->dup_acks = 0;
   } else if ((type & UDX_HEADER_DATA_OR_END) == 0) {
     stream->dup_acks++;
-    if (stream->dup_acks >= 3) {
+    if (stream->dup_acks == 3) {
       fast_retransmit(stream);
     }
   }
