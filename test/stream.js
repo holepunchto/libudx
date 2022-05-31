@@ -395,7 +395,7 @@ test('write string', async function (t) {
     .end('hello world')
 })
 
-test('destroy before connect', async function (t) {
+test('destroy before fully connected', async function (t) {
   t.plan(1)
 
   const u = new UDX()
@@ -404,7 +404,11 @@ test('destroy before connect', async function (t) {
   socket.bind(0)
 
   const a = u.createStream(1)
-  const b = u.createStream(2)
+  const b = u.createStream(2, {
+    firewall () {
+      return false // accept packets from a
+    }
+  })
 
   a.connect(socket, 2, socket.address().port)
   a.destroy()
