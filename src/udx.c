@@ -428,7 +428,7 @@ ack_packet (udx_stream_t *stream, uint32_t seq, int sack) {
     stream->pkts_waiting--;
   }
 
-  if (pkt->status == UDX_PACKET_INFLIGHT) {
+  if (pkt->status == UDX_PACKET_INFLIGHT || pkt->status == UDX_PACKET_SENDING) {
     stream->pkts_inflight--;
     stream->inflight -= pkt->size;
   }
