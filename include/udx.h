@@ -268,10 +268,10 @@ int
 udx_check_timeouts (udx_t *handle);
 
 int
-udx_stream_init (udx_t *udx, udx_stream_t *handle, uint32_t local_id);
+udx_stream_init (udx_t *udx, udx_stream_t *handle, uint32_t local_id, udx_stream_close_cb close_cb);
 
 int
-udx_stream_connect (udx_stream_t *handle, udx_socket_t *socket, uint32_t remote_id, const struct sockaddr *remote_addr, udx_stream_close_cb close_cb);
+udx_stream_connect (udx_stream_t *handle, udx_socket_t *socket, uint32_t remote_id, const struct sockaddr *remote_addr);
 
 int
 udx_stream_firewall (udx_stream_t *handle, udx_stream_firewall_cb firewall_cb);
