@@ -513,22 +513,50 @@ process_sacks (udx_stream_t *stream, char *buf, size_t buf_len) {
 static void
 fast_retransmit (udx_stream_t *stream) {
   udx_cirbuf_t *out = &(stream->outgoing);
-  udx_packet_t *pkt = (udx_packet_t *) udx__cirbuf_get(out, stream->remote_acked);
 
-  if (pkt == NULL || pkt->transmits != 1 || pkt->status != UDX_PACKET_INFLIGHT || pkt->is_retransmit) return;
+  // TODO: if a sack exists, can be maintained independently instead like we do with out-of-order pkts
+  int sacked = 0;
+  int32_t len = seq_diff(stream->seq, stream->remote_acked);
 
-  pkt->status = UDX_PACKET_WAITING;
-  pkt->is_retransmit = 1;
+  for (int32_t i = 0; i < len; i++) {
+    udx_packet_t *pkt = (udx_packet_t *) udx__cirbuf_get(out, stream->remote_acked + i);
+    if (!pkt) { // if cleared, it's been acked, ie a SACK
+      sacked = 1;
+      break;
+    }
+  }
 
-  stream->inflight -= pkt->size;
-  stream->pkts_waiting++;
-  stream->pkts_inflight--;
-  stream->retransmits_waiting++;
-  stream->stats_fast_rt++;
+  if (!sacked) return;
 
-  // Shrink the window
-  stream->cwnd = max_uint32(UDX_MTU, stream->cwnd / 2);
-}
+  int resent = 0;
+
+  // 1024 is just arbitrary, max length of the full segment missing
+  for (int i = 0; i < 1024; i++) {
+    udx_packet_t *pkt = (udx_packet_t *) udx__cirbuf_get(out, stream->remote_acked + i);
+    if (pkt == NULL || pkt->transmits != 1 || pkt->status != UDX_PACKET_INFLIGHT || pkt->is_retransmit) break;
+
+    resent++;
+
+    pkt->status = UDX_PACKET_WAITING;
+    pkt->is_retransmit = 1;
+
+    stream->inflight -= pkt->size;
+    stream->pkts_waiting++;
+    stream->pkts_inflight--;
+    stream->retransmits_waiting++;
+    stream->stats_fast_rt++;
+  }
+
+  if (resent > 0) {
+    size_t dec_cwnd = resent * (UDX_MTU / 2);
+
+    if (dec_cwnd >= stream->cwnd) stream->cwnd = UDX_MTU;
+    else stream->cwnd = max_uint32(UDX_MTU, stream->cwnd - dec_cwnd);
+
+    // reset the timeout to allow the data to get to the remote before triggering congestion
+    stream->rto_timeout = get_milliseconds() + stream->rto;
+  }
+};
 
 static void
 process_data_packet (udx_stream_t *stream, int type, uint32_t seq, char *data, ssize_t data_len) {
