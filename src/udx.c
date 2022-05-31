@@ -1041,7 +1041,7 @@ udx_socket_close (udx_socket_t *handle, udx_socket_close_cb cb) {
 }
 
 int
-udx_stream_init (udx_t *udx, udx_stream_t *handle, uint32_t local_id) {
+udx_stream_init (udx_t *udx, udx_stream_t *handle, uint32_t local_id, udx_stream_close_cb close_cb) {
   ref_inc(udx);
 
   handle->local_id = local_id;
@@ -1080,7 +1080,7 @@ udx_stream_init (udx_t *udx, udx_stream_t *handle, uint32_t local_id) {
   handle->on_read = NULL;
   handle->on_recv = NULL;
   handle->on_drain = NULL;
-  handle->on_close = NULL;
+  handle->on_close = close_cb;
 
   // Init stream write/read buffers
   udx__cirbuf_init(&(handle->outgoing), 16);
@@ -1191,7 +1191,7 @@ udx_stream_check_timeouts (udx_stream_t *handle) {
 }
 
 int
-udx_stream_connect (udx_stream_t *handle, udx_socket_t *socket, uint32_t remote_id, const struct sockaddr *remote_addr, udx_stream_close_cb close_cb) {
+udx_stream_connect (udx_stream_t *handle, udx_socket_t *socket, uint32_t remote_id, const struct sockaddr *remote_addr) {
   if (handle->status & UDX_STREAM_CONNECTED) {
     return UV_EISCONN;
   }
@@ -1201,8 +1201,6 @@ udx_stream_connect (udx_stream_t *handle, udx_socket_t *socket, uint32_t remote_
   handle->remote_id = remote_id;
   handle->remote_addr = *remote_addr;
   handle->socket = socket;
-
-  handle->on_close = close_cb;
 
   return update_poll(handle->socket);
 }
