@@ -294,6 +294,62 @@ test('write empty buffer', async function (t) {
     .end(Buffer.alloc(0))
 })
 
+test('out of order packets', async function (t) {
+  t.plan(3)
+
+  const u = new UDX()
+
+  const a = u.createSocket()
+  const b = u.createSocket()
+
+  a.bind(0)
+  b.bind(0)
+
+  const count = 1000
+  const expected = []
+
+  const p = await proxy({ from: a, to: b }, async function (pkt) {
+    // Add a random delay to every packet
+    await new Promise((resolve) =>
+      setTimeout(resolve, Math.random() * 1000 | 0)
+    )
+
+    return false
+  })
+
+  const aStream = u.createStream(1)
+  const bStream = u.createStream(2)
+
+  aStream.connect(a, 2, p.address().port)
+  bStream.connect(b, 1, p.address().port)
+
+  for (let i = 0; i < count; i++) {
+    aStream.write(Buffer.from(i.toString()))
+  }
+
+  bStream.on('data', function (data) {
+    expected.push(data.toString())
+
+    if (expected.length === count) {
+      t.alike(expected, Array(count).fill(0).map((_, i) => i.toString()), 'data in order')
+
+      p.close()
+      aStream.destroy()
+      bStream.destroy()
+    }
+  })
+
+  aStream.on('close', function () {
+    t.pass('a stream closed')
+    b.close()
+  })
+
+  bStream.on('close', function () {
+    t.pass('b stream closed')
+    a.close()
+  })
+})
+
 test('out of order reads but can destroy (memleak test)', async function (t) {
   t.plan(3)
 
