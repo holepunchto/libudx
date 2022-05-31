@@ -277,10 +277,15 @@ send_state_packet (udx_stream_t *stream) {
   void *payload = NULL;
   size_t payload_len = 0;
 
-  uint32_t max = 512;
-  for (uint32_t i = 0; i < max && payload_len < 400; i++) {
+  int ooo = stream->out_of_order;
+
+  // 65536 is just a sanity check here in terms of how much max work we wanna do, could prob be smarter
+  // only valid if ooo is very large
+  for (uint32_t i = 0; i < 65536 && ooo > 0 && payload_len < 400; i++) {
     uint32_t seq = stream->ack + 1 + i;
     if (udx__cirbuf_get(&(stream->incoming), seq) == NULL) continue;
+
+    ooo--;
 
     if (sacks == NULL) {
       pkt = malloc(sizeof(udx_packet_t) + 1024);
@@ -297,8 +302,6 @@ send_state_packet (udx_stream_t *stream) {
       end = seq + 1;
       payload_len += 8;
     }
-
-    max = i + 512;
   }
 
   if (start != end) {
@@ -540,6 +543,8 @@ process_data_packet (udx_stream_t *stream, int type, uint32_t seq, char *data, s
     return;
   }
 
+  stream->out_of_order++;
+
   // Slow path, packet out of order.
   // Copy over incoming buffer as we do not own it (stack allocated upstream)
   char *ptr = malloc(sizeof(udx_pending_read_t) + data_len);
@@ -629,11 +634,12 @@ process_packet (udx_socket_t *socket, char *buf, ssize_t buf_len, struct sockadd
     }
   }
 
-  // process the read queue
+  // process the (out of order) read queue
   while ((stream->status & UDX_STREAM_SHOULD_READ) == UDX_STREAM_READ) {
     udx_pending_read_t *pkt = (udx_pending_read_t *) udx__cirbuf_remove(inc, stream->ack);
     if (pkt == NULL) break;
 
+    stream->out_of_order--;
     stream->pkts_buffered--;
     stream->ack++;
 
@@ -1010,11 +1016,11 @@ int
 udx_stream_init (udx_t *udx, udx_stream_t *handle, uint32_t local_id) {
   ref_inc(udx);
 
-  handle->status = 0;
-
   handle->local_id = local_id;
   handle->remote_id = 0;
   handle->set_id = 0;
+  handle->status = 0;
+  handle->out_of_order = 0;
   handle->socket = NULL;
   handle->udx = udx;
 

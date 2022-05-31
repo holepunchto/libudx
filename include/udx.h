@@ -132,6 +132,7 @@ struct udx_stream {
 
   int set_id;
   int status;
+  int out_of_order;
 
   udx_t *udx;
   udx_socket_t *socket;
