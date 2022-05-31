@@ -413,10 +413,13 @@ test('destroy before fully connected', async function (t) {
   a.connect(socket, 2, socket.address().port)
   a.destroy()
 
-  b.on('error', async function (err) {
-    t.is(err.code, 'ECONNRESET')
-
+  setTimeout(function () {
+    b.connect(socket, 1, socket.address().port)
     b.destroy()
-    await socket.close()
-  })
+
+    b.on('close', async function () {
+      t.pass('b closed')
+      await socket.close()
+    })
+  }, 100) // wait for destroy to be processed
 })
