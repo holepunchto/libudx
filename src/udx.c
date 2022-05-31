@@ -683,25 +683,27 @@ process_packet (udx_socket_t *socket, char *buf, ssize_t buf_len, struct sockadd
     return 1;
   }
 
-  // Congestion control...
-  if (stream->remote_acked != ack) {
+  int32_t len = seq_diff(ack, stream->remote_acked);
+
+  if (len) { // if anything acked, no dups
+    stream->dup_acks = 0;
+  } else if ((type & UDX_HEADER_DATA_OR_END) == 0) {
+    // if 3 dups received acking other data, run fast_retransmit
+    if (++(stream->dup_acks) == 3) {
+      fast_retransmit(stream);
+    }
+  }
+
+  for (int32_t j = 0; j < len; j++) {
+    int a = ack_packet(stream, stream->remote_acked++, 0);
+
+    // Congestion control...
     if (stream->cwnd < stream->ssthresh) {
       stream->cwnd += UDX_MTU;
     } else {
       stream->cwnd += max_uint32((UDX_MTU * UDX_MTU) / stream->cwnd, 1);
     }
-    stream->dup_acks = 0;
-  } else if ((type & UDX_HEADER_DATA_OR_END) == 0) {
-    stream->dup_acks++;
-    if (stream->dup_acks == 3) {
-      fast_retransmit(stream);
-    }
-  }
 
-  int32_t len = seq_diff(ack, stream->remote_acked);
-
-  for (int32_t j = 0; j < len; j++) {
-    int a = ack_packet(stream, stream->remote_acked++, 0);
     if (a == 0 || a == 1) continue;
     if (a == 2) { // it ended, so ack that and trigger close
       // TODO: make this work as well, if the ack packet is lost, ie
