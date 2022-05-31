@@ -396,7 +396,7 @@ test('write string', async function (t) {
 })
 
 test('destroy before fully connected', async function (t) {
-  t.plan(1)
+  t.plan(2)
 
   const u = new UDX()
 
@@ -413,13 +413,17 @@ test('destroy before fully connected', async function (t) {
   a.connect(socket, 2, socket.address().port)
   a.destroy()
 
-  setTimeout(function () {
-    b.connect(socket, 1, socket.address().port)
-    b.destroy()
-
-    b.on('close', async function () {
+  b
+    .on('error', function (err) {
+      t.is(err.code, 'ECONNRESET')
+    })
+    .on('close', async function () {
       t.pass('b closed')
       await socket.close()
     })
+
+  setTimeout(function () {
+    b.connect(socket, 1, socket.address().port)
+    b.destroy()
   }, 100) // wait for destroy to be processed
 })
