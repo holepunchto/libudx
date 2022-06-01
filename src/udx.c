@@ -1180,6 +1180,10 @@ udx_stream_check_timeouts (udx_stream_t *handle) {
     // Ensure it backs off until data is acked...
     handle->rto_timeout = now + 2 * handle->rto;
 
+    // Update congestion control
+    handle->ssthresh = max_uint32(2 * UDX_MTU, handle->inflight / 2);
+    handle->cwnd = 2 * UDX_MTU;
+
     // Consider all packet losts - seems to be the simple consensus across different stream impls
     // which we like cause it is nice and simple to implement.
     for (uint32_t seq = handle->remote_acked; seq != handle->seq; seq++) {
@@ -1201,9 +1205,6 @@ udx_stream_check_timeouts (udx_stream_t *handle) {
       handle->pkts_inflight--;
       handle->retransmits_waiting++;
     }
-
-    handle->ssthresh = max_uint32(2 * UDX_MTU, handle->inflight / 2);
-    handle->cwnd = 2 * UDX_MTU;
 
     debug_printf("pkt loss! congestion, ssthresh=%zu, cwnd=%zu\n", handle->ssthresh, handle->cwnd);
   }
