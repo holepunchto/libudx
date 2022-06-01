@@ -483,3 +483,34 @@ test('destroy before fully connected', async function (t) {
     b.destroy()
   }, 100) // wait for destroy to be processed
 })
+
+// Unskip once https://github.com/nodejs/node/issues/38155 is solved
+test.skip('throw in data callback', async function (t) {
+  t.plan(1)
+
+  const u = new UDX()
+
+  const socket = u.createSocket()
+  socket.bind(0)
+
+  const a = u.createStream(1)
+  const b = u.createStream(2)
+
+  a.connect(socket, 2, socket.address().port)
+  b.connect(socket, 1, socket.address().port)
+
+  a.on('data', function () {
+    throw new Error('boom')
+  })
+
+  b.end(Buffer.from('hello'))
+
+  process.once('uncaughtException', async (err) => {
+    t.is(err.message, 'boom')
+
+    a.destroy()
+    b.destroy()
+
+    await socket.close()
+  })
+})

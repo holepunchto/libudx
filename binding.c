@@ -30,11 +30,19 @@
     napi_value fatal_exception; \
     napi_get_and_clear_last_exception(env, &fatal_exception); \
     napi_fatal_exception(env, fatal_exception); \
-    printf("oh no add that realloc\n"); \
+    { \
+      UDX_NAPI_CALLBACK(self, self->realloc, { \
+        NAPI_MAKE_CALLBACK(env, nil, ctx, callback, 0, NULL, &res); \
+        UDX_NAPI_SET_READ_BUFFER(self, res); \
+      }) \
+    } \
   } else { \
-    napi_get_buffer_info(env, res, (void **) &(self->read_buf), &(self->read_buf_free)); \
-    self->read_buf_head = self->read_buf; \
+    UDX_NAPI_SET_READ_BUFFER(self, res); \
   }
+
+#define UDX_NAPI_SET_READ_BUFFER(self, res) \
+  napi_get_buffer_info(env, res, (void **) &(self->read_buf), &(self->read_buf_free)); \
+  self->read_buf_head = self->read_buf;
 
 typedef struct {
   udx_socket_t socket;
@@ -65,6 +73,7 @@ typedef struct {
   napi_ref on_message;
   napi_ref on_close;
   napi_ref on_firewall;
+  napi_ref realloc;
 } udx_napi_stream_t;
 
 inline static void
@@ -368,7 +377,7 @@ NAPI_METHOD(udx_napi_socket_close) {
 }
 
 NAPI_METHOD(udx_napi_stream_init) {
-  NAPI_ARGV(12)
+  NAPI_ARGV(13)
   NAPI_ARGV_BUFFER_CAST(udx_t *, udx, 0)
   NAPI_ARGV_BUFFER_CAST(udx_napi_stream_t *, stream, 1)
   NAPI_ARGV_UINT32(id, 2)
@@ -389,6 +398,7 @@ NAPI_METHOD(udx_napi_stream_init) {
   napi_create_reference(env, argv[9], 1, &(stream->on_message));
   napi_create_reference(env, argv[10], 1, &(stream->on_close));
   napi_create_reference(env, argv[11], 1, &(stream->on_firewall));
+  napi_create_reference(env, argv[12], 1, &(stream->realloc));
 
   int err = udx_stream_init(udx, (udx_stream_t *) stream, id, on_udx_stream_close);
   if (err < 0) UDX_NAPI_THROW(err)
