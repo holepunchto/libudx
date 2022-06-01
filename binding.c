@@ -400,7 +400,7 @@ NAPI_METHOD(udx_napi_stream_init) {
   napi_create_reference(env, argv[11], 1, &(stream->on_firewall));
   napi_create_reference(env, argv[12], 1, &(stream->realloc));
 
-  int err = udx_stream_init(udx, (udx_stream_t *) stream, id);
+  int err = udx_stream_init(udx, (udx_stream_t *) stream, id, on_udx_stream_close);
   if (err < 0) UDX_NAPI_THROW(err)
 
   udx_stream_firewall((udx_stream_t *) stream, on_udx_stream_firewall);
@@ -446,7 +446,7 @@ NAPI_METHOD(udx_napi_stream_connect) {
   int err = uv_ip4_addr(remote_ip, remote_port, &addr);
   if (err < 0) UDX_NAPI_THROW(err)
 
-  udx_stream_connect((udx_stream_t *) stream, socket, remote_id, (const struct sockaddr *) &addr, on_udx_stream_close);
+  udx_stream_connect((udx_stream_t *) stream, socket, remote_id, (const struct sockaddr *) &addr);
 
   return NULL;
 }

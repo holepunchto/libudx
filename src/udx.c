@@ -277,10 +277,15 @@ send_state_packet (udx_stream_t *stream) {
   void *payload = NULL;
   size_t payload_len = 0;
 
-  uint32_t max = 512;
-  for (uint32_t i = 0; i < max && payload_len < 400; i++) {
+  int ooo = stream->out_of_order;
+
+  // 65536 is just a sanity check here in terms of how much max work we wanna do, could prob be smarter
+  // only valid if ooo is very large
+  for (uint32_t i = 0; i < 65536 && ooo > 0 && payload_len < 400; i++) {
     uint32_t seq = stream->ack + 1 + i;
     if (udx__cirbuf_get(&(stream->incoming), seq) == NULL) continue;
+
+    ooo--;
 
     if (sacks == NULL) {
       pkt = malloc(sizeof(udx_packet_t) + 1024);
@@ -297,8 +302,6 @@ send_state_packet (udx_stream_t *stream) {
       end = seq + 1;
       payload_len += 8;
     }
-
-    max = i + 512;
   }
 
   if (start != end) {
@@ -425,7 +428,7 @@ ack_packet (udx_stream_t *stream, uint32_t seq, int sack) {
     stream->pkts_waiting--;
   }
 
-  if (pkt->status == UDX_PACKET_INFLIGHT) {
+  if (pkt->status == UDX_PACKET_INFLIGHT || pkt->status == UDX_PACKET_SENDING) {
     stream->pkts_inflight--;
     stream->inflight -= pkt->size;
   }
@@ -510,22 +513,50 @@ process_sacks (udx_stream_t *stream, char *buf, size_t buf_len) {
 static void
 fast_retransmit (udx_stream_t *stream) {
   udx_cirbuf_t *out = &(stream->outgoing);
-  udx_packet_t *pkt = (udx_packet_t *) udx__cirbuf_get(out, stream->remote_acked);
 
-  if (pkt == NULL || pkt->transmits != 1 || pkt->status != UDX_PACKET_INFLIGHT || pkt->is_retransmit) return;
+  // TODO: if a sack exists, can be maintained independently instead like we do with out-of-order pkts
+  int sacked = 0;
+  int32_t len = seq_diff(stream->seq, stream->remote_acked);
 
-  pkt->status = UDX_PACKET_WAITING;
-  pkt->is_retransmit = 1;
+  for (int32_t i = 0; i < len; i++) {
+    udx_packet_t *pkt = (udx_packet_t *) udx__cirbuf_get(out, stream->remote_acked + i);
+    if (!pkt) { // if cleared, it's been acked, ie a SACK
+      sacked = 1;
+      break;
+    }
+  }
 
-  stream->inflight -= pkt->size;
-  stream->pkts_waiting++;
-  stream->pkts_inflight--;
-  stream->retransmits_waiting++;
-  stream->stats_fast_rt++;
+  if (!sacked) return;
 
-  // Shrink the window
-  stream->cwnd = max_uint32(UDX_MTU, stream->cwnd / 2);
-}
+  int resent = 0;
+
+  // 1024 is just arbitrary, max length of the full segment missing
+  for (int i = 0; i < 1024; i++) {
+    udx_packet_t *pkt = (udx_packet_t *) udx__cirbuf_get(out, stream->remote_acked + i);
+    if (pkt == NULL || pkt->transmits != 1 || pkt->status != UDX_PACKET_INFLIGHT || pkt->is_retransmit) break;
+
+    resent++;
+
+    pkt->status = UDX_PACKET_WAITING;
+    pkt->is_retransmit = 1;
+
+    stream->inflight -= pkt->size;
+    stream->pkts_waiting++;
+    stream->pkts_inflight--;
+    stream->retransmits_waiting++;
+    stream->stats_fast_rt++;
+  }
+
+  if (resent > 0) {
+    size_t dec_cwnd = resent * (UDX_MTU / 2);
+
+    if (dec_cwnd >= stream->cwnd) stream->cwnd = UDX_MTU;
+    else stream->cwnd = max_uint32(UDX_MTU, stream->cwnd - dec_cwnd);
+
+    // reset the timeout to allow the data to get to the remote before triggering congestion
+    stream->rto_timeout = get_milliseconds() + stream->rto;
+  }
+};
 
 static void
 process_data_packet (udx_stream_t *stream, int type, uint32_t seq, char *data, ssize_t data_len) {
@@ -539,6 +570,8 @@ process_data_packet (udx_stream_t *stream, int type, uint32_t seq, char *data, s
     }
     return;
   }
+
+  stream->out_of_order++;
 
   // Slow path, packet out of order.
   // Copy over incoming buffer as we do not own it (stack allocated upstream)
@@ -629,11 +662,12 @@ process_packet (udx_socket_t *socket, char *buf, ssize_t buf_len, struct sockadd
     }
   }
 
-  // process the read queue
+  // process the (out of order) read queue
   while ((stream->status & UDX_STREAM_SHOULD_READ) == UDX_STREAM_READ) {
     udx_pending_read_t *pkt = (udx_pending_read_t *) udx__cirbuf_remove(inc, stream->ack);
     if (pkt == NULL) break;
 
+    stream->out_of_order--;
     stream->pkts_buffered--;
     stream->ack++;
 
@@ -649,26 +683,28 @@ process_packet (udx_socket_t *socket, char *buf, ssize_t buf_len, struct sockadd
     return 1;
   }
 
-  // Congestion control...
-  if (stream->remote_acked != ack) {
+  int32_t len = seq_diff(ack, stream->remote_acked);
+
+  if (len) { // if anything acked, no dups
+    stream->dup_acks = 0;
+  } else if ((type & UDX_HEADER_DATA_OR_END) == 0) {
+    // if 3 dups received acking other data, run fast_retransmit
+    if (++(stream->dup_acks) == 3) {
+      fast_retransmit(stream);
+    }
+  }
+
+  for (int32_t j = 0; j < len; j++) {
+    int a = ack_packet(stream, stream->remote_acked++, 0);
+
+    // Congestion control...
     if (stream->cwnd < stream->ssthresh) {
       stream->cwnd += UDX_MTU;
     } else {
       stream->cwnd += max_uint32((UDX_MTU * UDX_MTU) / stream->cwnd, 1);
     }
-    stream->dup_acks = 0;
-  } else if ((type & UDX_HEADER_DATA_OR_END) == 0) {
-    stream->dup_acks++;
-    if (stream->dup_acks >= 3) {
-      fast_retransmit(stream);
-    }
-  }
 
-  int32_t len = seq_diff(ack, stream->remote_acked);
-
-  for (int32_t j = 0; j < len; j++) {
-    int a = ack_packet(stream, stream->remote_acked++, 0);
-    if (a == 1) continue;
+    if (a == 0 || a == 1) continue;
     if (a == 2) { // it ended, so ack that and trigger close
       // TODO: make this work as well, if the ack packet is lost, ie
       // have some internal (capped) queue of "gracefully closed" streams (TIME_WAIT)
@@ -1007,14 +1043,14 @@ udx_socket_close (udx_socket_t *handle, udx_socket_close_cb cb) {
 }
 
 int
-udx_stream_init (udx_t *udx, udx_stream_t *handle, uint32_t local_id) {
+udx_stream_init (udx_t *udx, udx_stream_t *handle, uint32_t local_id, udx_stream_close_cb close_cb) {
   ref_inc(udx);
-
-  handle->status = 0;
 
   handle->local_id = local_id;
   handle->remote_id = 0;
   handle->set_id = 0;
+  handle->status = 0;
+  handle->out_of_order = 0;
   handle->socket = NULL;
   handle->udx = udx;
 
@@ -1046,7 +1082,7 @@ udx_stream_init (udx_t *udx, udx_stream_t *handle, uint32_t local_id) {
   handle->on_read = NULL;
   handle->on_recv = NULL;
   handle->on_drain = NULL;
-  handle->on_close = NULL;
+  handle->on_close = close_cb;
 
   // Init stream write/read buffers
   udx__cirbuf_init(&(handle->outgoing), 16);
@@ -1157,7 +1193,7 @@ udx_stream_check_timeouts (udx_stream_t *handle) {
 }
 
 int
-udx_stream_connect (udx_stream_t *handle, udx_socket_t *socket, uint32_t remote_id, const struct sockaddr *remote_addr, udx_stream_close_cb close_cb) {
+udx_stream_connect (udx_stream_t *handle, udx_socket_t *socket, uint32_t remote_id, const struct sockaddr *remote_addr) {
   if (handle->status & UDX_STREAM_CONNECTED) {
     return UV_EISCONN;
   }
@@ -1167,8 +1203,6 @@ udx_stream_connect (udx_stream_t *handle, udx_socket_t *socket, uint32_t remote_
   handle->remote_id = remote_id;
   handle->remote_addr = *remote_addr;
   handle->socket = socket;
-
-  handle->on_close = close_cb;
 
   return update_poll(handle->socket);
 }
