@@ -718,7 +718,10 @@ process_packet (udx_socket_t *socket, char *buf, ssize_t buf_len, struct sockadd
   }
 
   for (int32_t j = 0; j < len; j++) {
-    if (stream->recovery) stream->recovery--;
+    if (stream->recovery > 0 && --(stream->recovery) == 0) {
+      // The end of fast recovery, adjust according to the spec
+      if (stream->ssthresh < stream->cwnd) stream->cwnd = stream->ssthresh;
+    }
 
     int a = ack_packet(stream, stream->remote_acked++, 0);
 
