@@ -1474,8 +1474,6 @@ on_interface_event_close (uv_handle_t *handle) {
   if (event->on_close != NULL) {
     event->on_close(event);
   }
-
-  uv_free_interface_addresses(event->addrs, event->addrs_len);
 }
 
 int
@@ -1515,6 +1513,8 @@ int
 udx_interface_event_close (udx_interface_event_t *handle, udx_interface_event_close_cb cb) {
   handle->on_event = NULL;
   handle->on_close = cb;
+
+  uv_free_interface_addresses(event->addrs, event->addrs_len);
 
   int err = uv_timer_stop(&(handle->timer));
   if (err < 0) return err;
