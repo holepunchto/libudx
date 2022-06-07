@@ -6,6 +6,7 @@ extern "C" {
 #endif
 
 #include <stdint.h>
+#include <stdbool.h>
 #include <uv.h>
 
 // TODO: research the packets sizes a bit more
@@ -240,6 +241,7 @@ struct udx_interface_event {
 
   uv_interface_address_t *addrs;
   int addrs_len;
+  bool sorted;
 
   udx_interface_event_cb on_event;
   udx_interface_event_close_cb on_close;

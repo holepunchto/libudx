@@ -1414,6 +1414,7 @@ on_interface_event_interval (uv_timer_t *timer) {
 
   uv_interface_address_t *prev_addrs = handle->addrs;
   int prev_addrs_len = handle->addrs_len;
+  bool prev_sorted = handle->sorted;
 
   int err = uv_interface_addresses(&(handle->addrs), &(handle->addrs_len));
   if (err < 0) {
@@ -1421,16 +1422,29 @@ on_interface_event_interval (uv_timer_t *timer) {
     return;
   }
 
-  qsort(handle->addrs, handle->addrs_len, sizeof(uv_interface_address_t), cmp_interface);
+  handle->sorted = false;
 
   if (handle->addrs_len != prev_addrs_len) {
     handle->on_event(handle, 0);
   } else {
     for (int i = 0; i < handle->addrs_len; i++) {
-      if (cmp_interface(&handle->addrs[i], &prev_addrs[i]) != 0) {
+      if (cmp_interface(&handle->addrs[i], &prev_addrs[i]) == 0) {
+        continue;
+      }
+
+      if (handle->sorted) {
         handle->on_event(handle, 0);
         break;
       }
+
+      qsort(handle->addrs, handle->addrs_len, sizeof(uv_interface_address_t), cmp_interface);
+      handle->sorted = true;
+
+      if (!prev_sorted) {
+        qsort(prev_addrs, prev_addrs_len, sizeof(uv_interface_address_t), cmp_interface);
+      }
+
+      i = 0;
     }
   }
 
@@ -1449,11 +1463,10 @@ on_interface_event_close (uv_handle_t *handle) {
 int
 udx_interface_event_init (uv_loop_t *loop, udx_interface_event_t *handle) {
   handle->loop = loop;
+  handle->sorted = false;
 
   int err = uv_interface_addresses(&(handle->addrs), &(handle->addrs_len));
   if (err < 0) return err;
-
-  qsort(handle->addrs, handle->addrs_len, sizeof(uv_interface_address_t), cmp_interface);
 
   err = uv_timer_init(handle->loop, &(handle->timer));
   if (err < 0) return err;
