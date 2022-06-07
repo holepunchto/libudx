@@ -32,6 +32,7 @@
 #define UDX_HEADER_DATA_OR_END (UDX_HEADER_DATA | UDX_HEADER_END)
 
 #define UDX_DEFAULT_TTL 64
+#define UDX_DEFAULT_BUFFER_SIZE 212992
 
 #define UDX_MAX_TRANSMITS 6
 
@@ -953,6 +954,14 @@ udx_socket_bind (udx_socket_t *handle, const struct sockaddr *addr) {
   // and in practice non of these will fail, as all our handles are valid and alive.
 
   err = uv_udp_set_ttl(socket, handle->ttl);
+  assert(err == 0);
+
+  int send_buffer_size = UDX_DEFAULT_BUFFER_SIZE;
+  err = uv_send_buffer_size((uv_handle_t *) socket, &send_buffer_size);
+  assert(err == 0);
+
+  int recv_buffer_size = UDX_DEFAULT_BUFFER_SIZE;
+  err = uv_recv_buffer_size((uv_handle_t *) socket, &recv_buffer_size);
   assert(err == 0);
 
   err = uv_fileno((const uv_handle_t *) socket, &fd);
