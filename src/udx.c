@@ -1512,12 +1512,12 @@ udx_interface_event_close (udx_interface_event_t *handle, udx_interface_event_cl
   handle->on_event = NULL;
   handle->on_close = cb;
 
-  uv_free_interface_addresses(event->addrs, event->addrs_len);
+  uv_free_interface_addresses(handle->addrs, handle->addrs_len);
 
   int err = uv_timer_stop(&(handle->timer));
   if (err < 0) return err;
 
-  uv_close((uv_handle_t *) &(handle->timer), NULL);
+  uv_close((uv_handle_t *) &(handle->timer), on_interface_event_close);
 
   return 0;
 }
