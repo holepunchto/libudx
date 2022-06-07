@@ -51,9 +51,6 @@ extern "C" {
 #define UDX_HEADER_MESSAGE 0b01000
 #define UDX_HEADER_DESTROY 0b10000
 
-#define UDX_INTERFACE_ADD    0b01
-#define UDX_INTERFACE_REMOVE 0b10
-
 typedef struct {
   uint32_t seq;
 } udx_cirbuf_val_t;
@@ -96,7 +93,7 @@ typedef void (*udx_stream_send_cb)(udx_stream_send_t *req, int status);
 typedef void (*udx_stream_recv_cb)(udx_stream_t *handle, ssize_t read_len, const uv_buf_t *buf);
 typedef void (*udx_stream_close_cb)(udx_stream_t *handle, int status);
 
-typedef void (*udx_interface_event_cb)(udx_interface_event_t *handle, uv_interface_address_t *addr, int events, int status);
+typedef void (*udx_interface_event_cb)(udx_interface_event_t *handle, int status);
 typedef void (*udx_interface_event_close_cb)(udx_interface_event_t *handle);
 
 struct udx {
