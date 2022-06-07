@@ -1462,9 +1462,7 @@ on_interface_event_interval (uv_timer_t *timer) {
     }
   }
 
-  if (prev_addrs != NULL) {
-    uv_free_interface_addresses(prev_addrs, prev_addrs_len);
-  }
+  uv_free_interface_addresses(prev_addrs, prev_addrs_len);
 }
 
 static void
