@@ -956,12 +956,12 @@ udx_socket_bind (udx_socket_t *handle, const struct sockaddr *addr) {
   err = uv_udp_set_ttl(socket, handle->ttl);
   assert(err == 0);
 
-  int buffer_size = UDX_DEFAULT_BUFFER_SIZE;
-
-  err = uv_send_buffer_size((uv_handle_t *) socket, &buffer_size);
+  int send_buffer_size = UDX_DEFAULT_BUFFER_SIZE;
+  err = uv_send_buffer_size((uv_handle_t *) socket, &send_buffer_size);
   assert(err == 0);
 
-  err = uv_recv_buffer_size((uv_handle_t *) socket, &buffer_size);
+  int recv_buffer_size = UDX_DEFAULT_BUFFER_SIZE;
+  err = uv_recv_buffer_size((uv_handle_t *) socket, &recv_buffer_size);
   assert(err == 0);
 
   err = uv_fileno((const uv_handle_t *) socket, &fd);
