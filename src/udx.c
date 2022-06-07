@@ -1423,7 +1423,7 @@ on_interface_event_interval (uv_timer_t *timer) {
 
   qsort(handle->addrs, handle->addrs_len, sizeof(uv_interface_address_t), cmp_interface);
 
-  if (prev_addrs_len != handle->addrs_len) {
+  if (handle->addrs_len != prev_addrs_len) {
     handle->on_event(handle, 0);
   } else {
     for (int i = 0; i < handle->addrs_len; i++) {
