@@ -1402,9 +1402,6 @@ cmp_interface (const void *a, const void *b) {
   result = memcmp(&ia->address, &ib->address, sizeof(ia->address));
   if (result != 0) return result;
 
-  result = memcmp(&ia->netmask, &ib->netmask, sizeof(ia->netmask));
-  if (result != 0) return result;
-
   return 0;
 }
 
