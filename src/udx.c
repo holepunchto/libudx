@@ -1424,29 +1424,28 @@ on_interface_event_interval (uv_timer_t *timer) {
 
   handle->sorted = false;
 
-  if (handle->addrs_len != prev_addrs_len) {
-    handle->on_event(handle, 0);
-  } else {
-    for (int i = 0; i < handle->addrs_len; i++) {
-      if (cmp_interface(&handle->addrs[i], &prev_addrs[i]) == 0) {
-        continue;
-      }
+  bool changed = handle->addrs_len != prev_addrs_len;
 
-      if (handle->sorted) {
-        handle->on_event(handle, 0);
-        break;
-      }
+  for (int i = 0; !changed && i < handle->addrs_len; i++) {
+    if (cmp_interface(&handle->addrs[i], &prev_addrs[i]) == 0) {
+      continue;
+    }
 
+    if (handle->sorted) changed = true;
+    else {
       qsort(handle->addrs, handle->addrs_len, sizeof(uv_interface_address_t), cmp_interface);
-      handle->sorted = true;
 
       if (!prev_sorted) {
         qsort(prev_addrs, prev_addrs_len, sizeof(uv_interface_address_t), cmp_interface);
       }
 
+      handle->sorted = true;
       i = 0;
     }
   }
+
+  if (changed) handle->on_event(handle, 0);
+  else handle->sorted = prev_sorted;
 
   uv_free_interface_addresses(prev_addrs, prev_addrs_len);
 }
