@@ -76,6 +76,15 @@ typedef struct {
   napi_ref realloc;
 } udx_napi_stream_t;
 
+typedef struct {
+  udx_interface_event_t handle;
+
+  napi_env env;
+  napi_ref ctx;
+  napi_ref on_event;
+  napi_ref on_close;
+} udx_napi_interface_event_t;
+
 inline static void
 parse_address (struct sockaddr *name, char *ip, int *port) {
   struct sockaddr_in *name_in = (struct sockaddr_in *) name;
@@ -244,11 +253,33 @@ on_udx_stream_firewall (udx_stream_t *stream, udx_socket_t *socket, const struct
   return fw;
 }
 
+static void
+on_udx_interface_event (udx_interface_event_t *handle, int status) {
+  udx_napi_interface_event_t *e = (udx_napi_interface_event_t *) handle;
+
+  UDX_NAPI_CALLBACK(e, e->on_event, {
+    NAPI_MAKE_CALLBACK(env, NULL, ctx, callback, 0, NULL, NULL)
+  })
+}
+
+static void
+on_udx_interface_event_close (udx_interface_event_t *handle) {
+  udx_napi_interface_event_t *e = (udx_napi_interface_event_t *) handle;
+
+  UDX_NAPI_CALLBACK(e, e->on_close, {
+    NAPI_MAKE_CALLBACK(env, NULL, ctx, callback, 0, NULL, NULL)
+  })
+
+  napi_delete_reference(env, e->ctx);
+  napi_delete_reference(env, e->on_event);
+  napi_delete_reference(env, e->on_close);
+}
+
 NAPI_METHOD(udx_napi_init) {
   NAPI_ARGV(1)
   NAPI_ARGV_BUFFER_CAST(udx_t *, self, 0)
 
-  struct uv_loop_s *loop;
+  uv_loop_t *loop;
   napi_get_uv_event_loop(env, &loop);
 
   udx_init(loop, self);
@@ -512,33 +543,84 @@ NAPI_METHOD(udx_napi_stream_destroy) {
   NAPI_RETURN_UINT32(err);
 }
 
-NAPI_METHOD(udx_napi_network_interfaces) {
-  uv_interface_address_t* interfaces;
-  int count, i = 0, j = 0;
-  char ip[17];
+NAPI_METHOD(udx_napi_interface_event_init) {
+  NAPI_ARGV(4)
+  NAPI_ARGV_BUFFER_CAST(udx_napi_interface_event_t *, self, 0)
 
-  int err = uv_interface_addresses(&interfaces, &count);
+  udx_interface_event_t *event = (udx_interface_event_t *) self;
+
+  uv_loop_t *loop;
+  napi_get_uv_event_loop(env, &loop);
+
+  self->env = env;
+  napi_create_reference(env, argv[1], 1, &(self->ctx));
+  napi_create_reference(env, argv[2], 1, &(self->on_event));
+  napi_create_reference(env, argv[3], 1, &(self->on_close));
+
+  int err = udx_interface_event_init(loop, event);
   if (err < 0) UDX_NAPI_THROW(err)
+
+  err = udx_interface_event_start(event, on_udx_interface_event, 5000);
+  if (err < 0) UDX_NAPI_THROW(err)
+
+  return NULL;
+}
+
+NAPI_METHOD(udx_napi_interface_event_start) {
+  NAPI_ARGV(1)
+  NAPI_ARGV_BUFFER_CAST(udx_interface_event_t *, event, 0)
+
+  int err = udx_interface_event_start(event, on_udx_interface_event, 5000);
+  if (err < 0) UDX_NAPI_THROW(err)
+
+  return NULL;
+}
+
+NAPI_METHOD(udx_napi_interface_event_stop) {
+  NAPI_ARGV(1)
+  NAPI_ARGV_BUFFER_CAST(udx_interface_event_t *, event, 0)
+
+  int err = udx_interface_event_stop(event);
+  if (err < 0) UDX_NAPI_THROW(err)
+
+  return NULL;
+}
+
+NAPI_METHOD(udx_napi_interface_event_close) {
+  NAPI_ARGV(1)
+  NAPI_ARGV_BUFFER_CAST(udx_interface_event_t *, event, 0)
+
+  int err = udx_interface_event_close(event, on_udx_interface_event_close);
+  if (err < 0) UDX_NAPI_THROW(err)
+
+  return NULL;
+}
+
+NAPI_METHOD(udx_napi_interface_event_get_addrs) {
+  NAPI_ARGV(1)
+  NAPI_ARGV_BUFFER_CAST(udx_interface_event_t *, event, 0)
+
+  char ip[17];
 
   napi_value result;
   napi_create_array(env, &result);
 
-  while (i < count) {
-    uv_interface_address_t network = interfaces[i++];
+  for (int i = 0, j = 0; i < event->addrs_len; i++) {
+    uv_interface_address_t addr = event->addrs[i];
 
     // We only care about IPv4 addresses for now.
-    if (network.address.address4.sin_family != AF_INET) {
+    if (addr.address.address4.sin_family != AF_INET) {
       continue;
     }
 
-    uv_ip4_name(&network.address.address4, ip, sizeof(ip));
+    uv_ip4_name(&addr.address.address4, ip, sizeof(ip));
 
     napi_value item;
     napi_create_object(env, &item);
     napi_set_element(env, result, j++, item);
 
     napi_value name;
-    napi_create_string_utf8(env, network.name, NAPI_AUTO_LENGTH, &name);
+    napi_create_string_utf8(env, addr.name, NAPI_AUTO_LENGTH, &name);
     napi_set_named_property(env, item, "name", name);
 
     napi_value host;
@@ -550,11 +632,9 @@ NAPI_METHOD(udx_napi_network_interfaces) {
     napi_set_named_property(env, item, "family", family);
 
     napi_value internal;
-    napi_get_boolean(env, network.is_internal, &internal);
+    napi_get_boolean(env, addr.is_internal, &internal);
     napi_set_named_property(env, item, "internal", internal);
   }
-
-  uv_free_interface_addresses(interfaces, count);
 
   return result;
 }
@@ -569,6 +649,7 @@ NAPI_INIT() {
   NAPI_EXPORT_SIZEOF(udx_t)
   NAPI_EXPORT_SIZEOF(udx_napi_socket_t)
   NAPI_EXPORT_SIZEOF(udx_napi_stream_t)
+  NAPI_EXPORT_SIZEOF(udx_napi_interface_event_t)
 
   NAPI_EXPORT_SIZEOF(udx_socket_send_t)
   NAPI_EXPORT_SIZEOF(udx_stream_write_t)
@@ -593,5 +674,9 @@ NAPI_INIT() {
   NAPI_EXPORT_FUNCTION(udx_napi_stream_write_end)
   NAPI_EXPORT_FUNCTION(udx_napi_stream_destroy)
 
-  NAPI_EXPORT_FUNCTION(udx_napi_network_interfaces)
+  NAPI_EXPORT_FUNCTION(udx_napi_interface_event_init)
+  NAPI_EXPORT_FUNCTION(udx_napi_interface_event_start)
+  NAPI_EXPORT_FUNCTION(udx_napi_interface_event_stop)
+  NAPI_EXPORT_FUNCTION(udx_napi_interface_event_close)
+  NAPI_EXPORT_FUNCTION(udx_napi_interface_event_get_addrs)
 }

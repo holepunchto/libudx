@@ -1388,3 +1388,117 @@ udx_stream_destroy (udx_stream_t *handle) {
   int err = update_poll(handle->socket);
   return err < 0 ? err : 1;
 }
+
+static int
+cmp_interface (const void *a, const void *b) {
+  const uv_interface_address_t *ia = a;
+  const uv_interface_address_t *ib = b;
+
+  int result;
+
+  result = strcmp(ia->phys_addr, ib->phys_addr);
+  if (result != 0) return result;
+
+  result = memcmp(&ia->address, &ib->address, sizeof(ia->address));
+  if (result != 0) return result;
+
+  return 0;
+}
+
+static void
+on_interface_event_interval (uv_timer_t *timer) {
+  udx_interface_event_t *handle = (udx_interface_event_t *) timer->data;
+
+  uv_interface_address_t *prev_addrs = handle->addrs;
+  int prev_addrs_len = handle->addrs_len;
+  bool prev_sorted = handle->sorted;
+
+  int err = uv_interface_addresses(&(handle->addrs), &(handle->addrs_len));
+  if (err < 0) {
+    handle->on_event(handle, err);
+    return;
+  }
+
+  handle->sorted = false;
+
+  bool changed = handle->addrs_len != prev_addrs_len;
+
+  for (int i = 0; !changed && i < handle->addrs_len; i++) {
+    if (cmp_interface(&handle->addrs[i], &prev_addrs[i]) == 0) {
+      continue;
+    }
+
+    if (handle->sorted) changed = true;
+    else {
+      qsort(handle->addrs, handle->addrs_len, sizeof(uv_interface_address_t), cmp_interface);
+
+      if (!prev_sorted) {
+        qsort(prev_addrs, prev_addrs_len, sizeof(uv_interface_address_t), cmp_interface);
+      }
+
+      handle->sorted = true;
+      i = 0;
+    }
+  }
+
+  if (changed) handle->on_event(handle, 0);
+  else handle->sorted = prev_sorted;
+
+  uv_free_interface_addresses(prev_addrs, prev_addrs_len);
+}
+
+static void
+on_interface_event_close (uv_handle_t *handle) {
+  udx_interface_event_t *event = (udx_interface_event_t *) handle->data;
+
+  if (event->on_close != NULL) {
+    event->on_close(event);
+  }
+}
+
+int
+udx_interface_event_init (uv_loop_t *loop, udx_interface_event_t *handle) {
+  handle->loop = loop;
+  handle->sorted = false;
+
+  int err = uv_interface_addresses(&(handle->addrs), &(handle->addrs_len));
+  if (err < 0) return err;
+
+  err = uv_timer_init(handle->loop, &(handle->timer));
+  if (err < 0) return err;
+
+  handle->timer.data = handle;
+
+  return 0;
+}
+
+int
+udx_interface_event_start (udx_interface_event_t *handle, udx_interface_event_cb cb, uint64_t frequency) {
+  handle->on_event = cb;
+
+  int err = uv_timer_start(&(handle->timer), on_interface_event_interval, 0, frequency);
+  return err < 0 ? err : 0;
+}
+
+int
+udx_interface_event_stop (udx_interface_event_t *handle) {
+  handle->on_event = NULL;
+
+  int err = uv_timer_stop(&(handle->timer));
+  return err < 0 ? err : 0;
+}
+
+int
+udx_interface_event_close (udx_interface_event_t *handle, udx_interface_event_close_cb cb) {
+  handle->on_event = NULL;
+  handle->on_close = cb;
+
+  uv_free_interface_addresses(handle->addrs, handle->addrs_len);
+
+  int err = uv_timer_stop(&(handle->timer));
+  if (err < 0) return err;
+
+  uv_close((uv_handle_t *) &(handle->timer), on_interface_event_close);
+
+  return 0;
+}
