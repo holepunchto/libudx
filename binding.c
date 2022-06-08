@@ -269,6 +269,10 @@ on_udx_interface_event_close (udx_interface_event_t *handle) {
   UDX_NAPI_CALLBACK(e, e->on_close, {
     NAPI_MAKE_CALLBACK(env, NULL, ctx, callback, 0, NULL, NULL)
   })
+
+  napi_delete_reference(env, e->ctx);
+  napi_delete_reference(env, e->on_event);
+  napi_delete_reference(env, e->on_close);
 }
 
 NAPI_METHOD(udx_napi_init) {
