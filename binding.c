@@ -128,6 +128,11 @@ on_udx_close (udx_socket_t *self) {
   UDX_NAPI_CALLBACK(n, n->on_close, {
     NAPI_MAKE_CALLBACK(env, NULL, ctx, callback, 0, NULL, NULL)
   })
+
+  napi_delete_reference(env, n->ctx);
+  napi_delete_reference(env, n->on_send);
+  napi_delete_reference(env, n->on_message);
+  napi_delete_reference(env, n->on_close);
 }
 
 static void
@@ -220,6 +225,17 @@ on_udx_stream_close (udx_stream_t *stream, int status) {
     napi_create_int32(env, status, &(argv[0]));
     NAPI_MAKE_CALLBACK(env, NULL, ctx, callback, 1, argv, NULL)
   })
+
+  napi_delete_reference(env, n->ctx);
+  napi_delete_reference(env, n->on_data);
+  napi_delete_reference(env, n->on_end);
+  napi_delete_reference(env, n->on_drain);
+  napi_delete_reference(env, n->on_ack);
+  napi_delete_reference(env, n->on_send);
+  napi_delete_reference(env, n->on_message);
+  napi_delete_reference(env, n->on_close);
+  napi_delete_reference(env, n->on_firewall);
+  napi_delete_reference(env, n->realloc);
 }
 
 static int
