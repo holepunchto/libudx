@@ -659,43 +659,47 @@ NAPI_METHOD(udx_napi_interface_event_get_addrs) {
   NAPI_ARGV(1)
   NAPI_ARGV_BUFFER_CAST(udx_interface_event_t *, event, 0)
 
-  char ip[17];
+  char ip[INET6_ADDRSTRLEN];
+  int family;
 
-  napi_value result;
-  napi_create_array(env, &result);
+  napi_value napi_result;
+  napi_create_array(env, &napi_result);
 
   for (int i = 0, j = 0; i < event->addrs_len; i++) {
     uv_interface_address_t addr = event->addrs[i];
 
-    // We only care about IPv4 addresses for now.
-    if (addr.address.address4.sin_family != AF_INET) {
+    if (addr.address.address4.sin_family == AF_INET) {
+      uv_ip4_name(&addr.address.address4, ip, sizeof(ip));
+      family = 4;
+    } else if (addr.address.address4.sin_family == AF_INET6) {
+      uv_ip6_name(&addr.address.address6, ip, sizeof(ip));
+      family = 6;
+    } else {
       continue;
     }
 
-    uv_ip4_name(&addr.address.address4, ip, sizeof(ip));
+    napi_value napi_item;
+    napi_create_object(env, &napi_item);
+    napi_set_element(env, napi_result, j++, napi_item);
 
-    napi_value item;
-    napi_create_object(env, &item);
-    napi_set_element(env, result, j++, item);
+    napi_value napi_name;
+    napi_create_string_utf8(env, addr.name, NAPI_AUTO_LENGTH, &napi_name);
+    napi_set_named_property(env, napi_item, "name", napi_name);
 
-    napi_value name;
-    napi_create_string_utf8(env, addr.name, NAPI_AUTO_LENGTH, &name);
-    napi_set_named_property(env, item, "name", name);
+    napi_value napi_ip;
+    napi_create_string_utf8(env, ip, NAPI_AUTO_LENGTH, &napi_ip);
+    napi_set_named_property(env, napi_item, "host", napi_ip);
 
-    napi_value host;
-    napi_create_string_utf8(env, ip, NAPI_AUTO_LENGTH, &host);
-    napi_set_named_property(env, item, "host", host);
+    napi_value napi_family;
+    napi_create_uint32(env, family, &napi_family);
+    napi_set_named_property(env, napi_item, "family", napi_family);
 
-    napi_value family;
-    napi_create_uint32(env, 4, &family);
-    napi_set_named_property(env, item, "family", family);
-
-    napi_value internal;
-    napi_get_boolean(env, addr.is_internal, &internal);
-    napi_set_named_property(env, item, "internal", internal);
+    napi_value napi_internal;
+    napi_get_boolean(env, addr.is_internal, &napi_internal);
+    napi_set_named_property(env, napi_item, "internal", napi_internal);
   }
 
-  return result;
+  return napi_result;
 }
 
 NAPI_INIT() {
