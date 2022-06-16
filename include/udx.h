@@ -144,7 +144,8 @@ struct udx_stream {
   udx_t *udx;
   udx_socket_t *socket;
 
-  struct sockaddr remote_addr;
+  struct sockaddr_storage remote_addr;
+  int remote_addr_len;
 
   void *data;
 
@@ -200,7 +201,8 @@ struct udx_packet {
 
   void *ctx;
 
-  struct sockaddr dest;
+  struct sockaddr_storage dest;
+  int dest_len;
 
   // just alloc it in place here, easier to manage
   char header[UDX_HEADER_SIZE];

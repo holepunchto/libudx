@@ -261,6 +261,7 @@ init_stream_packet (udx_packet_t *pkt, int type, udx_stream_t *stream, const uv_
   pkt->transmits = 0;
   pkt->size = (uint16_t) (UDX_HEADER_SIZE + buf->len);
   pkt->dest = stream->remote_addr;
+  pkt->dest_len = stream->remote_addr_len;
 
   pkt->bufs_len = 2;
 
@@ -803,7 +804,7 @@ on_uv_poll (uv_poll_t *handle, int status, int events) {
 
     if (adjust_ttl) uv_udp_set_ttl((uv_udp_t *) socket, pkt->ttl);
 
-    udx__sendmsg(socket, pkt->bufs, pkt->bufs_len, &(pkt->dest), sizeof(pkt->dest));
+    udx__sendmsg(socket, pkt->bufs, pkt->bufs_len, (struct sockaddr *) &(pkt->dest), pkt->dest_len);
 
     pkt->time_sent = uv_hrtime() / 1e6;
 
@@ -1001,7 +1002,16 @@ udx_socket_send_ttl (udx_socket_send_t *req, udx_socket_t *handle, const uv_buf_
   pkt->type = UDX_PACKET_SEND;
   pkt->ttl = ttl;
   pkt->ctx = req;
-  pkt->dest = *dest;
+
+  if (dest->sa_family == AF_INET) {
+    pkt->dest_len = sizeof(struct sockaddr_in);
+  } else if (dest->sa_family == AF_INET6) {
+    pkt->dest_len = sizeof(struct sockaddr_in6);
+  } else {
+    return UV_EINVAL;
+  }
+
+  memcpy(&(pkt->dest), dest, pkt->dest_len);
 
   pkt->is_retransmit = 0;
   pkt->transmits = 0;
@@ -1234,8 +1244,17 @@ udx_stream_connect (udx_stream_t *handle, udx_socket_t *socket, uint32_t remote_
   handle->status |= UDX_STREAM_CONNECTED;
 
   handle->remote_id = remote_id;
-  handle->remote_addr = *remote_addr;
   handle->socket = socket;
+
+  if (remote_addr->sa_family == AF_INET) {
+    handle->remote_addr_len = sizeof(struct sockaddr_in);
+  } else if (remote_addr->sa_family == AF_INET6) {
+    handle->remote_addr_len = sizeof(struct sockaddr_in6);
+  } else {
+    return UV_EINVAL;
+  }
+
+  memcpy(&(handle->remote_addr), remote_addr, handle->remote_addr_len);
 
   return update_poll(handle->socket);
 }
