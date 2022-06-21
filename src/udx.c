@@ -924,13 +924,33 @@ udx_socket_init (udx_t *udx, udx_socket_t *handle) {
 }
 
 int
-udx_socket_send_buffer_size(udx_socket_t *handle, int *value) {
+udx_socket_get_send_buffer_size(udx_socket_t *handle, int *value) {
+  *value = 0;
   return uv_send_buffer_size((uv_handle_t *) &(handle->socket), value);
 }
 
 int
-udx_socket_recv_buffer_size(udx_socket_t *handle, int *value) {
+udx_socket_set_send_buffer_size(udx_socket_t *handle, int value) {
+  if (value < 1) return UV_EINVAL;
+  return uv_send_buffer_size((uv_handle_t *) &(handle->socket), &value);
+}
+
+int
+udx_socket_get_recv_buffer_size(udx_socket_t *handle, int *value) {
+  *value = 0;
   return uv_recv_buffer_size((uv_handle_t *) &(handle->socket), value);
+}
+
+int
+udx_socket_set_recv_buffer_size(udx_socket_t *handle, int value) {
+  if (value < 1) return UV_EINVAL;
+  return uv_recv_buffer_size((uv_handle_t *) &(handle->socket), &value);
+}
+
+int
+udx_socket_get_ttl (udx_socket_t *handle, int *ttl) {
+  *ttl = handle->ttl;
+  return 0;
 }
 
 int
@@ -1138,7 +1158,6 @@ udx_stream_init (udx_t *udx, udx_stream_t *handle, uint32_t local_id, udx_stream
 int
 udx_stream_firewall (udx_stream_t *handle, udx_stream_firewall_cb cb) {
   handle->on_firewall = cb;
-
   return 0;
 }
 

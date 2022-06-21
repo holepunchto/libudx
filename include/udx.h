@@ -256,10 +256,19 @@ int
 udx_socket_init (udx_t *handle, udx_socket_t *socket);
 
 int
-udx_socket_send_buffer_size (udx_socket_t *handle, int *value);
+udx_socket_get_send_buffer_size (udx_socket_t *handle, int *value);
 
 int
-udx_socket_recv_buffer_size (udx_socket_t *handle, int *value);
+udx_socket_set_send_buffer_size (udx_socket_t *handle, int value);
+
+int
+udx_socket_get_recv_buffer_size (udx_socket_t *handle, int *value);
+
+int
+udx_socket_set_recv_buffer_size (udx_socket_t *handle, int value);
+
+int
+udx_socket_get_ttl (udx_socket_t *handle, int *ttl);
 
 int
 udx_socket_set_ttl (udx_socket_t *handle, int ttl);
