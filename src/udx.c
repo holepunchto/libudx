@@ -1389,6 +1389,38 @@ udx_stream_destroy (udx_stream_t *handle) {
   return err < 0 ? err : 1;
 }
 
+static void
+on_uv_getaddrinfo (uv_getaddrinfo_t *req, int status, struct addrinfo *res) {
+  udx_lookup_t *lookup = (udx_lookup_t *) req->data;
+
+  if (status < 0) {
+    lookup->on_lookup(lookup, status, NULL, 0);
+  } else {
+    lookup->on_lookup(lookup, status, res->ai_addr, res->ai_addrlen);
+  }
+
+  uv_freeaddrinfo(res);
+}
+
+int
+udx_lookup (uv_loop_t *loop, udx_lookup_t *req, const char *host, unsigned int flags, udx_lookup_cb cb) {
+  req->on_lookup = cb;
+  req->req.data = req;
+
+  memset(&req->hints, 0, sizeof(struct addrinfo));
+
+  int family = AF_UNSPEC;
+
+  if (flags & UDX_LOOKUP_FAMILY_IPV4) family = AF_INET;
+  if (flags & UDX_LOOKUP_FAMILY_IPV6) family = AF_INET6;
+
+  req->hints.ai_family = family;
+  req->hints.ai_socktype = SOCK_STREAM;
+
+  return uv_getaddrinfo(loop, &req->req, on_uv_getaddrinfo, host, NULL, &req->hints);
+}
+
+
 static int
 cmp_interface (const void *a, const void *b) {
   const uv_interface_address_t *ia = a;
