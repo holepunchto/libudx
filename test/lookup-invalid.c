@@ -9,7 +9,9 @@ udx_lookup_t req;
 
 void
 on_lookup (udx_lookup_t *req, int status, const struct sockaddr *addr, int addr_len) {
+  assert(status == UV_EAI_NONAME);
   assert(addr == NULL);
+  assert(addr_len == 0);
 
   uv_stop(&loop);
 }
