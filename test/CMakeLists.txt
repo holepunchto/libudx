@@ -1,5 +1,6 @@
 list(APPEND tests
   lookup
+  lookup-invalid
   lookup-ipv6
   socket-send-recv
   stream-destroy
