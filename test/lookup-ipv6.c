@@ -8,7 +8,7 @@ uv_loop_t loop;
 udx_lookup_t req;
 
 void
-on_lookup (udx_lookup_t *req, int status, struct sockaddr *addr, int addr_len) {
+on_lookup (udx_lookup_t *req, int status, const struct sockaddr *addr, int addr_len) {
   assert(addr->sa_family == AF_INET6);
 
   char ip[INET_ADDRSTRLEN];

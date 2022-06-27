@@ -101,7 +101,7 @@ typedef void (*udx_stream_send_cb)(udx_stream_send_t *req, int status);
 typedef void (*udx_stream_recv_cb)(udx_stream_t *handle, ssize_t read_len, const uv_buf_t *buf);
 typedef void (*udx_stream_close_cb)(udx_stream_t *handle, int status);
 
-typedef void (*udx_lookup_cb)(udx_lookup_t *handle, int status, struct sockaddr *addr, int addr_len);
+typedef void (*udx_lookup_cb)(udx_lookup_t *handle, int status, const struct sockaddr *addr, int addr_len);
 
 typedef void (*udx_interface_event_cb)(udx_interface_event_t *handle, int status);
 typedef void (*udx_interface_event_close_cb)(udx_interface_event_t *handle);
