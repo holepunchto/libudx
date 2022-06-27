@@ -1393,7 +1393,7 @@ static void
 on_uv_getaddrinfo (uv_getaddrinfo_t *req, int status, struct addrinfo *res) {
   udx_lookup_t *lookup = (udx_lookup_t *) req->data;
 
-  if (status < 0) {
+  if (status < 0 || res == NULL) {
     lookup->on_lookup(lookup, status, NULL, 0);
   } else {
     lookup->on_lookup(lookup, status, res->ai_addr, res->ai_addrlen);
