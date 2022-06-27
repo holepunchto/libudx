@@ -287,7 +287,7 @@ on_udx_lookup (udx_lookup_t *lookup, int status, const struct sockaddr *addr, in
   char ip[INET6_ADDRSTRLEN] = "";
   int family = 0;
 
-  if (addr != NULL) {
+  if (status >= 0) {
     if (addr->sa_family== AF_INET) {
       uv_ip4_name((struct sockaddr_in *) addr, ip, addr_len);
       family = 4;

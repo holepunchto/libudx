@@ -1393,18 +1393,11 @@ static void
 on_uv_getaddrinfo (uv_getaddrinfo_t *req, int status, struct addrinfo *res) {
   udx_lookup_t *lookup = (udx_lookup_t *) req->data;
 
-  struct sockaddr *addr = NULL;
-  int addr_len = 0;
-
-  if (status >= 0) {
-    if (res == NULL) status = UV_EAI_NONAME;
-    else {
-      addr = res->ai_addr;
-      addr_len = res->ai_addrlen;
-    }
+  if (status < 0) {
+    lookup->on_lookup(lookup, status, NULL, 0);
+  } else {
+    lookup->on_lookup(lookup, status, res->ai_addr, res->ai_addrlen);
   }
-
-  lookup->on_lookup(lookup, status, addr, addr_len);
 
   uv_freeaddrinfo(res);
 }
