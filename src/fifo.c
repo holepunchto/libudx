@@ -59,7 +59,7 @@ udx__fifo_push (udx_fifo_t *f, void *data) {
 void
 udx__fifo_remove (udx_fifo_t *f, void *data, uint32_t pos_hint) {
   // check if the pos_hint is correct
-  if (pos_hint < f->max_len && f->values[pos_hint] == data) {
+  if (pos_hint >= f->btm && pos_hint < (f->btm + f->len) && f->values[pos_hint] == data) {
     f->values[pos_hint] = NULL;
     return;
   }

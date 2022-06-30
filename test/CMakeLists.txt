@@ -1,11 +1,17 @@
 list(APPEND tests
+  lookup
+  lookup-invalid
+  lookup-ipv6
   socket-send-recv
+  socket-send-recv-ipv6
   stream-destroy
   stream-destroy-before-connect
   stream-preconnect
   stream-preconnect-same-socket
   stream-send-recv
+  stream-send-recv-ipv6
   stream-write-read
+  stream-write-read-ipv6
 )
 
 foreach(test IN LISTS tests)

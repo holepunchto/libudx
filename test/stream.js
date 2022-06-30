@@ -163,13 +163,38 @@ test('unordered messages', async function (t) {
   a.send(Buffer.from('d'))
 })
 
+test('ipv6 streams', async function (t) {
+  t.plan(1)
+
+  const u = new UDX()
+
+  const aSocket = u.createSocket()
+  aSocket.bind(0, '::1')
+  t.teardown(() => aSocket.close())
+
+  const bSocket = u.createSocket()
+  bSocket.bind(0, '::1')
+  t.teardown(() => bSocket.close())
+
+  const a = u.createStream(1)
+  const b = u.createStream(2)
+
+  a.connect(aSocket, 2, bSocket.address().port, '::1')
+  b.connect(bSocket, 1, aSocket.address().port, '::1')
+
+  a.on('data', function (data) {
+    t.alike(data, Buffer.from('hello world'))
+    a.end()
+  })
+
+  b.end('hello world')
+})
+
 test('several streams on same socket', async function (t) {
   const u = new UDX()
 
   const socket = u.createSocket()
   socket.bind(0)
-
-  t.teardown(() => socket.close())
 
   for (let i = 0; i < 10; i++) {
     const stream = u.createStream(i)
@@ -178,6 +203,7 @@ test('several streams on same socket', async function (t) {
     t.teardown(() => stream.destroy())
   }
 
+  t.teardown(() => socket.close())
   t.pass('halts')
 })
 
@@ -262,11 +288,13 @@ test('destroy streams and close socket in callback', async function (t) {
   a.connect(socket, 2, socket.address().port)
   b.connect(socket, 1, socket.address().port)
 
-  a.on('data', function (data) {
+  a.on('data', async function (data) {
     a.destroy()
     b.destroy()
 
-    socket.close(() => t.pass('closed'))
+    await socket.close()
+
+    t.pass('closed')
   })
 
   b.write(Buffer.from('hello'))
@@ -291,6 +319,62 @@ test('write empty buffer', async function (t) {
       t.pass('b closed')
     })
     .end(Buffer.alloc(0))
+})
+
+test('out of order packets', async function (t) {
+  t.plan(3)
+
+  const u = new UDX()
+
+  const a = u.createSocket()
+  const b = u.createSocket()
+
+  a.bind(0)
+  b.bind(0)
+
+  const count = 1000
+  const expected = []
+
+  const p = await proxy({ from: a, to: b }, async function (pkt) {
+    // Add a random delay to every packet
+    await new Promise((resolve) =>
+      setTimeout(resolve, Math.random() * 1000 | 0)
+    )
+
+    return false
+  })
+
+  const aStream = u.createStream(1)
+  const bStream = u.createStream(2)
+
+  aStream.connect(a, 2, p.address().port)
+  bStream.connect(b, 1, p.address().port)
+
+  for (let i = 0; i < count; i++) {
+    aStream.write(Buffer.from(i.toString()))
+  }
+
+  bStream.on('data', function (data) {
+    expected.push(data.toString())
+
+    if (expected.length === count) {
+      t.alike(expected, Array(count).fill(0).map((_, i) => i.toString()), 'data in order')
+
+      p.close()
+      aStream.destroy()
+      bStream.destroy()
+    }
+  })
+
+  aStream.on('close', function () {
+    t.pass('a stream closed')
+    b.close()
+  })
+
+  bStream.on('close', function () {
+    t.pass('b stream closed')
+    a.close()
+  })
 })
 
 test('out of order reads but can destroy (memleak test)', async function (t) {
@@ -357,8 +441,9 @@ test('close socket on stream close', async function (t) {
   b.connect(bSocket, 1, aSocket.address().port)
 
   a
-    .on('close', function () {
-      aSocket.close(() => t.pass('a closed'))
+    .on('close', async function () {
+      await aSocket.close()
+      t.pass('a closed')
     })
     .end()
 
@@ -366,8 +451,9 @@ test('close socket on stream close', async function (t) {
     .on('end', function () {
       b.end()
     })
-    .on('close', function () {
-      bSocket.close(() => t.pass('b closed'))
+    .on('close', async function () {
+      await bSocket.close()
+      t.pass('b closed')
     })
 })
 
@@ -390,4 +476,68 @@ test('write string', async function (t) {
       t.pass('b closed')
     })
     .end('hello world')
+})
+
+test('destroy before fully connected', async function (t) {
+  t.plan(2)
+
+  const u = new UDX()
+
+  const socket = u.createSocket()
+  socket.bind(0)
+
+  const a = u.createStream(1)
+  const b = u.createStream(2, {
+    firewall () {
+      return false // accept packets from a
+    }
+  })
+
+  a.connect(socket, 2, socket.address().port)
+  a.destroy()
+
+  b
+    .on('error', function (err) {
+      t.is(err.code, 'ECONNRESET')
+    })
+    .on('close', async function () {
+      t.pass('b closed')
+      await socket.close()
+    })
+
+  setTimeout(function () {
+    b.connect(socket, 1, socket.address().port)
+    b.destroy()
+  }, 100) // wait for destroy to be processed
+})
+
+// Unskip once https://github.com/nodejs/node/issues/38155 is solved
+test.skip('throw in data callback', async function (t) {
+  t.plan(1)
+
+  const u = new UDX()
+
+  const socket = u.createSocket()
+  socket.bind(0)
+
+  const a = u.createStream(1)
+  const b = u.createStream(2)
+
+  a.connect(socket, 2, socket.address().port)
+  b.connect(socket, 1, socket.address().port)
+
+  a.on('data', function () {
+    throw new Error('boom')
+  })
+
+  b.end(Buffer.from('hello'))
+
+  process.once('uncaughtException', async (err) => {
+    t.is(err.message, 'boom')
+
+    a.destroy()
+    b.destroy()
+
+    await socket.close()
+  })
 })

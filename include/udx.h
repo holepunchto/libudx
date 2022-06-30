@@ -6,6 +6,7 @@ extern "C" {
 #endif
 
 #include <stdint.h>
+#include <stdbool.h>
 #include <uv.h>
 
 // TODO: research the packets sizes a bit more
@@ -79,6 +80,15 @@ typedef struct udx_socket_send udx_socket_send_t;
 typedef struct udx_stream_write udx_stream_write_t;
 typedef struct udx_stream_send udx_stream_send_t;
 
+typedef enum {
+  UDX_LOOKUP_FAMILY_IPV4 = 1,
+  UDX_LOOKUP_FAMILY_IPV6 = 2,
+} udx_lookup_flags;
+
+typedef struct udx_lookup udx_lookup_t;
+
+typedef struct udx_interface_event udx_interface_event_t;
+
 typedef void (*udx_socket_send_cb)(udx_socket_send_t *req, int status);
 typedef void (*udx_socket_recv_cb)(udx_socket_t *handle, ssize_t read_len, const uv_buf_t *buf, const struct sockaddr *from);
 typedef void (*udx_socket_close_cb)(udx_socket_t *handle);
@@ -90,6 +100,11 @@ typedef void (*udx_stream_ack_cb)(udx_stream_write_t *req, int status, int unord
 typedef void (*udx_stream_send_cb)(udx_stream_send_t *req, int status);
 typedef void (*udx_stream_recv_cb)(udx_stream_t *handle, ssize_t read_len, const uv_buf_t *buf);
 typedef void (*udx_stream_close_cb)(udx_stream_t *handle, int status);
+
+typedef void (*udx_lookup_cb)(udx_lookup_t *handle, int status, const struct sockaddr *addr, int addr_len);
+
+typedef void (*udx_interface_event_cb)(udx_interface_event_t *handle, int status);
+typedef void (*udx_interface_event_close_cb)(udx_interface_event_t *handle);
 
 struct udx {
   uv_timer_t timer;
@@ -132,11 +147,14 @@ struct udx_stream {
 
   int set_id;
   int status;
+  int out_of_order;
+  int recovery;
 
   udx_t *udx;
   udx_socket_t *socket;
 
-  struct sockaddr remote_addr;
+  struct sockaddr_storage remote_addr;
+  int remote_addr_len;
 
   void *data;
 
@@ -192,7 +210,8 @@ struct udx_packet {
 
   void *ctx;
 
-  struct sockaddr dest;
+  struct sockaddr_storage dest;
+  int dest_len;
 
   // just alloc it in place here, easier to manage
   char header[UDX_HEADER_SIZE];
@@ -227,6 +246,29 @@ struct udx_stream_send {
   void *data;
 };
 
+struct udx_lookup {
+  uv_getaddrinfo_t req;
+  struct addrinfo hints;
+
+  udx_lookup_cb on_lookup;
+
+  void *data;
+};
+
+struct udx_interface_event {
+  uv_timer_t timer;
+  uv_loop_t *loop;
+
+  uv_interface_address_t *addrs;
+  int addrs_len;
+  bool sorted;
+
+  udx_interface_event_cb on_event;
+  udx_interface_event_close_cb on_close;
+
+  void *data;
+};
+
 int
 udx_init (uv_loop_t *loop, udx_t *handle);
 
@@ -234,10 +276,19 @@ int
 udx_socket_init (udx_t *handle, udx_socket_t *socket);
 
 int
-udx_socket_send_buffer_size (udx_socket_t *handle, int *value);
+udx_socket_get_send_buffer_size (udx_socket_t *handle, int *value);
 
 int
-udx_socket_recv_buffer_size (udx_socket_t *handle, int *value);
+udx_socket_set_send_buffer_size (udx_socket_t *handle, int value);
+
+int
+udx_socket_get_recv_buffer_size (udx_socket_t *handle, int *value);
+
+int
+udx_socket_set_recv_buffer_size (udx_socket_t *handle, int value);
+
+int
+udx_socket_get_ttl (udx_socket_t *handle, int *ttl);
 
 int
 udx_socket_set_ttl (udx_socket_t *handle, int ttl);
@@ -268,10 +319,10 @@ int
 udx_check_timeouts (udx_t *handle);
 
 int
-udx_stream_init (udx_t *udx, udx_stream_t *handle, uint32_t local_id);
+udx_stream_init (udx_t *udx, udx_stream_t *handle, uint32_t local_id, udx_stream_close_cb close_cb);
 
 int
-udx_stream_connect (udx_stream_t *handle, udx_socket_t *socket, uint32_t remote_id, const struct sockaddr *remote_addr, udx_stream_close_cb close_cb);
+udx_stream_connect (udx_stream_t *handle, udx_socket_t *socket, uint32_t remote_id, const struct sockaddr *remote_addr);
 
 int
 udx_stream_firewall (udx_stream_t *handle, udx_stream_firewall_cb firewall_cb);
@@ -306,6 +357,21 @@ udx_stream_write_end (udx_stream_write_t *req, udx_stream_t *handle, const uv_bu
 
 int
 udx_stream_destroy (udx_stream_t *handle);
+
+int
+udx_lookup (uv_loop_t *loop, udx_lookup_t *req, const char *host, unsigned int flags, udx_lookup_cb cb);
+
+int
+udx_interface_event_init (uv_loop_t *loop, udx_interface_event_t *handle);
+
+int
+udx_interface_event_start (udx_interface_event_t *handle, udx_interface_event_cb cb, uint64_t frequency);
+
+int
+udx_interface_event_stop (udx_interface_event_t *handle);
+
+int
+udx_interface_event_close (udx_interface_event_t *handle, udx_interface_event_close_cb cb);
 
 #ifdef __cplusplus
 }

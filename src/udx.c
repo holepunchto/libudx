@@ -31,9 +31,13 @@
 
 #define UDX_HEADER_DATA_OR_END (UDX_HEADER_DATA | UDX_HEADER_END)
 
-#define UDX_DEFAULT_TTL 64
+#define UDX_DEFAULT_TTL         64
+#define UDX_DEFAULT_BUFFER_SIZE 212992
 
-#define UDX_MAX_TRANSMITS 5
+#define UDX_MAX_TRANSMITS 6
+
+#define UDX_SLOW_RETRANSMIT 1
+#define UDX_FAST_RETRANSMIT 2
 
 typedef struct {
   uint32_t seq; // must be the first entry, so its compat with the cirbuf
@@ -258,6 +262,7 @@ init_stream_packet (udx_packet_t *pkt, int type, udx_stream_t *stream, const uv_
   pkt->transmits = 0;
   pkt->size = (uint16_t) (UDX_HEADER_SIZE + buf->len);
   pkt->dest = stream->remote_addr;
+  pkt->dest_len = stream->remote_addr_len;
 
   pkt->bufs_len = 2;
 
@@ -278,10 +283,15 @@ send_state_packet (udx_stream_t *stream) {
   void *payload = NULL;
   size_t payload_len = 0;
 
-  uint32_t max = 512;
-  for (uint32_t i = 0; i < max && payload_len < 400; i++) {
+  int ooo = stream->out_of_order;
+
+  // 65536 is just a sanity check here in terms of how much max work we wanna do, could prob be smarter
+  // only valid if ooo is very large
+  for (uint32_t i = 0; i < 65536 && ooo > 0 && payload_len < 400; i++) {
     uint32_t seq = stream->ack + 1 + i;
     if (udx__cirbuf_get(&(stream->incoming), seq) == NULL) continue;
+
+    ooo--;
 
     if (sacks == NULL) {
       pkt = malloc(sizeof(udx_packet_t) + 1024);
@@ -298,8 +308,6 @@ send_state_packet (udx_stream_t *stream) {
       end = seq + 1;
       payload_len += 8;
     }
-
-    max = i + 512;
   }
 
   if (start != end) {
@@ -420,13 +428,15 @@ ack_packet (udx_stream_t *stream, uint32_t seq, int sack) {
 
   if (pkt == NULL) return 0;
 
+  int fast_rt = pkt->is_retransmit == UDX_FAST_RETRANSMIT;
+
   if (pkt->is_retransmit) {
     pkt->is_retransmit = 0;
     stream->retransmits_waiting--;
     stream->pkts_waiting--;
   }
 
-  if (pkt->status == UDX_PACKET_INFLIGHT) {
+  if (pkt->status == UDX_PACKET_INFLIGHT || pkt->status == UDX_PACKET_SENDING) {
     stream->pkts_inflight--;
     stream->inflight -= pkt->size;
   }
@@ -450,6 +460,13 @@ ack_packet (udx_stream_t *stream, uint32_t seq, int sack) {
 
     // RTO <- SRTT + max (G, K*RTTVAR) where K is 4 maxed with 1s
     stream->rto = max_uint32(stream->srtt + max_uint32(UDX_CLOCK_GRANULARITY_MS, 4 * stream->rttvar), 1000);
+
+    // Congestion control...
+    if (stream->cwnd < stream->ssthresh || fast_rt) {
+      stream->cwnd += UDX_MTU;
+    } else {
+      stream->cwnd += max_uint32((UDX_MTU * UDX_MTU) / stream->cwnd, 1);
+    }
   }
 
   if (!sack) { // Reset rto timer when new data is ack'ed (inorder)
@@ -511,22 +528,61 @@ process_sacks (udx_stream_t *stream, char *buf, size_t buf_len) {
 static void
 fast_retransmit (udx_stream_t *stream) {
   udx_cirbuf_t *out = &(stream->outgoing);
-  udx_packet_t *pkt = (udx_packet_t *) udx__cirbuf_get(out, stream->remote_acked);
 
-  if (pkt == NULL || pkt->transmits != 1 || pkt->status != UDX_PACKET_INFLIGHT || pkt->is_retransmit) return;
+  // TODO: if a sack exists, can be maintained independently instead like we do with out-of-order pkts
+  int sacked = 0;
+  int32_t len = seq_diff(stream->seq, stream->remote_acked);
 
-  pkt->status = UDX_PACKET_WAITING;
-  pkt->is_retransmit = 1;
+  for (int32_t i = 0; i < len; i++) {
+    udx_packet_t *pkt = (udx_packet_t *) udx__cirbuf_get(out, stream->remote_acked + i);
+    if (!pkt) { // if cleared, it's been acked, ie a SACK
+      sacked = 1;
+      break;
+    }
+  }
 
-  stream->inflight -= pkt->size;
-  stream->pkts_waiting++;
-  stream->pkts_inflight--;
-  stream->retransmits_waiting++;
-  stream->stats_fast_rt++;
+  if (!sacked) return;
 
-  // Shrink the window
-  stream->cwnd = max_uint32(UDX_MTU, stream->cwnd / 2);
-}
+  int resent = 0;
+
+  // 1024 is just arbitrary, max length of the full segment missing
+  for (int i = 0; i < 1024; i++) {
+    udx_packet_t *pkt = (udx_packet_t *) udx__cirbuf_get(out, stream->remote_acked + i);
+    if (pkt == NULL || pkt->transmits != 1 || pkt->status != UDX_PACKET_INFLIGHT || pkt->is_retransmit) break;
+
+    resent++;
+
+    pkt->status = UDX_PACKET_WAITING;
+    pkt->is_retransmit = UDX_FAST_RETRANSMIT;
+
+    stream->inflight -= pkt->size;
+    stream->pkts_waiting++;
+    stream->pkts_inflight--;
+    stream->retransmits_waiting++;
+    stream->stats_fast_rt++;
+  }
+
+  if (resent > 0) {
+    if (stream->recovery == 0) {
+      stream->ssthresh = max_uint32(2 * UDX_MTU, stream->inflight / 2);
+      stream->cwnd = stream->ssthresh + 3 * UDX_MTU;
+
+      // set recovery to how many packets we've sent but has not been fully acked (could be maintained elsewhere)
+      stream->recovery = len;
+      for (uint32_t seq = stream->seq; seq != stream->remote_acked; seq--) {
+        udx_packet_t *pkt = (udx_packet_t *) udx__cirbuf_get(out, seq);
+        // if NULL it was SACK'ed ie, transmitted
+        if (pkt == NULL || pkt->transmits > 0) break;
+        stream->recovery--;
+      }
+    }
+
+    // reset the timeout to allow the data to get to the remote before triggering congestion
+    stream->rto_timeout = get_milliseconds() + stream->rto;
+
+    debug_printf("fast rt, ssthresh=%zu, cwnd=%zu resending=%i acked=%i seq=%i)\n", stream->ssthresh, stream->cwnd, resent, stream->remote_acked, stream->seq);
+  }
+};
 
 static void
 process_data_packet (udx_stream_t *stream, int type, uint32_t seq, char *data, ssize_t data_len) {
@@ -540,6 +596,8 @@ process_data_packet (udx_stream_t *stream, int type, uint32_t seq, char *data, s
     }
     return;
   }
+
+  stream->out_of_order++;
 
   // Slow path, packet out of order.
   // Copy over incoming buffer as we do not own it (stack allocated upstream)
@@ -630,11 +688,12 @@ process_packet (udx_socket_t *socket, char *buf, ssize_t buf_len, struct sockadd
     }
   }
 
-  // process the read queue
+  // process the (out of order) read queue
   while ((stream->status & UDX_STREAM_SHOULD_READ) == UDX_STREAM_READ) {
     udx_pending_read_t *pkt = (udx_pending_read_t *) udx__cirbuf_remove(inc, stream->ack);
     if (pkt == NULL) break;
 
+    stream->out_of_order--;
     stream->pkts_buffered--;
     stream->ack++;
 
@@ -650,26 +709,26 @@ process_packet (udx_socket_t *socket, char *buf, ssize_t buf_len, struct sockadd
     return 1;
   }
 
-  // Congestion control...
-  if (stream->remote_acked != ack) {
-    if (stream->cwnd < stream->ssthresh) {
-      stream->cwnd += UDX_MTU;
-    } else {
-      stream->cwnd += max_uint32((UDX_MTU * UDX_MTU) / stream->cwnd, 1);
-    }
+  int32_t len = seq_diff(ack, stream->remote_acked);
+
+  if (len) { // if anything acked, no dups
     stream->dup_acks = 0;
   } else if ((type & UDX_HEADER_DATA_OR_END) == 0) {
-    stream->dup_acks++;
-    if (stream->dup_acks >= 3) {
+    // if 3 dups received acking other data, run fast_retransmit
+    if (++(stream->dup_acks) == 3) {
       fast_retransmit(stream);
     }
   }
 
-  int32_t len = seq_diff(ack, stream->remote_acked);
-
   for (int32_t j = 0; j < len; j++) {
+    if (stream->recovery > 0 && --(stream->recovery) == 0) {
+      // The end of fast recovery, adjust according to the spec
+      if (stream->ssthresh < stream->cwnd) stream->cwnd = stream->ssthresh;
+    }
+
     int a = ack_packet(stream, stream->remote_acked++, 0);
-    if (a == 1) continue;
+
+    if (a == 0 || a == 1) continue;
     if (a == 2) { // it ended, so ack that and trigger close
       // TODO: make this work as well, if the ack packet is lost, ie
       // have some internal (capped) queue of "gracefully closed" streams (TIME_WAIT)
@@ -746,7 +805,7 @@ on_uv_poll (uv_poll_t *handle, int status, int events) {
 
     if (adjust_ttl) uv_udp_set_ttl((uv_udp_t *) socket, pkt->ttl);
 
-    udx__sendmsg(socket, pkt->bufs, pkt->bufs_len, &(pkt->dest), sizeof(pkt->dest));
+    udx__sendmsg(socket, pkt->bufs, pkt->bufs_len, (struct sockaddr *) &(pkt->dest), pkt->dest_len);
 
     pkt->time_sent = uv_hrtime() / 1e6;
 
@@ -867,13 +926,33 @@ udx_socket_init (udx_t *udx, udx_socket_t *handle) {
 }
 
 int
-udx_socket_send_buffer_size (udx_socket_t *handle, int *value) {
+udx_socket_get_send_buffer_size (udx_socket_t *handle, int *value) {
+  *value = 0;
   return uv_send_buffer_size((uv_handle_t *) &(handle->socket), value);
 }
 
 int
-udx_socket_recv_buffer_size (udx_socket_t *handle, int *value) {
+udx_socket_set_send_buffer_size (udx_socket_t *handle, int value) {
+  if (value < 1) return UV_EINVAL;
+  return uv_send_buffer_size((uv_handle_t *) &(handle->socket), &value);
+}
+
+int
+udx_socket_get_recv_buffer_size (udx_socket_t *handle, int *value) {
+  *value = 0;
   return uv_recv_buffer_size((uv_handle_t *) &(handle->socket), value);
+}
+
+int
+udx_socket_set_recv_buffer_size (udx_socket_t *handle, int value) {
+  if (value < 1) return UV_EINVAL;
+  return uv_recv_buffer_size((uv_handle_t *) &(handle->socket), &value);
+}
+
+int
+udx_socket_get_ttl (udx_socket_t *handle, int *ttl) {
+  *ttl = handle->ttl;
+  return 0;
 }
 
 int
@@ -897,6 +976,14 @@ udx_socket_bind (udx_socket_t *handle, const struct sockaddr *addr) {
   // and in practice non of these will fail, as all our handles are valid and alive.
 
   err = uv_udp_set_ttl(socket, handle->ttl);
+  assert(err == 0);
+
+  int send_buffer_size = UDX_DEFAULT_BUFFER_SIZE;
+  err = uv_send_buffer_size((uv_handle_t *) socket, &send_buffer_size);
+  assert(err == 0);
+
+  int recv_buffer_size = UDX_DEFAULT_BUFFER_SIZE;
+  err = uv_recv_buffer_size((uv_handle_t *) socket, &recv_buffer_size);
   assert(err == 0);
 
   err = uv_fileno((const uv_handle_t *) socket, &fd);
@@ -936,7 +1023,16 @@ udx_socket_send_ttl (udx_socket_send_t *req, udx_socket_t *handle, const uv_buf_
   pkt->type = UDX_PACKET_SEND;
   pkt->ttl = ttl;
   pkt->ctx = req;
-  pkt->dest = *dest;
+
+  if (dest->sa_family == AF_INET) {
+    pkt->dest_len = sizeof(struct sockaddr_in);
+  } else if (dest->sa_family == AF_INET6) {
+    pkt->dest_len = sizeof(struct sockaddr_in6);
+  } else {
+    return UV_EINVAL;
+  }
+
+  memcpy(&(pkt->dest), dest, pkt->dest_len);
 
   pkt->is_retransmit = 0;
   pkt->transmits = 0;
@@ -1008,14 +1104,15 @@ udx_socket_close (udx_socket_t *handle, udx_socket_close_cb cb) {
 }
 
 int
-udx_stream_init (udx_t *udx, udx_stream_t *handle, uint32_t local_id) {
+udx_stream_init (udx_t *udx, udx_stream_t *handle, uint32_t local_id, udx_stream_close_cb close_cb) {
   ref_inc(udx);
-
-  handle->status = 0;
 
   handle->local_id = local_id;
   handle->remote_id = 0;
   handle->set_id = 0;
+  handle->status = 0;
+  handle->out_of_order = 0;
+  handle->recovery = 0;
   handle->socket = NULL;
   handle->udx = udx;
 
@@ -1047,7 +1144,7 @@ udx_stream_init (udx_t *udx, udx_stream_t *handle, uint32_t local_id) {
   handle->on_read = NULL;
   handle->on_recv = NULL;
   handle->on_drain = NULL;
-  handle->on_close = NULL;
+  handle->on_close = close_cb;
 
   // Init stream write/read buffers
   udx__cirbuf_init(&(handle->outgoing), 16);
@@ -1072,7 +1169,6 @@ udx_stream_init (udx_t *udx, udx_stream_t *handle, uint32_t local_id) {
 int
 udx_stream_firewall (udx_stream_t *handle, udx_stream_firewall_cb cb) {
   handle->on_firewall = cb;
-
   return 0;
 }
 
@@ -1126,6 +1222,10 @@ udx_stream_check_timeouts (udx_stream_t *handle) {
     // Ensure it backs off until data is acked...
     handle->rto_timeout = now + 2 * handle->rto;
 
+    // Update congestion control
+    handle->ssthresh = max_uint32(2 * UDX_MTU, handle->inflight / 2);
+    handle->cwnd = 2 * UDX_MTU;
+
     // Consider all packet losts - seems to be the simple consensus across different stream impls
     // which we like cause it is nice and simple to implement.
     for (uint32_t seq = handle->remote_acked; seq != handle->seq; seq++) {
@@ -1140,7 +1240,7 @@ udx_stream_check_timeouts (udx_stream_t *handle) {
       }
 
       pkt->status = UDX_PACKET_WAITING;
-      pkt->is_retransmit = 1;
+      pkt->is_retransmit = UDX_SLOW_RETRANSMIT;
 
       handle->inflight -= pkt->size;
       handle->pkts_waiting++;
@@ -1148,9 +1248,7 @@ udx_stream_check_timeouts (udx_stream_t *handle) {
       handle->retransmits_waiting++;
     }
 
-    handle->cwnd = max_uint32(UDX_MTU, handle->cwnd / 2);
-
-    debug_printf("pkt loss! stream is congested, scaling back (requeued the full window)\n");
+    debug_printf("pkt loss! congestion, ssthresh=%zu, cwnd=%zu\n", handle->ssthresh, handle->cwnd);
   }
 
   int err = flush_waiting_packets(handle);
@@ -1158,7 +1256,7 @@ udx_stream_check_timeouts (udx_stream_t *handle) {
 }
 
 int
-udx_stream_connect (udx_stream_t *handle, udx_socket_t *socket, uint32_t remote_id, const struct sockaddr *remote_addr, udx_stream_close_cb close_cb) {
+udx_stream_connect (udx_stream_t *handle, udx_socket_t *socket, uint32_t remote_id, const struct sockaddr *remote_addr) {
   if (handle->status & UDX_STREAM_CONNECTED) {
     return UV_EISCONN;
   }
@@ -1166,10 +1264,17 @@ udx_stream_connect (udx_stream_t *handle, udx_socket_t *socket, uint32_t remote_
   handle->status |= UDX_STREAM_CONNECTED;
 
   handle->remote_id = remote_id;
-  handle->remote_addr = *remote_addr;
   handle->socket = socket;
 
-  handle->on_close = close_cb;
+  if (remote_addr->sa_family == AF_INET) {
+    handle->remote_addr_len = sizeof(struct sockaddr_in);
+  } else if (remote_addr->sa_family == AF_INET6) {
+    handle->remote_addr_len = sizeof(struct sockaddr_in6);
+  } else {
+    return UV_EINVAL;
+  }
+
+  memcpy(&(handle->remote_addr), remote_addr, handle->remote_addr_len);
 
   return update_poll(handle->socket);
 }
@@ -1321,4 +1426,149 @@ udx_stream_destroy (udx_stream_t *handle) {
 
   int err = update_poll(handle->socket);
   return err < 0 ? err : 1;
+}
+
+static void
+on_uv_getaddrinfo (uv_getaddrinfo_t *req, int status, struct addrinfo *res) {
+  udx_lookup_t *lookup = (udx_lookup_t *) req->data;
+
+  if (status < 0) {
+    lookup->on_lookup(lookup, status, NULL, 0);
+  } else {
+    lookup->on_lookup(lookup, status, res->ai_addr, res->ai_addrlen);
+  }
+
+  uv_freeaddrinfo(res);
+}
+
+int
+udx_lookup (uv_loop_t *loop, udx_lookup_t *req, const char *host, unsigned int flags, udx_lookup_cb cb) {
+  req->on_lookup = cb;
+  req->req.data = req;
+
+  memset(&req->hints, 0, sizeof(struct addrinfo));
+
+  int family = AF_UNSPEC;
+
+  if (flags & UDX_LOOKUP_FAMILY_IPV4) family = AF_INET;
+  if (flags & UDX_LOOKUP_FAMILY_IPV6) family = AF_INET6;
+
+  req->hints.ai_family = family;
+  req->hints.ai_socktype = SOCK_STREAM;
+
+  return uv_getaddrinfo(loop, &req->req, on_uv_getaddrinfo, host, NULL, &req->hints);
+}
+
+static int
+cmp_interface (const void *a, const void *b) {
+  const uv_interface_address_t *ia = a;
+  const uv_interface_address_t *ib = b;
+
+  int result;
+
+  result = strcmp(ia->phys_addr, ib->phys_addr);
+  if (result != 0) return result;
+
+  result = memcmp(&ia->address, &ib->address, sizeof(ia->address));
+  if (result != 0) return result;
+
+  return 0;
+}
+
+static void
+on_interface_event_interval (uv_timer_t *timer) {
+  udx_interface_event_t *handle = (udx_interface_event_t *) timer->data;
+
+  uv_interface_address_t *prev_addrs = handle->addrs;
+  int prev_addrs_len = handle->addrs_len;
+  bool prev_sorted = handle->sorted;
+
+  int err = uv_interface_addresses(&(handle->addrs), &(handle->addrs_len));
+  if (err < 0) {
+    handle->on_event(handle, err);
+    return;
+  }
+
+  handle->sorted = false;
+
+  bool changed = handle->addrs_len != prev_addrs_len;
+
+  for (int i = 0; !changed && i < handle->addrs_len; i++) {
+    if (cmp_interface(&handle->addrs[i], &prev_addrs[i]) == 0) {
+      continue;
+    }
+
+    if (handle->sorted) changed = true;
+    else {
+      qsort(handle->addrs, handle->addrs_len, sizeof(uv_interface_address_t), cmp_interface);
+
+      if (!prev_sorted) {
+        qsort(prev_addrs, prev_addrs_len, sizeof(uv_interface_address_t), cmp_interface);
+      }
+
+      handle->sorted = true;
+      i = 0;
+    }
+  }
+
+  if (changed) handle->on_event(handle, 0);
+  else handle->sorted = prev_sorted;
+
+  uv_free_interface_addresses(prev_addrs, prev_addrs_len);
+}
+
+static void
+on_interface_event_close (uv_handle_t *handle) {
+  udx_interface_event_t *event = (udx_interface_event_t *) handle->data;
+
+  if (event->on_close != NULL) {
+    event->on_close(event);
+  }
+}
+
+int
+udx_interface_event_init (uv_loop_t *loop, udx_interface_event_t *handle) {
+  handle->loop = loop;
+  handle->sorted = false;
+
+  int err = uv_interface_addresses(&(handle->addrs), &(handle->addrs_len));
+  if (err < 0) return err;
+
+  err = uv_timer_init(handle->loop, &(handle->timer));
+  if (err < 0) return err;
+
+  handle->timer.data = handle;
+
+  return 0;
+}
+
+int
+udx_interface_event_start (udx_interface_event_t *handle, udx_interface_event_cb cb, uint64_t frequency) {
+  handle->on_event = cb;
+
+  int err = uv_timer_start(&(handle->timer), on_interface_event_interval, 0, frequency);
+  return err < 0 ? err : 0;
+}
+
+int
+udx_interface_event_stop (udx_interface_event_t *handle) {
+  handle->on_event = NULL;
+
+  int err = uv_timer_stop(&(handle->timer));
+  return err < 0 ? err : 0;
+}
+
+int
+udx_interface_event_close (udx_interface_event_t *handle, udx_interface_event_close_cb cb) {
+  handle->on_event = NULL;
+  handle->on_close = cb;
+
+  uv_free_interface_addresses(handle->addrs, handle->addrs_len);
+
+  int err = uv_timer_stop(&(handle->timer));
+  if (err < 0) return err;
+
+  uv_close((uv_handle_t *) &(handle->timer), on_interface_event_close);
+
+  return 0;
 }

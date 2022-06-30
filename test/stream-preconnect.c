@@ -39,7 +39,7 @@ on_read (udx_stream_t *handle, ssize_t read_len, const uv_buf_t *buf) {
 
   read_called = true;
 
-  int e = udx_stream_connect(&astream, &asock, 2, (struct sockaddr *) &baddr, NULL);
+  int e = udx_stream_connect(&astream, &asock, 2, (struct sockaddr *) &baddr);
   assert(e == 0);
 }
 
@@ -66,16 +66,16 @@ main () {
   e = udx_socket_bind(&bsock, (struct sockaddr *) &baddr);
   assert(e == 0);
 
-  e = udx_stream_init(&udx, &astream, 1);
+  e = udx_stream_init(&udx, &astream, 1, NULL);
   assert(e == 0);
 
-  e = udx_stream_init(&udx, &bstream, 2);
+  e = udx_stream_init(&udx, &bstream, 2, NULL);
   assert(e == 0);
 
   e = udx_stream_read_start(&astream, on_read);
   assert(e == 0);
 
-  e = udx_stream_connect(&bstream, &bsock, 1, (struct sockaddr *) &aaddr, NULL);
+  e = udx_stream_connect(&bstream, &bsock, 1, (struct sockaddr *) &aaddr);
   assert(e == 0);
 
   uv_buf_t buf = uv_buf_init("hello", 5);

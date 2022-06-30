@@ -26,7 +26,7 @@ module.exports = function proxy ({ from, to, bind } = {}, drop) {
     const dropping = drop(pkt, source)
     const port = rinfo.port === to ? from : to
 
-    if (dropping && dropping.then) dropping.then(fwd)
+    if (dropping && dropping.then) dropping.then(fwd).catch(noop)
     else fwd(dropping)
 
     function fwd (dropping) {
@@ -116,3 +116,5 @@ function parsePacket (buf, source) {
     }
   }
 }
+
+function noop () {}
