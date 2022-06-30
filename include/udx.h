@@ -322,6 +322,18 @@ int
 udx_stream_init (udx_t *udx, udx_stream_t *handle, uint32_t local_id, udx_stream_close_cb close_cb);
 
 int
+udx_stream_get_seq (udx_stream_t *handle, uint32_t *seq);
+
+int
+udx_stream_set_seq (udx_stream_t *handle, uint32_t seq);
+
+int
+udx_stream_get_ack (udx_stream_t *handle, uint32_t *ack);
+
+int
+udx_stream_set_ack (udx_stream_t *handle, uint32_t ack);
+
+int
 udx_stream_connect (udx_stream_t *handle, udx_socket_t *socket, uint32_t remote_id, const struct sockaddr *remote_addr);
 
 int

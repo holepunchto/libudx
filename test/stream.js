@@ -558,3 +558,35 @@ test.skip('throw in data callback', async function (t) {
     await socket.close()
   })
 })
+
+test('seq and ack wraparound', async function (t) {
+  t.plan(1)
+
+  const u = new UDX()
+
+  const socket = u.createSocket()
+  socket.bind(0)
+
+  const a = u.createStream(1, { seq: 2 ** 32 - 5 })
+  t.teardown(() => a.destroy())
+
+  const b = u.createStream(2)
+  t.teardown(() => b.destroy())
+
+  t.teardown(() => socket.close())
+
+  a.connect(socket, 2, socket.address().port)
+  b.connect(socket, 1, socket.address().port, { ack: 2 ** 32 - 5 })
+
+  const expected = []
+
+  b.on('data', function ([i]) {
+    expected.push(i)
+
+    if (expected.length === 10) {
+      t.alike(expected, [0, 1, 2, 3, 4, 5, 6, 7, 8, 9])
+    }
+  })
+
+  for (let i = 0; i < 10; i++) a.write(Buffer.of(i))
+})

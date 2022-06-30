@@ -548,6 +548,28 @@ NAPI_METHOD(udx_napi_stream_init) {
   return NULL;
 }
 
+NAPI_METHOD(udx_napi_stream_set_seq) {
+  NAPI_ARGV(2)
+  NAPI_ARGV_BUFFER_CAST(udx_stream_t *, stream, 0)
+  NAPI_ARGV_UINT32(seq, 1)
+
+  int err = udx_stream_set_seq(stream, seq);
+  if (err < 0) UDX_NAPI_THROW(err)
+
+  return NULL;
+}
+
+NAPI_METHOD(udx_napi_stream_set_ack) {
+  NAPI_ARGV(2)
+  NAPI_ARGV_BUFFER_CAST(udx_stream_t *, stream, 0)
+  NAPI_ARGV_UINT32(ack, 1)
+
+  int err = udx_stream_set_ack(stream, ack);
+  if (err < 0) UDX_NAPI_THROW(err)
+
+  return NULL;
+}
+
 NAPI_METHOD(udx_napi_stream_set_mode) {
   NAPI_ARGV(2)
   NAPI_ARGV_BUFFER_CAST(udx_napi_stream_t *, stream, 0)
@@ -817,6 +839,8 @@ NAPI_INIT() {
   NAPI_EXPORT_FUNCTION(udx_napi_socket_close)
 
   NAPI_EXPORT_FUNCTION(udx_napi_stream_init)
+  NAPI_EXPORT_FUNCTION(udx_napi_stream_set_seq)
+  NAPI_EXPORT_FUNCTION(udx_napi_stream_set_ack)
   NAPI_EXPORT_FUNCTION(udx_napi_stream_set_mode)
   NAPI_EXPORT_FUNCTION(udx_napi_stream_connect)
   NAPI_EXPORT_FUNCTION(udx_napi_stream_send)
