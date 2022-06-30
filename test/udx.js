@@ -38,7 +38,7 @@ test('network interfaces', async function (t) {
     t.test(`interface ${i}`, async function (t) {
       t.ok(typeof n.name === 'string', `name: ${n.name}`)
       t.ok(typeof n.host === 'string', `host: ${n.host}`)
-      t.ok(n.family === 4, `family: ${n.family}`)
+      t.ok(n.family === 4 || n.family === 6, `family: ${n.family}`)
       t.ok(typeof n.internal === 'boolean', `internal: ${n.internal}`)
     })
   }
