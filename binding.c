@@ -1,5 +1,6 @@
 #include <node_api.h>
 #include <napi-macros.h>
+#include <stdlib.h>
 #include <string.h>
 #include <uv.h>
 
@@ -75,6 +76,16 @@ typedef struct {
   napi_ref on_firewall;
   napi_ref realloc;
 } udx_napi_stream_t;
+
+typedef struct {
+  udx_lookup_t handle;
+
+  char *host;
+
+  napi_env env;
+  napi_ref ctx;
+  napi_ref on_lookup;
+} udx_napi_lookup_t;
 
 typedef struct {
   udx_interface_event_t handle;
@@ -267,6 +278,37 @@ on_udx_stream_firewall (udx_stream_t *stream, udx_socket_t *socket, const struct
   })
 
   return fw;
+}
+
+static void
+on_udx_lookup (udx_lookup_t *lookup, int status, const struct sockaddr *addr, int addr_len) {
+  udx_napi_lookup_t *n = (udx_napi_lookup_t *) lookup;
+
+  char ip[INET6_ADDRSTRLEN] = "";
+  int family = 0;
+
+  if (status >= 0) {
+    if (addr->sa_family== AF_INET) {
+      uv_ip4_name((struct sockaddr_in *) addr, ip, addr_len);
+      family = 4;
+    } else if (addr->sa_family == AF_INET6) {
+      uv_ip6_name((struct sockaddr_in6 *) addr, ip, addr_len);
+      family = 6;
+    }
+  }
+
+  UDX_NAPI_CALLBACK(n, n->on_lookup, {
+    napi_value argv[3];
+    napi_create_int32(env, status, &(argv[0]));
+    napi_create_string_utf8(env, ip, NAPI_AUTO_LENGTH, &(argv[1]));
+    napi_create_uint32(env, family, &(argv[2]));
+    NAPI_MAKE_CALLBACK(env, NULL, ctx, callback, 3, argv, NULL)
+  })
+
+  napi_delete_reference(env, n->ctx);
+  napi_delete_reference(env, n->on_lookup);
+
+  free(n->host);
 }
 
 static void
@@ -559,6 +601,33 @@ NAPI_METHOD(udx_napi_stream_destroy) {
   NAPI_RETURN_UINT32(err);
 }
 
+NAPI_METHOD(udx_napi_lookup) {
+  NAPI_ARGV(5)
+  NAPI_ARGV_BUFFER_CAST(udx_napi_lookup_t *, self, 0)
+  NAPI_ARGV_UTF8_MALLOC(host, 1)
+  NAPI_ARGV_UINT32(family, 2)
+
+  udx_lookup_t *lookup = (udx_lookup_t *) self;
+
+  uv_loop_t *loop;
+  napi_get_uv_event_loop(env, &loop);
+
+  self->host = host;
+  self->env = env;
+  napi_create_reference(env, argv[3], 1, &(self->ctx));
+  napi_create_reference(env, argv[4], 1, &(self->on_lookup));
+
+  int flags = 0;
+
+  if (family == 4) flags |= UDX_LOOKUP_FAMILY_IPV4;
+  if (family == 6) flags |= UDX_LOOKUP_FAMILY_IPV6;
+
+  int err = udx_lookup(loop, lookup, host, flags, on_udx_lookup);
+  if (err < 0) UDX_NAPI_THROW(err)
+
+  return NULL;
+}
+
 NAPI_METHOD(udx_napi_interface_event_init) {
   NAPI_ARGV(4)
   NAPI_ARGV_BUFFER_CAST(udx_napi_interface_event_t *, self, 0)
@@ -665,6 +734,7 @@ NAPI_INIT() {
   NAPI_EXPORT_SIZEOF(udx_t)
   NAPI_EXPORT_SIZEOF(udx_napi_socket_t)
   NAPI_EXPORT_SIZEOF(udx_napi_stream_t)
+  NAPI_EXPORT_SIZEOF(udx_napi_lookup_t)
   NAPI_EXPORT_SIZEOF(udx_napi_interface_event_t)
 
   NAPI_EXPORT_SIZEOF(udx_socket_send_t)
@@ -689,6 +759,8 @@ NAPI_INIT() {
   NAPI_EXPORT_FUNCTION(udx_napi_stream_write)
   NAPI_EXPORT_FUNCTION(udx_napi_stream_write_end)
   NAPI_EXPORT_FUNCTION(udx_napi_stream_destroy)
+
+  NAPI_EXPORT_FUNCTION(udx_napi_lookup)
 
   NAPI_EXPORT_FUNCTION(udx_napi_interface_event_init)
   NAPI_EXPORT_FUNCTION(udx_napi_interface_event_start)

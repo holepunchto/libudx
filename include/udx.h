@@ -80,6 +80,13 @@ typedef struct udx_socket_send udx_socket_send_t;
 typedef struct udx_stream_write udx_stream_write_t;
 typedef struct udx_stream_send udx_stream_send_t;
 
+typedef enum {
+  UDX_LOOKUP_FAMILY_IPV4 = 1,
+  UDX_LOOKUP_FAMILY_IPV6 = 2,
+} udx_lookup_flags;
+
+typedef struct udx_lookup udx_lookup_t;
+
 typedef struct udx_interface_event udx_interface_event_t;
 
 typedef void (*udx_socket_send_cb)(udx_socket_send_t *req, int status);
@@ -93,6 +100,8 @@ typedef void (*udx_stream_ack_cb)(udx_stream_write_t *req, int status, int unord
 typedef void (*udx_stream_send_cb)(udx_stream_send_t *req, int status);
 typedef void (*udx_stream_recv_cb)(udx_stream_t *handle, ssize_t read_len, const uv_buf_t *buf);
 typedef void (*udx_stream_close_cb)(udx_stream_t *handle, int status);
+
+typedef void (*udx_lookup_cb)(udx_lookup_t *handle, int status, const struct sockaddr *addr, int addr_len);
 
 typedef void (*udx_interface_event_cb)(udx_interface_event_t *handle, int status);
 typedef void (*udx_interface_event_close_cb)(udx_interface_event_t *handle);
@@ -235,6 +244,15 @@ struct udx_stream_send {
   void *data;
 };
 
+struct udx_lookup {
+  uv_getaddrinfo_t req;
+  struct addrinfo hints;
+
+  udx_lookup_cb on_lookup;
+
+  void *data;
+};
+
 struct udx_interface_event {
   uv_timer_t timer;
   uv_loop_t *loop;
@@ -328,6 +346,9 @@ udx_stream_write_end (udx_stream_write_t *req, udx_stream_t *handle, const uv_bu
 
 int
 udx_stream_destroy (udx_stream_t *handle);
+
+int
+udx_lookup (uv_loop_t *loop, udx_lookup_t *req, const char *host, unsigned int flags, udx_lookup_cb cb);
 
 int
 udx_interface_event_init (uv_loop_t *loop, udx_interface_event_t *handle);

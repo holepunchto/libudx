@@ -1,6 +1,30 @@
 const test = require('brittle')
 const UDX = require('../')
 
+test('lookup', async function (t) {
+  const udx = new UDX()
+
+  const address = await udx.lookup('localhost', { family: 4 })
+
+  t.is(address.host, '127.0.0.1')
+  t.is(address.family, 4)
+})
+
+test('lookup ipv6', async function (t) {
+  const udx = new UDX()
+
+  const address = await udx.lookup('localhost', { family: 6 })
+
+  t.is(address.host, '::1')
+  t.is(address.family, 6)
+})
+
+test('lookup invalid', async function (t) {
+  const udx = new UDX()
+
+  t.exception(udx.lookup('example.invalid.'))
+})
+
 test('network interfaces', async function (t) {
   const udx = new UDX()
 
