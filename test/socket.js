@@ -11,6 +11,16 @@ test('can bind and close', async function (t) {
   t.pass()
 })
 
+test('can bind to ipv6 and close', async function (t) {
+  const u = new UDX()
+  const s = u.createSocket()
+
+  s.bind(0, '::1')
+  await s.close()
+
+  t.pass()
+})
+
 test('bind is effectively sync', async function (t) {
   const u = new UDX()
 
@@ -27,20 +37,39 @@ test('bind is effectively sync', async function (t) {
 })
 
 test('simple message', async function (t) {
-  t.plan(3)
+  t.plan(4)
 
   const u = new UDX()
   const a = u.createSocket()
 
-  a.on('message', function (message, { host, port }) {
+  a.on('message', function (message, { host, family, port }) {
     t.alike(message, Buffer.from('hello'))
     t.is(host, '127.0.0.1')
+    t.is(family, 4)
     t.is(port, a.address().port)
     a.close()
   })
 
   a.bind(0)
   await a.send(Buffer.from('hello'), a.address().port)
+})
+
+test('simple message ipv6', async function (t) {
+  t.plan(4)
+
+  const u = new UDX()
+  const a = u.createSocket()
+
+  a.on('message', function (message, { host, family, port }) {
+    t.alike(message, Buffer.from('hello'))
+    t.is(host, '::1')
+    t.is(family, 6)
+    t.is(port, a.address().port)
+    a.close()
+  })
+
+  a.bind(0, '::1')
+  await a.send(Buffer.from('hello'), a.address().port, '::1')
 })
 
 test('empty message', async function (t) {

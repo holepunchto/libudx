@@ -261,6 +261,7 @@ init_stream_packet (udx_packet_t *pkt, int type, udx_stream_t *stream, const uv_
   pkt->transmits = 0;
   pkt->size = (uint16_t) (UDX_HEADER_SIZE + buf->len);
   pkt->dest = stream->remote_addr;
+  pkt->dest_len = stream->remote_addr_len;
 
   pkt->bufs_len = 2;
 
@@ -803,7 +804,7 @@ on_uv_poll (uv_poll_t *handle, int status, int events) {
 
     if (adjust_ttl) uv_udp_set_ttl((uv_udp_t *) socket, pkt->ttl);
 
-    udx__sendmsg(socket, pkt->bufs, pkt->bufs_len, &(pkt->dest), sizeof(pkt->dest));
+    udx__sendmsg(socket, pkt->bufs, pkt->bufs_len, (struct sockaddr *) &(pkt->dest), pkt->dest_len);
 
     pkt->time_sent = uv_hrtime() / 1e6;
 
@@ -924,13 +925,33 @@ udx_socket_init (udx_t *udx, udx_socket_t *handle) {
 }
 
 int
-udx_socket_send_buffer_size(udx_socket_t *handle, int *value) {
+udx_socket_get_send_buffer_size(udx_socket_t *handle, int *value) {
+  *value = 0;
   return uv_send_buffer_size((uv_handle_t *) &(handle->socket), value);
 }
 
 int
-udx_socket_recv_buffer_size(udx_socket_t *handle, int *value) {
+udx_socket_set_send_buffer_size(udx_socket_t *handle, int value) {
+  if (value < 1) return UV_EINVAL;
+  return uv_send_buffer_size((uv_handle_t *) &(handle->socket), &value);
+}
+
+int
+udx_socket_get_recv_buffer_size(udx_socket_t *handle, int *value) {
+  *value = 0;
   return uv_recv_buffer_size((uv_handle_t *) &(handle->socket), value);
+}
+
+int
+udx_socket_set_recv_buffer_size(udx_socket_t *handle, int value) {
+  if (value < 1) return UV_EINVAL;
+  return uv_recv_buffer_size((uv_handle_t *) &(handle->socket), &value);
+}
+
+int
+udx_socket_get_ttl (udx_socket_t *handle, int *ttl) {
+  *ttl = handle->ttl;
+  return 0;
 }
 
 int
@@ -1001,7 +1022,16 @@ udx_socket_send_ttl (udx_socket_send_t *req, udx_socket_t *handle, const uv_buf_
   pkt->type = UDX_PACKET_SEND;
   pkt->ttl = ttl;
   pkt->ctx = req;
-  pkt->dest = *dest;
+
+  if (dest->sa_family == AF_INET) {
+    pkt->dest_len = sizeof(struct sockaddr_in);
+  } else if (dest->sa_family == AF_INET6) {
+    pkt->dest_len = sizeof(struct sockaddr_in6);
+  } else {
+    return UV_EINVAL;
+  }
+
+  memcpy(&(pkt->dest), dest, pkt->dest_len);
 
   pkt->is_retransmit = 0;
   pkt->transmits = 0;
@@ -1163,7 +1193,6 @@ udx_stream_set_ack (udx_stream_t *handle, uint32_t ack) {
 int
 udx_stream_firewall (udx_stream_t *handle, udx_stream_firewall_cb cb) {
   handle->on_firewall = cb;
-
   return 0;
 }
 
@@ -1259,8 +1288,17 @@ udx_stream_connect (udx_stream_t *handle, udx_socket_t *socket, uint32_t remote_
   handle->status |= UDX_STREAM_CONNECTED;
 
   handle->remote_id = remote_id;
-  handle->remote_addr = *remote_addr;
   handle->socket = socket;
+
+  if (remote_addr->sa_family == AF_INET) {
+    handle->remote_addr_len = sizeof(struct sockaddr_in);
+  } else if (remote_addr->sa_family == AF_INET6) {
+    handle->remote_addr_len = sizeof(struct sockaddr_in6);
+  } else {
+    return UV_EINVAL;
+  }
+
+  memcpy(&(handle->remote_addr), remote_addr, handle->remote_addr_len);
 
   return update_poll(handle->socket);
 }
@@ -1413,6 +1451,38 @@ udx_stream_destroy (udx_stream_t *handle) {
   int err = update_poll(handle->socket);
   return err < 0 ? err : 1;
 }
+
+static void
+on_uv_getaddrinfo (uv_getaddrinfo_t *req, int status, struct addrinfo *res) {
+  udx_lookup_t *lookup = (udx_lookup_t *) req->data;
+
+  if (status < 0) {
+    lookup->on_lookup(lookup, status, NULL, 0);
+  } else {
+    lookup->on_lookup(lookup, status, res->ai_addr, res->ai_addrlen);
+  }
+
+  uv_freeaddrinfo(res);
+}
+
+int
+udx_lookup (uv_loop_t *loop, udx_lookup_t *req, const char *host, unsigned int flags, udx_lookup_cb cb) {
+  req->on_lookup = cb;
+  req->req.data = req;
+
+  memset(&req->hints, 0, sizeof(struct addrinfo));
+
+  int family = AF_UNSPEC;
+
+  if (flags & UDX_LOOKUP_FAMILY_IPV4) family = AF_INET;
+  if (flags & UDX_LOOKUP_FAMILY_IPV6) family = AF_INET6;
+
+  req->hints.ai_family = family;
+  req->hints.ai_socktype = SOCK_STREAM;
+
+  return uv_getaddrinfo(loop, &req->req, on_uv_getaddrinfo, host, NULL, &req->hints);
+}
+
 
 static int
 cmp_interface (const void *a, const void *b) {

@@ -163,6 +163,33 @@ test('unordered messages', async function (t) {
   a.send(Buffer.from('d'))
 })
 
+test('ipv6 streams', async function (t) {
+  t.plan(1)
+
+  const u = new UDX()
+
+  const aSocket = u.createSocket()
+  aSocket.bind(0, '::1')
+  t.teardown(() => aSocket.close())
+
+  const bSocket = u.createSocket()
+  bSocket.bind(0, '::1')
+  t.teardown(() => bSocket.close())
+
+  const a = u.createStream(1)
+  const b = u.createStream(2)
+
+  a.connect(aSocket, 2, bSocket.address().port, '::1')
+  b.connect(bSocket, 1, aSocket.address().port, '::1')
+
+  a.on('data', function (data) {
+    t.alike(data, Buffer.from('hello world'))
+    a.end()
+  })
+
+  b.end('hello world')
+})
+
 test('several streams on same socket', async function (t) {
   const u = new UDX()
 
