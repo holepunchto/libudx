@@ -129,6 +129,23 @@ test('only one side writes', async function (t) {
   a.end()
 })
 
+test('emit connect', async function (t) {
+  const udx = new UDX()
+
+  const socket = udx.createSocket()
+  socket.bind(0)
+
+  const a = udx.createStream(1)
+
+  a
+    .on('connect', function () {
+      t.pass()
+      a.destroy()
+      socket.close()
+    })
+    .connect(socket, 2, socket.address().port)
+})
+
 test('unordered messages', async function (t) {
   t.plan(2)
 
