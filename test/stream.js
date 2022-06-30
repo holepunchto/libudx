@@ -600,3 +600,29 @@ test('busy and idle events', async function (t) {
     })
     .connect(socket, 2, socket.address().port)
 })
+
+test('no idle after close', async function (t) {
+  t.plan(1)
+
+  const udx = new UDX()
+
+  const socket = udx.createSocket()
+  socket.bind(0)
+
+  const stream = udx.createStream(1)
+
+  stream
+    .on('connect', function () {
+      stream.destroy()
+
+      socket
+        .on('idle', function () {
+          t.fail('idle event after close')
+        })
+        .on('close', function () {
+          t.pass('socket closed')
+        })
+        .close()
+    })
+    .connect(socket, 2, socket.address().port)
+})
