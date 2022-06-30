@@ -1,37 +1,37 @@
 #include <assert.h>
-#include <stdlib.h>
-#include <stdint.h>
 #include <stdbool.h>
+#include <stdint.h>
+#include <stdlib.h>
 #include <string.h>
 #include <uv.h>
 
 #include "../include/udx.h"
 
 #include "cirbuf.h"
+#include "debug.h"
 #include "endian.h"
 #include "fifo.h"
 #include "io.h"
-#include "debug.h"
 
 #define UDX_STREAM_ALL_DESTROYED (UDX_STREAM_DESTROYED | UDX_STREAM_DESTROYED_REMOTE)
-#define UDX_STREAM_ALL_ENDED (UDX_STREAM_ENDED | UDX_STREAM_ENDED_REMOTE)
-#define UDX_STREAM_DEAD (UDX_STREAM_ALL_DESTROYED | UDX_STREAM_DESTROYING | UDX_STREAM_CLOSED)
+#define UDX_STREAM_ALL_ENDED     (UDX_STREAM_ENDED | UDX_STREAM_ENDED_REMOTE)
+#define UDX_STREAM_DEAD          (UDX_STREAM_ALL_DESTROYED | UDX_STREAM_DESTROYING | UDX_STREAM_CLOSED)
 
 #define UDX_STREAM_SHOULD_READ (UDX_STREAM_ENDED_REMOTE | UDX_STREAM_DEAD)
-#define UDX_STREAM_READ 0
+#define UDX_STREAM_READ        0
 
 #define UDX_STREAM_SHOULD_END (UDX_STREAM_ENDING | UDX_STREAM_ENDED | UDX_STREAM_DEAD)
-#define UDX_STREAM_END UDX_STREAM_ENDING
+#define UDX_STREAM_END        UDX_STREAM_ENDING
 
 #define UDX_STREAM_SHOULD_END_REMOTE (UDX_STREAM_ENDED_REMOTE | UDX_STREAM_DEAD | UDX_STREAM_ENDING_REMOTE)
-#define UDX_STREAM_END_REMOTE UDX_STREAM_ENDING_REMOTE
+#define UDX_STREAM_END_REMOTE        UDX_STREAM_ENDING_REMOTE
 
-#define UDX_PACKET_CALLBACK (UDX_PACKET_STREAM_SEND | UDX_PACKET_STREAM_DESTROY | UDX_PACKET_SEND)
+#define UDX_PACKET_CALLBACK     (UDX_PACKET_STREAM_SEND | UDX_PACKET_STREAM_DESTROY | UDX_PACKET_SEND)
 #define UDX_PACKET_FREE_ON_SEND (UDX_PACKET_STREAM_STATE | UDX_PACKET_STREAM_DESTROY)
 
 #define UDX_HEADER_DATA_OR_END (UDX_HEADER_DATA | UDX_HEADER_END)
 
-#define UDX_DEFAULT_TTL 64
+#define UDX_DEFAULT_TTL         64
 #define UDX_DEFAULT_BUFFER_SIZE 212992
 
 #define UDX_MAX_TRANSMITS 6
@@ -70,7 +70,8 @@ seq_diff (uint32_t a, uint32_t b) {
 static int
 seq_compare (uint32_t a, uint32_t b) {
   int32_t d = seq_diff(a, b);
-  return d < 0 ? -1 : d > 0 ? 1 : 0;
+  return d < 0 ? -1 : d > 0 ? 1
+                            : 0;
 }
 
 static void
@@ -925,25 +926,25 @@ udx_socket_init (udx_t *udx, udx_socket_t *handle) {
 }
 
 int
-udx_socket_get_send_buffer_size(udx_socket_t *handle, int *value) {
+udx_socket_get_send_buffer_size (udx_socket_t *handle, int *value) {
   *value = 0;
   return uv_send_buffer_size((uv_handle_t *) &(handle->socket), value);
 }
 
 int
-udx_socket_set_send_buffer_size(udx_socket_t *handle, int value) {
+udx_socket_set_send_buffer_size (udx_socket_t *handle, int value) {
   if (value < 1) return UV_EINVAL;
   return uv_send_buffer_size((uv_handle_t *) &(handle->socket), &value);
 }
 
 int
-udx_socket_get_recv_buffer_size(udx_socket_t *handle, int *value) {
+udx_socket_get_recv_buffer_size (udx_socket_t *handle, int *value) {
   *value = 0;
   return uv_recv_buffer_size((uv_handle_t *) &(handle->socket), value);
 }
 
 int
-udx_socket_set_recv_buffer_size(udx_socket_t *handle, int value) {
+udx_socket_set_recv_buffer_size (udx_socket_t *handle, int value) {
   if (value < 1) return UV_EINVAL;
   return uv_recv_buffer_size((uv_handle_t *) &(handle->socket), &value);
 }
@@ -955,7 +956,7 @@ udx_socket_get_ttl (udx_socket_t *handle, int *ttl) {
 }
 
 int
-udx_socket_set_ttl(udx_socket_t *handle, int ttl) {
+udx_socket_set_ttl (udx_socket_t *handle, int ttl) {
   if (ttl < 1 || ttl > 255) return UV_EINVAL;
   handle->ttl = ttl;
   return uv_udp_set_ttl((uv_udp_t *) &(handle->socket), ttl);
@@ -1457,7 +1458,6 @@ udx_lookup (uv_loop_t *loop, udx_lookup_t *req, const char *host, unsigned int f
 
   return uv_getaddrinfo(loop, &req->req, on_uv_getaddrinfo, host, NULL, &req->hints);
 }
-
 
 static int
 cmp_interface (const void *a, const void *b) {
