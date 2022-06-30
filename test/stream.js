@@ -526,13 +526,13 @@ test('seq and ack wraparound', async function (t) {
   const a = u.createStream(1, { seq: 2 ** 32 - 5 })
   t.teardown(() => a.destroy())
 
-  const b = u.createStream(2, { ack: 2 ** 32 - 5 })
+  const b = u.createStream(2)
   t.teardown(() => b.destroy())
 
   t.teardown(() => socket.close())
 
   a.connect(socket, 2, socket.address().port)
-  b.connect(socket, 1, socket.address().port)
+  b.connect(socket, 1, socket.address().port, { ack: 2 ** 32 - 5 })
 
   const expected = []
 
