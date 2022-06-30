@@ -558,3 +558,45 @@ test.skip('throw in data callback', async function (t) {
     await socket.close()
   })
 })
+
+test('busy and idle events', async function (t) {
+  t.plan(6)
+
+  const udx = new UDX()
+
+  const socket = udx.createSocket()
+  socket.bind(0)
+
+  let idle = false
+  let busy = false
+
+  socket
+    .on('idle', function () {
+      idle = true
+      busy = false
+
+      socket.close()
+    })
+    .on('busy', function () {
+      busy = true
+      idle = false
+    })
+
+  const stream = udx.createStream(1)
+
+  t.absent(idle)
+  t.absent(busy)
+
+  stream
+    .on('connect', function () {
+      t.absent(idle)
+      t.ok(busy)
+
+      stream.destroy()
+    })
+    .on('close', function () {
+      t.ok(idle)
+      t.absent(busy)
+    })
+    .connect(socket, 2, socket.address().port)
+})
