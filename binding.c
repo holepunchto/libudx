@@ -407,23 +407,47 @@ NAPI_METHOD(udx_napi_socket_set_ttl) {
   return NULL;
 }
 
-NAPI_METHOD(udx_napi_socket_recv_buffer_size) {
-  NAPI_ARGV(2)
+NAPI_METHOD(udx_napi_socket_get_recv_buffer_size) {
+  NAPI_ARGV(1)
   NAPI_ARGV_BUFFER_CAST(udx_socket_t *, self, 0)
-  NAPI_ARGV_INT32(size, 1)
 
-  int err = udx_socket_recv_buffer_size(self, &size);
+  int size = 0;
+
+  int err = udx_socket_get_recv_buffer_size(self, &size);
   if (err < 0) UDX_NAPI_THROW(err)
 
   NAPI_RETURN_UINT32(size)
 }
 
-NAPI_METHOD(udx_napi_socket_send_buffer_size) {
+NAPI_METHOD(udx_napi_socket_set_recv_buffer_size) {
   NAPI_ARGV(2)
   NAPI_ARGV_BUFFER_CAST(udx_socket_t *, self, 0)
   NAPI_ARGV_INT32(size, 1)
 
-  int err = udx_socket_send_buffer_size(self, &size);
+  int err = udx_socket_set_recv_buffer_size(self, size);
+  if (err < 0) UDX_NAPI_THROW(err)
+
+  return NULL;
+}
+
+NAPI_METHOD(udx_napi_socket_get_send_buffer_size) {
+  NAPI_ARGV(1)
+  NAPI_ARGV_BUFFER_CAST(udx_socket_t *, self, 0)
+
+  int size = 0;
+
+  int err = udx_socket_get_send_buffer_size(self, &size);
+  if (err < 0) UDX_NAPI_THROW(err)
+
+  NAPI_RETURN_UINT32(size)
+}
+
+NAPI_METHOD(udx_napi_socket_set_send_buffer_size) {
+  NAPI_ARGV(2)
+  NAPI_ARGV_BUFFER_CAST(udx_socket_t *, self, 0)
+  NAPI_ARGV_INT32(size, 1)
+
+  int err = udx_socket_set_send_buffer_size(self, size);
   if (err < 0) UDX_NAPI_THROW(err)
 
   NAPI_RETURN_UINT32(size)
@@ -746,8 +770,10 @@ NAPI_INIT() {
   NAPI_EXPORT_FUNCTION(udx_napi_socket_init)
   NAPI_EXPORT_FUNCTION(udx_napi_socket_bind)
   NAPI_EXPORT_FUNCTION(udx_napi_socket_set_ttl)
-  NAPI_EXPORT_FUNCTION(udx_napi_socket_recv_buffer_size)
-  NAPI_EXPORT_FUNCTION(udx_napi_socket_send_buffer_size)
+  NAPI_EXPORT_FUNCTION(udx_napi_socket_get_recv_buffer_size)
+  NAPI_EXPORT_FUNCTION(udx_napi_socket_set_recv_buffer_size)
+  NAPI_EXPORT_FUNCTION(udx_napi_socket_get_send_buffer_size)
+  NAPI_EXPORT_FUNCTION(udx_napi_socket_set_send_buffer_size)
   NAPI_EXPORT_FUNCTION(udx_napi_socket_send_ttl)
   NAPI_EXPORT_FUNCTION(udx_napi_socket_close)
 
