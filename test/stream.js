@@ -590,3 +590,71 @@ test('seq and ack wraparound', async function (t) {
 
   for (let i = 0; i < 10; i++) a.write(Buffer.of(i))
 })
+
+test('busy and idle events', async function (t) {
+  t.plan(6)
+
+  const udx = new UDX()
+
+  const socket = udx.createSocket()
+  socket.bind(0)
+
+  let idle = false
+  let busy = false
+
+  socket
+    .on('idle', function () {
+      idle = true
+      busy = false
+
+      socket.close()
+    })
+    .on('busy', function () {
+      busy = true
+      idle = false
+    })
+
+  const stream = udx.createStream(1)
+
+  t.absent(idle)
+  t.absent(busy)
+
+  stream
+    .on('connect', function () {
+      t.absent(idle)
+      t.ok(busy)
+
+      stream.destroy()
+    })
+    .on('close', function () {
+      t.ok(idle)
+      t.absent(busy)
+    })
+    .connect(socket, 2, socket.address().port)
+})
+
+test('no idle after close', async function (t) {
+  t.plan(1)
+
+  const udx = new UDX()
+
+  const socket = udx.createSocket()
+  socket.bind(0)
+
+  const stream = udx.createStream(1)
+
+  stream
+    .on('connect', function () {
+      stream.destroy()
+
+      socket
+        .on('idle', function () {
+          t.fail('idle event after close')
+        })
+        .on('close', function () {
+          t.pass('socket closed')
+        })
+        .close()
+    })
+    .connect(socket, 2, socket.address().port)
+})
