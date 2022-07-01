@@ -1166,6 +1166,31 @@ udx_stream_init (udx_t *udx, udx_stream_t *handle, uint32_t local_id, udx_stream
   return 0;
 }
 
+
+int
+udx_stream_get_seq (udx_stream_t *handle, uint32_t *seq) {
+  *seq = handle->seq;
+  return 0;
+}
+
+int
+udx_stream_set_seq (udx_stream_t *handle, uint32_t seq) {
+  handle->seq = seq;
+  return 0;
+}
+
+int
+udx_stream_get_ack (udx_stream_t *handle, uint32_t *ack) {
+  *ack = handle->ack;
+  return 0;
+}
+
+int
+udx_stream_set_ack (udx_stream_t *handle, uint32_t ack) {
+  handle->ack = ack;
+  return 0;
+}
+
 int
 udx_stream_firewall (udx_stream_t *handle, udx_stream_firewall_cb cb) {
   handle->on_firewall = cb;

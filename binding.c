@@ -127,7 +127,7 @@ on_udx_message (udx_socket_t *self, ssize_t read_len, const uv_buf_t *buf, const
 
   int port;
   char ip[INET6_ADDRSTRLEN];
-  int family;
+  int family = 0;
   parse_address((struct sockaddr *) from, ip, INET6_ADDRSTRLEN, &port, &family);
 
   UDX_NAPI_CALLBACK(n, n->on_message, {
@@ -262,7 +262,7 @@ on_udx_stream_firewall (udx_stream_t *stream, udx_socket_t *socket, const struct
 
   int port;
   char ip[INET6_ADDRSTRLEN];
-  int family;
+  int family = 0;
   parse_address((struct sockaddr *) from, ip, INET6_ADDRSTRLEN, &port, &family);
 
   UDX_NAPI_CALLBACK(n, n->on_firewall, {
@@ -548,6 +548,28 @@ NAPI_METHOD(udx_napi_stream_init) {
   return NULL;
 }
 
+NAPI_METHOD(udx_napi_stream_set_seq) {
+  NAPI_ARGV(2)
+  NAPI_ARGV_BUFFER_CAST(udx_stream_t *, stream, 0)
+  NAPI_ARGV_UINT32(seq, 1)
+
+  int err = udx_stream_set_seq(stream, seq);
+  if (err < 0) UDX_NAPI_THROW(err)
+
+  return NULL;
+}
+
+NAPI_METHOD(udx_napi_stream_set_ack) {
+  NAPI_ARGV(2)
+  NAPI_ARGV_BUFFER_CAST(udx_stream_t *, stream, 0)
+  NAPI_ARGV_UINT32(ack, 1)
+
+  int err = udx_stream_set_ack(stream, ack);
+  if (err < 0) UDX_NAPI_THROW(err)
+
+  return NULL;
+}
+
 NAPI_METHOD(udx_napi_stream_set_mode) {
   NAPI_ARGV(2)
   NAPI_ARGV_BUFFER_CAST(udx_napi_stream_t *, stream, 0)
@@ -745,7 +767,7 @@ NAPI_METHOD(udx_napi_interface_event_get_addrs) {
   NAPI_ARGV_BUFFER_CAST(udx_interface_event_t *, event, 0)
 
   char ip[INET6_ADDRSTRLEN];
-  int family;
+  int family = 0;
 
   napi_value napi_result;
   napi_create_array(env, &napi_result);
@@ -817,6 +839,8 @@ NAPI_INIT() {
   NAPI_EXPORT_FUNCTION(udx_napi_socket_close)
 
   NAPI_EXPORT_FUNCTION(udx_napi_stream_init)
+  NAPI_EXPORT_FUNCTION(udx_napi_stream_set_seq)
+  NAPI_EXPORT_FUNCTION(udx_napi_stream_set_ack)
   NAPI_EXPORT_FUNCTION(udx_napi_stream_set_mode)
   NAPI_EXPORT_FUNCTION(udx_napi_stream_connect)
   NAPI_EXPORT_FUNCTION(udx_napi_stream_send)
