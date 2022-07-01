@@ -101,12 +101,12 @@ parse_address (struct sockaddr *name, char *ip, size_t size, int *port, int *fam
   if (name->sa_family == AF_INET) {
     *port = ntohs(((struct sockaddr_in *) name)->sin_port);
     *family = 4;
+    uv_ip4_name((struct sockaddr_in *) name, ip, size);
   } else if (name->sa_family == AF_INET6) {
     *port = ntohs(((struct sockaddr_in6 *) name)->sin6_port);
     *family = 6;
+    uv_ip6_name((struct sockaddr_in6 *) name, ip, size);
   }
-
-  uv_ip_name(name, ip, size);
 }
 
 static void
