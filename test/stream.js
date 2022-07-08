@@ -239,7 +239,7 @@ test('destroy unconnected stream', async function (t) {
 })
 
 test('preconnect flow', async function (t) {
-  t.plan(8)
+  t.plan(9)
 
   const u = new UDX()
 
@@ -249,11 +249,12 @@ test('preconnect flow', async function (t) {
   let once = true
 
   const a = u.createStream(1, {
-    firewall (sock, port, host) {
+    firewall (sock, port, host, family) {
       t.ok(once)
       t.is(sock, socket)
       t.is(port, socket.address().port)
       t.is(host, '127.0.0.1')
+      t.is(family, 4)
       once = false
 
       return false
