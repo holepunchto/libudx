@@ -1166,7 +1166,6 @@ udx_stream_init (udx_t *udx, udx_stream_t *handle, uint32_t local_id, udx_stream
   return 0;
 }
 
-
 int
 udx_stream_get_seq (udx_stream_t *handle, uint32_t *seq) {
   *seq = handle->seq;

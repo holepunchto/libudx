@@ -5,12 +5,12 @@
 extern "C" {
 #endif
 
-#include <stdint.h>
 #include <stdbool.h>
+#include <stdint.h>
 #include <uv.h>
 
 // TODO: research the packets sizes a bit more
-#define UDX_MTU           1400
+#define UDX_MTU           1200
 #define UDX_HEADER_SIZE   20
 #define UDX_MAX_DATA_SIZE (UDX_MTU - UDX_HEADER_SIZE)
 
