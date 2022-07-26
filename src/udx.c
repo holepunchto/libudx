@@ -463,9 +463,9 @@ ack_packet (udx_stream_t *stream, uint32_t seq, int sack) {
 
     // Congestion control...
     if (stream->cwnd < stream->ssthresh || fast_rt) {
-      stream->cwnd += UDX_MTU;
+      stream->cwnd += stream->mtu;
     } else {
-      stream->cwnd += max_uint32((UDX_MTU * UDX_MTU) / stream->cwnd, 1);
+      stream->cwnd += max_uint32((stream->mtu * stream->mtu) / stream->cwnd, 1);
     }
   }
 
@@ -564,8 +564,8 @@ fast_retransmit (udx_stream_t *stream) {
 
   if (resent > 0) {
     if (stream->recovery == 0) {
-      stream->ssthresh = max_uint32(2 * UDX_MTU, stream->inflight / 2);
-      stream->cwnd = stream->ssthresh + 3 * UDX_MTU;
+      stream->ssthresh = max_uint32(2 * stream->mtu, stream->inflight / 2);
+      stream->cwnd = stream->ssthresh + 3 * stream->mtu;
 
       // set recovery to how many packets we've sent but has not been fully acked (could be maintained elsewhere)
       stream->recovery = len;
@@ -1116,6 +1116,8 @@ udx_stream_init (udx_t *udx, udx_stream_t *handle, uint32_t local_id, udx_stream
   handle->socket = NULL;
   handle->udx = udx;
 
+  handle->mtu = UDX_DEFAULT_MTU;
+
   handle->seq = 0;
   handle->ack = 0;
   handle->remote_acked = 0;
@@ -1133,7 +1135,7 @@ udx_stream_init (udx_t *udx, udx_stream_t *handle, uint32_t local_id, udx_stream
 
   handle->inflight = 0;
   handle->ssthresh = 0xffff;
-  handle->cwnd = 2 * UDX_MTU;
+  handle->cwnd = 2 * handle->mtu;
   handle->rwnd = 0;
 
   handle->stats_sacks = 0;
@@ -1163,6 +1165,18 @@ udx_stream_init (udx_t *udx, udx_stream_t *handle, uint32_t local_id, udx_stream
 
   udx__cirbuf_set(&(udx->streams_by_id), (udx_cirbuf_val_t *) handle);
 
+  return 0;
+}
+
+int
+udx_stream_get_mtu (udx_stream_t *handle, uint16_t *mtu) {
+  *mtu = handle->mtu;
+  return 0;
+}
+
+int
+udx_stream_set_mtu (udx_stream_t *handle, uint16_t mtu) {
+  handle->mtu = mtu;
   return 0;
 }
 
@@ -1247,8 +1261,8 @@ udx_stream_check_timeouts (udx_stream_t *handle) {
     handle->rto_timeout = now + 2 * handle->rto;
 
     // Update congestion control
-    handle->ssthresh = max_uint32(2 * UDX_MTU, handle->inflight / 2);
-    handle->cwnd = 2 * UDX_MTU;
+    handle->ssthresh = max_uint32(2 * handle->mtu, handle->inflight / 2);
+    handle->cwnd = 2 * handle->mtu;
 
     // Consider all packet losts - seems to be the simple consensus across different stream impls
     // which we like cause it is nice and simple to implement.
@@ -1352,7 +1366,7 @@ udx_stream_write (udx_stream_write_t *req, udx_stream_t *handle, const uv_buf_t 
   do {
     udx_packet_t *pkt = malloc(sizeof(udx_packet_t));
 
-    size_t buf_partial_len = buf.len < UDX_MAX_DATA_SIZE ? buf.len : UDX_MAX_DATA_SIZE;
+    size_t buf_partial_len = buf.len < UDX_MAX_DATA_SIZE(handle->mtu) ? buf.len : UDX_MAX_DATA_SIZE(handle->mtu);
     uv_buf_t buf_partial = uv_buf_init(buf.base, buf_partial_len);
 
     init_stream_packet(pkt, UDX_HEADER_DATA, handle, &buf_partial);
@@ -1395,7 +1409,7 @@ udx_stream_write_end (udx_stream_write_t *req, udx_stream_t *handle, const uv_bu
   do {
     udx_packet_t *pkt = malloc(sizeof(udx_packet_t));
 
-    size_t buf_partial_len = buf.len < UDX_MAX_DATA_SIZE ? buf.len : UDX_MAX_DATA_SIZE;
+    size_t buf_partial_len = buf.len < UDX_MAX_DATA_SIZE(handle->mtu) ? buf.len : UDX_MAX_DATA_SIZE(handle->mtu);
     uv_buf_t buf_partial = uv_buf_init(buf.base, buf_partial_len);
 
     init_stream_packet(pkt, UDX_HEADER_END, handle, &buf_partial);

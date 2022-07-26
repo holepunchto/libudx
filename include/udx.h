@@ -10,9 +10,9 @@ extern "C" {
 #include <uv.h>
 
 // TODO: research the packets sizes a bit more
-#define UDX_MTU           1200
-#define UDX_HEADER_SIZE   20
-#define UDX_MAX_DATA_SIZE (UDX_MTU - UDX_HEADER_SIZE)
+#define UDX_DEFAULT_MTU        1200
+#define UDX_HEADER_SIZE        20
+#define UDX_MAX_DATA_SIZE(mtu) (mtu - UDX_HEADER_SIZE)
 
 #define UDX_CLOCK_GRANULARITY_MS 20
 
@@ -163,6 +163,8 @@ struct udx_stream {
   udx_stream_recv_cb on_recv;
   udx_stream_drain_cb on_drain;
   udx_stream_close_cb on_close;
+
+  uint16_t mtu;
 
   uint32_t seq;
   uint32_t ack;
@@ -320,6 +322,12 @@ udx_check_timeouts (udx_t *handle);
 
 int
 udx_stream_init (udx_t *udx, udx_stream_t *handle, uint32_t local_id, udx_stream_close_cb close_cb);
+
+int
+udx_stream_get_mtu (udx_stream_t *handle, uint16_t *mtu);
+
+int
+udx_stream_set_mtu (udx_stream_t *handle, uint16_t mtu);
 
 int
 udx_stream_get_seq (udx_stream_t *handle, uint32_t *seq);
