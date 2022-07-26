@@ -176,7 +176,7 @@ on_udx_stream_read (udx_stream_t *stream, ssize_t read_len, const uv_buf_t *buf)
   n->read_buf_head += buf->len;
   n->read_buf_free -= buf->len;
 
-  if (n->mode == UDX_NAPI_NON_INTERACTIVE && n->read_buf_free >= stream->mtu) {
+  if (n->mode == UDX_NAPI_NON_INTERACTIVE && n->read_buf_free >= 2 * UDX_DEFAULT_MTU) {
     return;
   }
 
