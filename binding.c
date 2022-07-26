@@ -176,7 +176,7 @@ on_udx_stream_read (udx_stream_t *stream, ssize_t read_len, const uv_buf_t *buf)
   n->read_buf_head += buf->len;
   n->read_buf_free -= buf->len;
 
-  if (n->mode == UDX_NAPI_NON_INTERACTIVE && n->read_buf_free >= UDX_MTU) {
+  if (n->mode == UDX_NAPI_NON_INTERACTIVE && n->read_buf_free >= 2 * UDX_DEFAULT_MTU) {
     return;
   }
 
@@ -548,6 +548,17 @@ NAPI_METHOD(udx_napi_stream_init) {
   return NULL;
 }
 
+NAPI_METHOD(udx_napi_stream_set_mtu) {
+  NAPI_ARGV(2)
+  NAPI_ARGV_BUFFER_CAST(udx_stream_t *, stream, 0)
+  NAPI_ARGV_UINT32(mtu, 1)
+
+  int err = udx_stream_set_mtu(stream, mtu);
+  if (err < 0) UDX_NAPI_THROW(err)
+
+  return NULL;
+}
+
 NAPI_METHOD(udx_napi_stream_set_seq) {
   NAPI_ARGV(2)
   NAPI_ARGV_BUFFER_CAST(udx_stream_t *, stream, 0)
@@ -839,6 +850,7 @@ NAPI_INIT() {
   NAPI_EXPORT_FUNCTION(udx_napi_socket_close)
 
   NAPI_EXPORT_FUNCTION(udx_napi_stream_init)
+  NAPI_EXPORT_FUNCTION(udx_napi_stream_set_mtu)
   NAPI_EXPORT_FUNCTION(udx_napi_stream_set_seq)
   NAPI_EXPORT_FUNCTION(udx_napi_stream_set_ack)
   NAPI_EXPORT_FUNCTION(udx_napi_stream_set_mode)
