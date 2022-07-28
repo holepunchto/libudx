@@ -660,7 +660,7 @@ test('no idle after close', async function (t) {
     .connect(socket, 2, socket.address().port)
 })
 
-test('fragmentation', async function (t) {
+test('write exceeding mtu triggers event', async function (t) {
   t.plan(1)
 
   const udx = new UDX()
@@ -671,7 +671,7 @@ test('fragmentation', async function (t) {
   const stream = udx.createStream(1)
 
   stream
-    .on('fragmentation', function () {
+    .on('mtu-exceeded', function () {
       t.pass()
       stream.destroy()
       socket.close()
