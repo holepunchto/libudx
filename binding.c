@@ -822,6 +822,7 @@ NAPI_METHOD(udx_napi_interface_event_get_addrs) {
 
 NAPI_INIT() {
   NAPI_EXPORT_OFFSETOF(udx_stream_t, inflight)
+  NAPI_EXPORT_OFFSETOF(udx_stream_t, mtu)
   NAPI_EXPORT_OFFSETOF(udx_stream_t, cwnd)
   NAPI_EXPORT_OFFSETOF(udx_stream_t, srtt)
   NAPI_EXPORT_OFFSETOF(udx_stream_t, pkts_waiting)

@@ -659,3 +659,24 @@ test('no idle after close', async function (t) {
     })
     .connect(socket, 2, socket.address().port)
 })
+
+test('fragmentation', async function (t) {
+  t.plan(1)
+
+  const udx = new UDX()
+
+  const socket = udx.createSocket()
+  socket.bind(0)
+
+  const stream = udx.createStream(1)
+
+  stream
+    .on('fragmentation', function () {
+      t.pass()
+      stream.destroy()
+      socket.close()
+    })
+    .connect(socket, 2, socket.address().port)
+
+  stream.write(Buffer.alloc(stream.mtu * 2))
+})
