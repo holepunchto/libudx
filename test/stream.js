@@ -661,7 +661,7 @@ test('no idle after close', async function (t) {
 })
 
 test('write exceeding mtu triggers event', async function (t) {
-  t.plan(1)
+  t.plan(2)
 
   const udx = new UDX()
 
@@ -677,6 +677,8 @@ test('write exceeding mtu triggers event', async function (t) {
       socket.close()
     })
     .connect(socket, 2, socket.address().port)
+
+  t.is(stream.mtu, 1200)
 
   stream.write(Buffer.alloc(stream.mtu * 2))
 })
