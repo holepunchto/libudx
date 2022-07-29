@@ -12,7 +12,7 @@ extern "C" {
 // TODO: research the packets sizes a bit more
 #define UDX_DEFAULT_MTU        1200
 #define UDX_HEADER_SIZE        20
-#define UDX_MAX_DATA_SIZE(mtu) (mtu - UDX_HEADER_SIZE)
+#define UDX_MAX_DATA_SIZE(mtu) (mtu - (uint16_t) UDX_HEADER_SIZE)
 
 #define UDX_CLOCK_GRANULARITY_MS 20
 
