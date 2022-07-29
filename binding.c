@@ -125,7 +125,7 @@ static void
 on_udx_message (udx_socket_t *self, ssize_t read_len, const uv_buf_t *buf, const struct sockaddr *from) {
   udx_napi_socket_t *n = (udx_napi_socket_t *) self;
 
-  int port;
+  int port = 0;
   char ip[INET6_ADDRSTRLEN];
   int family = 0;
   parse_address((struct sockaddr *) from, ip, INET6_ADDRSTRLEN, &port, &family);
@@ -260,7 +260,7 @@ on_udx_stream_firewall (udx_stream_t *stream, udx_socket_t *socket, const struct
 
   uint32_t fw = 1; // assume error means firewall it, whilst reporting the uncaught
 
-  int port;
+  int port = 0;
   char ip[INET6_ADDRSTRLEN];
   int family = 0;
   parse_address((struct sockaddr *) from, ip, INET6_ADDRSTRLEN, &port, &family);
