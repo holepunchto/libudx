@@ -537,7 +537,7 @@ NAPI_METHOD(udx_napi_stream_init) {
   NAPI_ARGV_BUFFER_CAST(udx_t *, udx, 0)
   NAPI_ARGV_BUFFER_CAST(udx_napi_stream_t *, stream, 1)
   NAPI_ARGV_UINT32(id, 2)
-  NAPI_ARGV_UINT32(framed, 2)
+  NAPI_ARGV_UINT32(framed, 3)
 
   stream->mode = UDX_NAPI_INTERACTIVE | (framed ? UDX_NAPI_FRAMED : 0);
 
