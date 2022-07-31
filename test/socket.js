@@ -218,3 +218,96 @@ test('send after close', async function (t) {
 
   t.is(await a.send(Buffer.from('hello'), a.address().port), false)
 })
+
+test('try send simple message', async function (t) {
+  t.plan(4)
+
+  const u = new UDX()
+  const a = u.createSocket()
+
+  a.on('message', function (message, { host, family, port }) {
+    t.alike(message, Buffer.from('hello'))
+    t.is(host, '127.0.0.1')
+    t.is(family, 4)
+    t.is(port, a.address().port)
+    a.close()
+  })
+
+  a.bind(0)
+  a.trySend(Buffer.from('hello'), a.address().port)
+})
+
+test('try send simple message ipv6', async function (t) {
+  t.plan(4)
+
+  const u = new UDX()
+  const a = u.createSocket()
+
+  a.on('message', function (message, { host, family, port }) {
+    t.alike(message, Buffer.from('hello'))
+    t.is(host, '::1')
+    t.is(family, 6)
+    t.is(port, a.address().port)
+    a.close()
+  })
+
+  a.bind(0, '::1')
+  a.trySend(Buffer.from('hello'), a.address().port, '::1')
+})
+
+test('try send empty message', async function (t) {
+  t.plan(1)
+
+  const u = new UDX()
+  const a = u.createSocket()
+
+  a.on('message', function (message) {
+    t.alike(message, Buffer.alloc(0))
+    a.close()
+  })
+
+  a.bind(0)
+  a.trySend(Buffer.alloc(0), a.address().port)
+})
+
+test('close socket while try sending', async function (t) {
+  t.plan(2)
+
+  const u = new UDX()
+  const a = u.createSocket()
+
+  a.bind()
+
+  a.on('message', function (message) {
+    t.fail('should not receive message')
+  })
+
+  a.on('close', function () {
+    t.pass()
+  })
+
+  t.is(a.trySend(Buffer.from('hello'), a.address().port), undefined)
+
+  a.close()
+})
+
+test('try send after close', async function (t) {
+  t.plan(2)
+
+  const u = new UDX()
+
+  const a = u.createSocket()
+
+  a.on('message', function (message) {
+    t.fail('should not receive message')
+  })
+
+  a.on('close', function () {
+    t.pass()
+  })
+
+  a.bind(0)
+  a.close()
+
+  t.is(a.trySend(Buffer.from('hello'), a.address().port), undefined)
+})

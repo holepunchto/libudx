@@ -180,6 +180,40 @@ test('unordered messages', async function (t) {
   a.send(Buffer.from('d'))
 })
 
+test('try send unordered messages', async function (t) {
+  t.plan(2)
+
+  const [a, b] = makeTwoStreams(t)
+  const expected = []
+
+  b.on('message', function (buf) {
+    b.trySend(Buffer.from('echo: ' + buf.toString()))
+  })
+
+  a.on('error', function () {
+    t.pass('a destroyed')
+  })
+
+  a.on('message', function (buf) {
+    expected.push(buf.toString())
+
+    if (expected.length === 3) {
+      t.alike(expected.sort(), [
+        'echo: a',
+        'echo: bc',
+        'echo: d'
+      ])
+
+      // TODO: .end() here triggers a bug, investigate
+      b.destroy()
+    }
+  })
+
+  a.trySend(Buffer.from('a'))
+  a.trySend(Buffer.from('bc'))
+  a.trySend(Buffer.from('d'))
+})
+
 test('ipv6 streams', async function (t) {
   t.plan(1)
 
