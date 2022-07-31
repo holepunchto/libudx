@@ -43,3 +43,60 @@ test('network interfaces', async function (t) {
     })
   }
 })
+
+test('network interfaces - watch', async function (t) {
+  t.plan(2)
+
+  const udx = new UDX()
+  // const initialInterfaces = udx.networkInterfaces().length
+
+  const watcher = udx.watchNetworkInterfaces(function (interfaces) {
+    // t.ok(initialInterfaces !== interfaces.length, 'total interfaces has changed')
+    t.ok(interfaces.length >= 1, 'has at least 1')
+
+    watcher.destroy()
+  })
+
+  watcher.once('close', function () {
+    t.pass()
+  })
+
+  // sudo ip link add udx0test type dummy
+  // sudo ip link set dev udx0test up
+  // wait for watcher to catch up
+  // sudo ip link set dev udx0test down
+  // sudo ip link delete udx0test type dummy
+
+  // Windows? Mac OS? Etcetera
+
+  // As it's too complicated to, in every OS, adding and removing a temporal interface:
+  watcher._onevent()
+})
+
+test('network interfaces - watch, unwatch and destroy twice', async function (t) {
+  t.plan(2)
+
+  const udx = new UDX()
+
+  // This already does a watch()
+  const watcher = udx.watchNetworkInterfaces(function (interfaces) {
+    t.ok(interfaces.length >= 1, 'has at least 1')
+
+    // Unwatch twice to trigger an internal condition that avoids unwatching twice
+    watcher.unwatch()
+    watcher.unwatch()
+
+    // Destroy twice with the same intention
+    watcher.destroy()
+    watcher.destroy()
+  })
+
+  // This is the second watch() to trigger an internal condition that avoids watching twice
+  watcher.watch()
+
+  watcher.once('close', function () {
+    t.pass()
+  })
+
+  watcher._onevent()
+})
