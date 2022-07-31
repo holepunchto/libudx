@@ -219,7 +219,7 @@ test('send after close', async function (t) {
   t.is(await a.send(Buffer.from('hello'), a.address().port), false)
 })
 
-test('trySend simple message', async function (t) {
+test('try send simple message', async function (t) {
   t.plan(4)
 
   const u = new UDX()
@@ -237,7 +237,7 @@ test('trySend simple message', async function (t) {
   a.trySend(Buffer.from('hello'), a.address().port)
 })
 
-test('trySend simple message ipv6', async function (t) {
+test('try send simple message ipv6', async function (t) {
   t.plan(4)
 
   const u = new UDX()
@@ -255,7 +255,7 @@ test('trySend simple message ipv6', async function (t) {
   a.trySend(Buffer.from('hello'), a.address().port, '::1')
 })
 
-test('trySend empty message', async function (t) {
+test('try send empty message', async function (t) {
   t.plan(1)
 
   const u = new UDX()
@@ -291,7 +291,7 @@ test('close socket while try sending', async function (t) {
   a.close()
 })
 
-test('trySend after close', async function (t) {
+test('try send after close', async function (t) {
   t.plan(2)
 
   const u = new UDX()

@@ -180,7 +180,7 @@ test('unordered messages', async function (t) {
   a.send(Buffer.from('d'))
 })
 
-test('unordered messages using trySend', async function (t) {
+test('try send unordered messages', async function (t) {
   t.plan(2)
 
   const [a, b] = makeTwoStreams(t)
