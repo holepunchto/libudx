@@ -38,6 +38,9 @@ test('default firewall - different sockets', async function (t) {
 
   a.on('error', function (error) {
     t.is(error.code, 'ETIMEDOUT')
+
+    a.destroy()
+    b.destroy()
   })
 
   a.write(Buffer.from('hello'))
