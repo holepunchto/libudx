@@ -313,7 +313,7 @@ test('try send after close', async function (t) {
   t.is(a.trySend(Buffer.from('hello'), a.address().port), undefined)
 })
 
-test('connect to invalid host ip', async function (t) {
+test('connect to invalid host ip', function (t) {
   t.plan(1)
 
   const u = new UDX()
@@ -330,7 +330,7 @@ test('connect to invalid host ip', async function (t) {
   }
 })
 
-test('bind to invalid host ip', async function (t) {
+test('bind to invalid host ip', function (t) {
   t.plan(1)
 
   const u = new UDX()
@@ -444,7 +444,7 @@ test('bind twice', async function (t) {
   await a.close()
 })
 
-test('bind while closing', async function (t) {
+test('bind while closing', function (t) {
   t.plan(1)
 
   const u = new UDX()
@@ -467,10 +467,12 @@ test('close twice', async function (t) {
 
   a.bind(0)
 
-  const closing1 = a.close()
-  const closing2 = a.close()
+  a.on('close', function () {
+    t.pass()
+  })
 
-  t.ok(closing1 === closing2)
+  a.close()
+  a.close()
 })
 
 test('set TTL', async function (t) {
@@ -531,7 +533,7 @@ test('set recv buffer size', async function (t) {
   a.bind(0)
   a.setRecvBufferSize(NEW_BUFFER_SIZE)
 
-  t.is(a.getRecvBufferSize(), NEW_BUFFER_SIZE)
+  t.ok(a.getRecvBufferSize() >= NEW_BUFFER_SIZE)
 
   await a.close()
 })
@@ -571,24 +573,24 @@ test('set send buffer size', async function (t) {
   a.bind(0)
   a.setSendBufferSize(NEW_BUFFER_SIZE)
 
-  t.is(a.getSendBufferSize(), NEW_BUFFER_SIZE)
+  t.ok(a.getSendBufferSize() >= NEW_BUFFER_SIZE)
 
   await a.close()
 })
 
-test('UDXSocket - isIPv4', async function (t) {
+test('UDXSocket - isIPv4', function (t) {
   t.is(UDXSocket.isIPv4('127.0.0.1'), true)
   t.is(UDXSocket.isIPv4('::1'), false)
   t.is(UDXSocket.isIPv4('0.-1.0.0'), false)
 })
 
-test('UDXSocket - isIPv6', async function (t) {
+test('UDXSocket - isIPv6', function (t) {
   t.is(UDXSocket.isIPv6('127.0.0.1'), false)
   t.is(UDXSocket.isIPv6('::1'), true)
   t.is(UDXSocket.isIPv6('0.-1.0.0'), false)
 })
 
-test('UDXSocket - isIP', async function (t) {
+test('UDXSocket - isIP', function (t) {
   t.is(UDXSocket.isIP('127.0.0.1'), 4)
   t.is(UDXSocket.isIP('::1'), 6)
   t.is(UDXSocket.isIP('0.-1.0.0'), 0)
