@@ -701,7 +701,7 @@ test('no idle after close', async function (t) {
 })
 
 test('localHost, localFamily and localPort', async function (t) {
-  t.plan(3)
+  t.plan(6)
 
   const udx = new UDX()
 
@@ -710,9 +710,9 @@ test('localHost, localFamily and localPort', async function (t) {
 
   const stream = udx.createStream(1)
 
-  console.log('stream.localHost', stream.localHost)
-  console.log('stream.localFamily', stream.localFamily)
-  console.log('stream.localPort', stream.localPort)
+  t.is(stream.localHost, null)
+  t.is(stream.localFamily, 0)
+  t.is(stream.localPort, 0)
 
   stream.on('connect', function () {
     t.is(stream.localHost, '0.0.0.0')
