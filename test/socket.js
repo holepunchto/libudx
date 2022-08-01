@@ -531,7 +531,7 @@ test('set recv buffer size', async function (t) {
   a.bind(0)
   a.setRecvBufferSize(NEW_BUFFER_SIZE)
 
-  t.is(a.getRecvBufferSize(), NEW_BUFFER_SIZE * 2) // Why recv buffer is double?
+  t.is(a.getRecvBufferSize(), NEW_BUFFER_SIZE)
 
   await a.close()
 })
@@ -571,7 +571,7 @@ test('set send buffer size', async function (t) {
   a.bind(0)
   a.setSendBufferSize(NEW_BUFFER_SIZE)
 
-  t.is(a.getSendBufferSize(), NEW_BUFFER_SIZE * 2) // Why send buffer is double?
+  t.is(a.getSendBufferSize(), NEW_BUFFER_SIZE)
 
   await a.close()
 })
