@@ -27,7 +27,7 @@ test('default firewall - same socket', async function (t) {
   a.write(Buffer.from('hello'))
 })
 
-/* test('default firewall - different sockets', async function (t) {
+test('default firewall - different sockets', async function (t) {
   t.plan(1)
 
   const [a, b] = makeTwoStreams(t)
@@ -41,4 +41,4 @@ test('default firewall - same socket', async function (t) {
   })
 
   a.write(Buffer.from('hello'))
-}) */
+})
