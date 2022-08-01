@@ -627,7 +627,7 @@ test('seq and ack wraparound', async function (t) {
 })
 
 test('busy and idle events', async function (t) {
-  t.plan(6)
+  t.plan(10)
 
   const udx = new UDX()
 
@@ -659,11 +659,17 @@ test('busy and idle events', async function (t) {
       t.absent(idle)
       t.ok(busy)
 
+      t.is(idle, socket.idle)
+      t.is(busy, socket.busy)
+
       stream.destroy()
     })
     .on('close', function () {
       t.ok(idle)
       t.absent(busy)
+
+      t.is(idle, socket.idle)
+      t.is(busy, socket.busy)
     })
     .connect(socket, 2, socket.address().port)
 })
@@ -693,3 +699,70 @@ test('no idle after close', async function (t) {
     })
     .connect(socket, 2, socket.address().port)
 })
+
+test('localHost, localFamily and localPort', async function (t) {
+  t.plan(3)
+
+  const udx = new UDX()
+
+  const socket = udx.createSocket()
+  socket.bind(0)
+
+  const stream = udx.createStream(1)
+
+  console.log('stream.localHost', stream.localHost)
+  console.log('stream.localFamily', stream.localFamily)
+  console.log('stream.localPort', stream.localPort)
+
+  stream.on('connect', function () {
+    t.is(stream.localHost, '0.0.0.0')
+    t.is(stream.localFamily, 4)
+    t.is(typeof stream.localPort, 'number')
+
+    stream.destroy()
+    socket.close()
+  })
+
+  stream.connect(socket, 2, socket.address().port)
+})
+
+test('default firewall - same socket', async function (t) {
+  t.plan(1)
+
+  const u = new UDX()
+
+  const socket = u.createSocket()
+  socket.bind(0)
+
+  const a = u.createStream(1)
+  const b = u.createStream(2)
+
+  b.on('data', function (data) {
+    t.fail('default firewall should not allow to receive data')
+  })
+
+  a.on('error', function (error) {
+    t.is(error.code, 'ETIMEDOUT')
+
+    socket.close()
+  })
+
+  a.connect(socket, 2, socket.address().port)
+  a.write(Buffer.from('hello'))
+})
+
+/* test('default firewall - different sockets', async function (t) {
+  t.plan(1)
+
+  const [a, b] = makeTwoStreams(t)
+
+  b.on('data', function (data) {
+    t.fail('default firewall should not allow to receive data')
+  })
+
+  a.on('error', function (error) {
+    t.is(error.code, 'ETIMEDOUT')
+  })
+
+  a.write(Buffer.from('hello'))
+}) */
