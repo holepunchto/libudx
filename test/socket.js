@@ -330,6 +330,149 @@ test('connect to invalid host ip', async function (t) {
   }
 })
 
+test('bind to invalid host ip', async function (t) {
+  t.plan(1)
+
+  const u = new UDX()
+  const a = u.createSocket()
+
+  const invalidHost = '0.-1.0.0'
+
+  try {
+    a.bind(0, invalidHost)
+  } catch (error) {
+    t.is(error.message, `${invalidHost} is not a valid IP address`)
+  }
+})
+
+test('send to invalid host ip', async function (t) {
+  t.plan(1)
+
+  const u = new UDX()
+  const a = u.createSocket()
+
+  a.bind(0)
+
+  const invalidHost = '0.-1.0.0'
+
+  try {
+    await a.send(Buffer.from('hello'), a.address().port, invalidHost)
+  } catch (error) {
+    t.is(error.message, `${invalidHost} is not a valid IP address`)
+  }
+
+  await a.close()
+})
+
+test('try send to invalid host ip', async function (t) {
+  t.plan(1)
+
+  const u = new UDX()
+  const a = u.createSocket()
+
+  a.bind(0)
+
+  const invalidHost = '0.-1.0.0'
+
+  try {
+    a.trySend(Buffer.from('hello'), a.address().port, invalidHost)
+  } catch (error) {
+    t.is(error.message, `${invalidHost} is not a valid IP address`)
+  }
+
+  await a.close()
+})
+
+test('send without bind', async function (t) {
+  t.plan(1)
+
+  const u = new UDX()
+
+  const a = u.createSocket()
+  const b = u.createSocket()
+
+  b.on('message', function (message) {
+    console.log('recv')
+    t.alike(message, Buffer.from('hello'))
+    a.close()
+    b.close()
+  })
+
+  b.bind(0)
+  await a.send(Buffer.from('hello'), b.address().port)
+})
+
+test('try send without bind', async function (t) {
+  t.plan(1)
+
+  const u = new UDX()
+
+  const a = u.createSocket()
+  const b = u.createSocket()
+
+  b.on('message', function (message) {
+    console.log('recv')
+    t.alike(message, Buffer.from('hello'))
+    a.close()
+    b.close()
+  })
+
+  b.bind(0)
+  a.trySend(Buffer.from('hello'), b.address().port)
+})
+
+test('get address without bind', async function (t) {
+  const u = new UDX()
+  const a = u.createSocket()
+  t.is(a.address(), null)
+})
+
+test('bind twice', async function (t) {
+  t.plan(1)
+
+  const u = new UDX()
+  const a = u.createSocket()
+
+  a.bind(0)
+
+  try {
+    a.bind(0)
+  } catch (error) {
+    t.is(error.message, 'Already bound')
+  }
+
+  await a.close()
+})
+
+test('bind while closing', async function (t) {
+  t.plan(1)
+
+  const u = new UDX()
+  const a = u.createSocket()
+
+  a.close()
+
+  try {
+    a.bind(0)
+  } catch (error) {
+    t.is(error.message, 'Socket is closed')
+  }
+})
+
+test('close twice', async function (t) {
+  t.plan(1)
+
+  const u = new UDX()
+  const a = u.createSocket()
+
+  a.bind(0)
+
+  const closing1 = a.close()
+  const closing2 = a.close()
+
+  t.ok(closing1 === closing2)
+})
+
 test('set TTL', async function (t) {
   t.plan(2)
 
