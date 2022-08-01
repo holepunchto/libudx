@@ -1,5 +1,5 @@
 const test = require('brittle')
-const UDX = require('../')
+const UDX = require('../../')
 // const { makeTwoStreams } = require('./helpers')
 
 test('default firewall - same socket', async function (t) {
