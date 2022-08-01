@@ -74,7 +74,7 @@ test('network interfaces - watch', async function (t) {
 })
 
 test('network interfaces - watch, unwatch and destroy twice', async function (t) {
-  t.plan(2)
+  t.plan(3)
 
   const udx = new UDX()
 
@@ -87,8 +87,9 @@ test('network interfaces - watch, unwatch and destroy twice', async function (t)
     watcher.unwatch()
 
     // Destroy twice with the same intention
-    watcher.destroy()
-    watcher.destroy()
+    const p1 = watcher.destroy()
+    const p2 = watcher.destroy()
+    t.is(p1, p2)
   })
 
   // This is the second watch() to trigger an internal condition that avoids watching twice
