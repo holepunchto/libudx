@@ -325,7 +325,6 @@ test('connect to invalid host ip', async function (t) {
 
   try {
     s.connect(a, 2, 0, invalidHost)
-    t.fail('Should have given error')
   } catch (error) {
     t.is(error.message, `${invalidHost} is not a valid IP address`)
   }
