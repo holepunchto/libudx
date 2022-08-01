@@ -28,12 +28,23 @@ test('default firewall - same socket', async function (t) {
 })
 
 test('default firewall - different sockets', async function (t) {
-  t.plan(1)
+  t.plan(3)
 
   const [a, b] = makeTwoStreams(t)
 
   b.on('data', function (data) {
     t.fail('default firewall should not allow to receive data')
+
+    a.destroy()
+    b.destroy()
+  })
+
+  b.on('close', function () {
+    t.pass('b closed')
+  })
+
+  a.on('close', function () {
+    t.pass('a closed')
   })
 
   a.on('error', function (error) {
