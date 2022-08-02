@@ -45,7 +45,7 @@ test('network interfaces', async function (t) {
 })
 
 test('network interfaces - watch, unwatch and destroy twice', async function (t) {
-  t.plan(3)
+  t.plan(2)
 
   const udx = new UDX()
 
@@ -62,9 +62,8 @@ test('network interfaces - watch, unwatch and destroy twice', async function (t)
   watcher.unwatch()
 
   // Destroy twice with the same intention
-  const p1 = watcher.destroy()
-  const p2 = watcher.destroy()
-  t.is(p1, p2)
+  watcher.destroy()
+  watcher.destroy()
 
   watcher.once('close', function () {
     t.pass()
