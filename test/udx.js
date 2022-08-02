@@ -49,19 +49,15 @@ test('network interfaces - watch, unwatch and destroy twice', async function (t)
 
   const udx = new UDX()
 
-  // This already does a watch()
   const watcher = udx.watchNetworkInterfaces()
-  // This is the second watch() to trigger an internal condition that avoids watching twice
   watcher.watch()
 
   const totalInterfaces = udx.networkInterfaces().length
   t.is(totalInterfaces, watcher.interfaces.length)
 
-  // Unwatch twice to trigger an internal condition that avoids unwatching twice
   watcher.unwatch()
   watcher.unwatch()
 
-  // Destroy twice with the same intention
   watcher.destroy()
   watcher.destroy()
 
