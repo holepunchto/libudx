@@ -13,6 +13,7 @@
   ],
   "scripts": {
     "test": "standard && brittle test/*.js",
+    "test-all": "standard && brittle test/*.js test/slow/*.js",
     "bench": "node test/bench/bench.js",
     "prebuild": "prebuildify --napi --strip",
     "install": "node-gyp-build"
