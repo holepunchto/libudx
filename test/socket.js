@@ -419,10 +419,11 @@ test('try send without bind', async function (t) {
   a.trySend(Buffer.from('hello'), b.address().port)
 })
 
-test('get address without bind', function (t) {
+test('get address without bind', async function (t) {
   const u = new UDX()
   const a = u.createSocket()
   t.is(a.address(), null)
+  await a.close()
 })
 
 test('bind twice', async function (t) {
