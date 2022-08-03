@@ -43,3 +43,25 @@ test('network interfaces', async function (t) {
     })
   }
 })
+
+test('network interfaces - watch, unwatch and destroy twice', async function (t) {
+  t.plan(2)
+
+  const udx = new UDX()
+
+  const watcher = udx.watchNetworkInterfaces()
+  watcher.watch()
+
+  const totalInterfaces = udx.networkInterfaces().length
+  t.is(totalInterfaces, watcher.interfaces.length)
+
+  watcher.unwatch()
+  watcher.unwatch()
+
+  watcher.destroy()
+  watcher.destroy()
+
+  watcher.once('close', function () {
+    t.pass()
+  })
+})
