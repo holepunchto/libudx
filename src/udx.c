@@ -1363,11 +1363,12 @@ udx_stream_write (udx_stream_write_t *req, udx_stream_t *handle, const uv_buf_t 
 
   uv_buf_t buf = bufs[0];
 
+  size_t mtu = handle->mtu - UDX_HEADER_SIZE;
+
   do {
     udx_packet_t *pkt = malloc(sizeof(udx_packet_t));
 
-    size_t buf_partial_len = buf.len < UDX_MAX_DATA_SIZE(handle->mtu) ? buf.len : UDX_MAX_DATA_SIZE(handle->mtu);
-    uv_buf_t buf_partial = uv_buf_init(buf.base, buf_partial_len);
+    uv_buf_t buf_partial = uv_buf_init(buf.base, buf.len < mtu ? buf.len : mtu);
 
     init_stream_packet(pkt, UDX_HEADER_DATA, handle, &buf_partial);
 
@@ -1379,8 +1380,8 @@ udx_stream_write (udx_stream_write_t *req, udx_stream_t *handle, const uv_buf_t 
     handle->seq++;
     req->packets++;
 
-    buf.len -= buf_partial_len;
-    buf.base += buf_partial_len;
+    buf.len -= buf_partial.len;
+    buf.base += buf_partial.len;
 
     udx__cirbuf_set(&(handle->outgoing), (udx_cirbuf_val_t *) pkt);
 
@@ -1406,11 +1407,12 @@ udx_stream_write_end (udx_stream_write_t *req, udx_stream_t *handle, const uv_bu
 
   uv_buf_t buf = bufs[0];
 
+  size_t mtu = handle->mtu - UDX_HEADER_SIZE;
+
   do {
     udx_packet_t *pkt = malloc(sizeof(udx_packet_t));
 
-    size_t buf_partial_len = buf.len < UDX_MAX_DATA_SIZE(handle->mtu) ? buf.len : UDX_MAX_DATA_SIZE(handle->mtu);
-    uv_buf_t buf_partial = uv_buf_init(buf.base, buf_partial_len);
+    uv_buf_t buf_partial = uv_buf_init(buf.base, buf.len < mtu ? buf.len : mtu);
 
     init_stream_packet(pkt, UDX_HEADER_END, handle, &buf_partial);
 
@@ -1422,8 +1424,8 @@ udx_stream_write_end (udx_stream_write_t *req, udx_stream_t *handle, const uv_bu
     handle->seq++;
     req->packets++;
 
-    buf.len -= buf_partial_len;
-    buf.base += buf_partial_len;
+    buf.len -= buf_partial.len;
+    buf.base += buf_partial.len;
 
     udx__cirbuf_set(&(handle->outgoing), (udx_cirbuf_val_t *) pkt);
 
