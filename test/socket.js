@@ -392,7 +392,6 @@ test('send without bind', async function (t) {
   const b = u.createSocket()
 
   b.on('message', function (message) {
-    console.log('recv')
     t.alike(message, Buffer.from('hello'))
     a.close()
     b.close()
@@ -411,7 +410,6 @@ test('try send without bind', async function (t) {
   const b = u.createSocket()
 
   b.on('message', function (message) {
-    console.log('recv')
     t.alike(message, Buffer.from('hello'))
     a.close()
     b.close()
