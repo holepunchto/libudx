@@ -328,6 +328,9 @@ test('connect to invalid host ip', function (t) {
   } catch (error) {
     t.is(error.message, `${invalidHost} is not a valid IP address`)
   }
+
+  s.destroy()
+  a.close()
 })
 
 test('bind to invalid host ip', function (t) {
@@ -343,6 +346,8 @@ test('bind to invalid host ip', function (t) {
   } catch (error) {
     t.is(error.message, `${invalidHost} is not a valid IP address`)
   }
+
+  a.close()
 })
 
 test('send to invalid host ip', async function (t) {
