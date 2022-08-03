@@ -1,6 +1,6 @@
 const test = require('brittle')
 const isCI = require('is-ci')
-const { makeTwoStreams } = require('./helpers')
+const { makeTwoStreams } = require('../helpers')
 
 writeALot(1)
 
