@@ -17,7 +17,7 @@ test('default firewall - same socket', async function (t) {
   })
 
   a.on('error', function (error) {
-    t.is(error, -110) // => ETIMEDOUT
+    t.is(error.code, 'ETIMEDOUT')
 
     socket.close()
   })
