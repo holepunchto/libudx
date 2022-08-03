@@ -627,7 +627,7 @@ test('seq and ack wraparound', async function (t) {
 })
 
 test('busy and idle events', async function (t) {
-  t.plan(6)
+  t.plan(10)
 
   const udx = new UDX()
 
@@ -659,11 +659,17 @@ test('busy and idle events', async function (t) {
       t.absent(idle)
       t.ok(busy)
 
+      t.is(idle, socket.idle)
+      t.is(busy, socket.busy)
+
       stream.destroy()
     })
     .on('close', function () {
       t.ok(idle)
       t.absent(busy)
+
+      t.is(idle, socket.idle)
+      t.is(busy, socket.busy)
     })
     .connect(socket, 2, socket.address().port)
 })
@@ -692,6 +698,32 @@ test('no idle after close', async function (t) {
         .close()
     })
     .connect(socket, 2, socket.address().port)
+})
+
+test('localHost, localFamily and localPort', async function (t) {
+  t.plan(6)
+
+  const udx = new UDX()
+
+  const socket = udx.createSocket()
+  socket.bind(0)
+
+  const stream = udx.createStream(1)
+
+  t.is(stream.localHost, null)
+  t.is(stream.localFamily, 0)
+  t.is(stream.localPort, 0)
+
+  stream.on('connect', function () {
+    t.is(stream.localHost, '0.0.0.0')
+    t.is(stream.localFamily, 4)
+    t.is(typeof stream.localPort, 'number')
+
+    stream.destroy()
+    socket.close()
+  })
+
+  stream.connect(socket, 2, socket.address().port, '127.0.0.1')
 })
 
 test('write exceeding mtu triggers event', async function (t) {
