@@ -1,5 +1,6 @@
 const test = require('brittle')
 const UDX = require('../')
+const UDXSocket = require('../lib/socket')
 
 test('can bind and close', async function (t) {
   const u = new UDX()
@@ -310,4 +311,286 @@ test('try send after close', async function (t) {
   a.close()
 
   t.is(a.trySend(Buffer.from('hello'), a.address().port), undefined)
+})
+
+test('connect to invalid host ip', function (t) {
+  t.plan(1)
+
+  const u = new UDX()
+
+  const a = u.createSocket()
+  const s = u.createStream(1)
+
+  const invalidHost = '0.-1.0.0'
+
+  try {
+    s.connect(a, 2, 0, invalidHost)
+  } catch (error) {
+    t.is(error.message, `${invalidHost} is not a valid IP address`)
+  }
+})
+
+test('bind to invalid host ip', function (t) {
+  t.plan(1)
+
+  const u = new UDX()
+  const a = u.createSocket()
+
+  const invalidHost = '0.-1.0.0'
+
+  try {
+    a.bind(0, invalidHost)
+  } catch (error) {
+    t.is(error.message, `${invalidHost} is not a valid IP address`)
+  }
+})
+
+test('send to invalid host ip', async function (t) {
+  t.plan(1)
+
+  const u = new UDX()
+  const a = u.createSocket()
+
+  a.bind(0)
+
+  const invalidHost = '0.-1.0.0'
+
+  try {
+    await a.send(Buffer.from('hello'), a.address().port, invalidHost)
+  } catch (error) {
+    t.is(error.message, `${invalidHost} is not a valid IP address`)
+  }
+
+  await a.close()
+})
+
+test('try send to invalid host ip', async function (t) {
+  t.plan(1)
+
+  const u = new UDX()
+  const a = u.createSocket()
+
+  a.bind(0)
+
+  const invalidHost = '0.-1.0.0'
+
+  try {
+    a.trySend(Buffer.from('hello'), a.address().port, invalidHost)
+  } catch (error) {
+    t.is(error.message, `${invalidHost} is not a valid IP address`)
+  }
+
+  await a.close()
+})
+
+test('send without bind', async function (t) {
+  t.plan(1)
+
+  const u = new UDX()
+
+  const a = u.createSocket()
+  const b = u.createSocket()
+
+  b.on('message', function (message) {
+    t.alike(message, Buffer.from('hello'))
+    a.close()
+    b.close()
+  })
+
+  b.bind(0)
+  await a.send(Buffer.from('hello'), b.address().port)
+})
+
+test('try send without bind', async function (t) {
+  t.plan(1)
+
+  const u = new UDX()
+
+  const a = u.createSocket()
+  const b = u.createSocket()
+
+  b.on('message', function (message) {
+    t.alike(message, Buffer.from('hello'))
+    a.close()
+    b.close()
+  })
+
+  b.bind(0)
+  a.trySend(Buffer.from('hello'), b.address().port)
+})
+
+test('get address without bind', async function (t) {
+  const u = new UDX()
+  const a = u.createSocket()
+  t.is(a.address(), null)
+  await a.close()
+})
+
+test('bind twice', async function (t) {
+  t.plan(1)
+
+  const u = new UDX()
+  const a = u.createSocket()
+
+  a.bind(0)
+
+  try {
+    a.bind(0)
+  } catch (error) {
+    t.is(error.message, 'Already bound')
+  }
+
+  await a.close()
+})
+
+test('bind while closing', function (t) {
+  t.plan(1)
+
+  const u = new UDX()
+  const a = u.createSocket()
+
+  a.close()
+
+  try {
+    a.bind(0)
+  } catch (error) {
+    t.is(error.message, 'Socket is closed')
+  }
+})
+
+test('close twice', async function (t) {
+  t.plan(1)
+
+  const u = new UDX()
+  const a = u.createSocket()
+
+  a.bind(0)
+
+  a.on('close', function () {
+    t.pass()
+  })
+
+  a.close()
+  a.close()
+})
+
+test('set TTL', async function (t) {
+  t.plan(2)
+
+  const u = new UDX()
+  const a = u.createSocket()
+
+  a.on('message', function (message) {
+    t.alike(message, Buffer.from('hello'))
+    a.close()
+  })
+
+  try {
+    a.setTTL(5)
+  } catch (error) {
+    t.is(error.message, 'Socket not active')
+  }
+
+  a.bind(0)
+  a.setTTL(5)
+
+  await a.send(Buffer.from('hello'), a.address().port)
+})
+
+test('get recv buffer size', async function (t) {
+  t.plan(2)
+
+  const u = new UDX()
+  const a = u.createSocket()
+
+  try {
+    a.getRecvBufferSize()
+  } catch (error) {
+    t.is(error.message, 'Socket not active')
+  }
+
+  a.bind(0)
+  t.ok(a.getRecvBufferSize() > 0)
+
+  await a.close()
+})
+
+test('set recv buffer size', async function (t) {
+  t.plan(2)
+
+  const u = new UDX()
+  const a = u.createSocket()
+
+  const NEW_BUFFER_SIZE = 8192
+
+  try {
+    a.setRecvBufferSize(NEW_BUFFER_SIZE)
+  } catch (error) {
+    t.is(error.message, 'Socket not active')
+  }
+
+  a.bind(0)
+  a.setRecvBufferSize(NEW_BUFFER_SIZE)
+
+  t.ok(a.getRecvBufferSize() >= NEW_BUFFER_SIZE)
+
+  await a.close()
+})
+
+test('get send buffer size', async function (t) {
+  t.plan(2)
+
+  const u = new UDX()
+  const a = u.createSocket()
+
+  try {
+    a.getSendBufferSize()
+  } catch (error) {
+    t.is(error.message, 'Socket not active')
+  }
+
+  a.bind(0)
+  t.ok(a.getSendBufferSize() > 0)
+
+  await a.close()
+})
+
+test('set send buffer size', async function (t) {
+  t.plan(2)
+
+  const u = new UDX()
+  const a = u.createSocket()
+
+  const NEW_BUFFER_SIZE = 8192
+
+  try {
+    a.setSendBufferSize(NEW_BUFFER_SIZE)
+  } catch (error) {
+    t.is(error.message, 'Socket not active')
+  }
+
+  a.bind(0)
+  a.setSendBufferSize(NEW_BUFFER_SIZE)
+
+  t.ok(a.getSendBufferSize() >= NEW_BUFFER_SIZE)
+
+  await a.close()
+})
+
+test('UDXSocket - isIPv4', function (t) {
+  t.is(UDXSocket.isIPv4('127.0.0.1'), true)
+  t.is(UDXSocket.isIPv4('::1'), false)
+  t.is(UDXSocket.isIPv4('0.-1.0.0'), false)
+})
+
+test('UDXSocket - isIPv6', function (t) {
+  t.is(UDXSocket.isIPv6('127.0.0.1'), false)
+  t.is(UDXSocket.isIPv6('::1'), true)
+  t.is(UDXSocket.isIPv6('0.-1.0.0'), false)
+})
+
+test('UDXSocket - isIP', function (t) {
+  t.is(UDXSocket.isIP('127.0.0.1'), 4)
+  t.is(UDXSocket.isIP('::1'), 6)
+  t.is(UDXSocket.isIP('0.-1.0.0'), 0)
 })
