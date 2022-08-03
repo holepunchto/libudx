@@ -125,7 +125,7 @@ static void
 on_udx_message (udx_socket_t *self, ssize_t read_len, const uv_buf_t *buf, const struct sockaddr *from) {
   udx_napi_socket_t *n = (udx_napi_socket_t *) self;
 
-  int port;
+  int port = 0;
   char ip[INET6_ADDRSTRLEN];
   int family = 0;
   parse_address((struct sockaddr *) from, ip, INET6_ADDRSTRLEN, &port, &family);
@@ -235,22 +235,34 @@ static void
 on_udx_stream_close (udx_stream_t *stream, int status) {
   udx_napi_stream_t *n = (udx_napi_stream_t *) stream;
 
-  UDX_NAPI_CALLBACK(n, n->on_close, {
-    napi_value argv[1];
-    napi_create_int32(env, status, &(argv[0]));
-    NAPI_MAKE_CALLBACK(env, NULL, ctx, callback, 1, argv, NULL)
-  })
+  if (status >= 0) {
+    UDX_NAPI_CALLBACK(n, n->on_close, {
+      napi_value argv[1];
+      napi_get_null(env, &(argv[0]));
+      NAPI_MAKE_CALLBACK(env, NULL, ctx, callback, 1, argv, NULL)
+    })
+  } else {
+    UDX_NAPI_CALLBACK(n, n->on_close, {
+      napi_value argv[1];
+      napi_value code;
+      napi_value msg;
+      napi_create_string_utf8(env, uv_err_name(status), NAPI_AUTO_LENGTH, &code);
+      napi_create_string_utf8(env, uv_strerror(status), NAPI_AUTO_LENGTH, &msg);
+      napi_create_error(env, code, msg, &(argv[0]));
+      NAPI_MAKE_CALLBACK(env, NULL, ctx, callback, 1, argv, NULL)
+    })
+  }
 
-  napi_delete_reference(env, n->ctx);
-  napi_delete_reference(env, n->on_data);
-  napi_delete_reference(env, n->on_end);
-  napi_delete_reference(env, n->on_drain);
-  napi_delete_reference(env, n->on_ack);
-  napi_delete_reference(env, n->on_send);
-  napi_delete_reference(env, n->on_message);
-  napi_delete_reference(env, n->on_close);
-  napi_delete_reference(env, n->on_firewall);
-  napi_delete_reference(env, n->realloc);
+  napi_delete_reference(n->env, n->ctx);
+  napi_delete_reference(n->env, n->on_data);
+  napi_delete_reference(n->env, n->on_end);
+  napi_delete_reference(n->env, n->on_drain);
+  napi_delete_reference(n->env, n->on_ack);
+  napi_delete_reference(n->env, n->on_send);
+  napi_delete_reference(n->env, n->on_message);
+  napi_delete_reference(n->env, n->on_close);
+  napi_delete_reference(n->env, n->on_firewall);
+  napi_delete_reference(n->env, n->realloc);
 }
 
 static int
@@ -260,7 +272,7 @@ on_udx_stream_firewall (udx_stream_t *stream, udx_socket_t *socket, const struct
 
   uint32_t fw = 1; // assume error means firewall it, whilst reporting the uncaught
 
-  int port;
+  int port = 0;
   char ip[INET6_ADDRSTRLEN];
   int family = 0;
   parse_address((struct sockaddr *) from, ip, INET6_ADDRSTRLEN, &port, &family);
@@ -301,18 +313,28 @@ on_udx_lookup (udx_lookup_t *lookup, int status, const struct sockaddr *addr, in
       uv_ip6_name((struct sockaddr_in6 *) addr, ip, addr_len);
       family = 6;
     }
+
+    UDX_NAPI_CALLBACK(n, n->on_lookup, {
+      napi_value argv[3];
+      napi_get_null(env, &(argv[0]));
+      napi_create_string_utf8(env, ip, NAPI_AUTO_LENGTH, &(argv[1]));
+      napi_create_uint32(env, family, &(argv[2]));
+      NAPI_MAKE_CALLBACK(env, NULL, ctx, callback, 3, argv, NULL)
+    })
+  } else {
+    UDX_NAPI_CALLBACK(n, n->on_lookup, {
+      napi_value argv[1];
+      napi_value code;
+      napi_value msg;
+      napi_create_string_utf8(env, uv_err_name(status), NAPI_AUTO_LENGTH, &code);
+      napi_create_string_utf8(env, uv_strerror(status), NAPI_AUTO_LENGTH, &msg);
+      napi_create_error(env, code, msg, &(argv[0]));
+      NAPI_MAKE_CALLBACK(env, NULL, ctx, callback, 1, argv, NULL)
+    })
   }
 
-  UDX_NAPI_CALLBACK(n, n->on_lookup, {
-    napi_value argv[3];
-    napi_create_int32(env, status, &(argv[0]));
-    napi_create_string_utf8(env, ip, NAPI_AUTO_LENGTH, &(argv[1]));
-    napi_create_uint32(env, family, &(argv[2]));
-    NAPI_MAKE_CALLBACK(env, NULL, ctx, callback, 3, argv, NULL)
-  })
-
-  napi_delete_reference(env, n->ctx);
-  napi_delete_reference(env, n->on_lookup);
+  napi_delete_reference(n->env, n->ctx);
+  napi_delete_reference(n->env, n->on_lookup);
 
   free(n->host);
 }
@@ -822,6 +844,7 @@ NAPI_METHOD(udx_napi_interface_event_get_addrs) {
 
 NAPI_INIT() {
   NAPI_EXPORT_OFFSETOF(udx_stream_t, inflight)
+  NAPI_EXPORT_OFFSETOF(udx_stream_t, mtu)
   NAPI_EXPORT_OFFSETOF(udx_stream_t, cwnd)
   NAPI_EXPORT_OFFSETOF(udx_stream_t, srtt)
   NAPI_EXPORT_OFFSETOF(udx_stream_t, pkts_waiting)

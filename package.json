@@ -36,6 +36,7 @@
   "homepage": "https://github.com/mafintosh/libudx#readme",
   "dependencies": {
     "b4a": "^1.5.0",
+    "events": "^3.3.0",
     "napi-macros": "^2.0.0",
     "node-gyp-build": "^4.4.0",
     "streamx": "^2.12.0"
