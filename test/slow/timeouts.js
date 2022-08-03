@@ -18,7 +18,7 @@ test('default firewall - same socket', async function (t) {
   })
 
   a.on('error', function (error) {
-    t.is(error.code, 'ETIMEDOUT')
+    t.is(error, -110) // => ETIMEDOUT
 
     socket.close()
   })
@@ -48,7 +48,7 @@ test('default firewall - different sockets', async function (t) {
   })
 
   a.on('error', function (error) {
-    t.is(error.code, 'ETIMEDOUT')
+    t.is(error, -110) // => ETIMEDOUT
 
     a.destroy()
     b.destroy()
