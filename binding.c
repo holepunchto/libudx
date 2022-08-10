@@ -174,7 +174,7 @@ on_udx_stream_read (udx_stream_t *stream, ssize_t read_len, const uv_buf_t *buf)
 
   udx_napi_stream_t *n = (udx_napi_stream_t *) stream;
 
-  if (n->mode & UDX_NAPI_FRAMED && n->frame_len == -1) {
+  if (n->mode == UDX_NAPI_FRAMED && n->frame_len == -1) {
     n->frame_len = 3 + (buf->base[0] | (buf->base[1] << 8) | (buf->base[2] << 16));
   }
 
@@ -183,13 +183,13 @@ on_udx_stream_read (udx_stream_t *stream, ssize_t read_len, const uv_buf_t *buf)
   n->read_buf_head += buf->len;
   n->read_buf_free -= buf->len;
 
-  if (n->mode & UDX_NAPI_NON_INTERACTIVE && n->read_buf_free >= 2 * UDX_DEFAULT_MTU) {
+  if (n->mode == UDX_NAPI_NON_INTERACTIVE && n->read_buf_free >= 2 * UDX_DEFAULT_MTU) {
     return;
   }
 
   ssize_t read = n->read_buf_head - n->read_buf;
 
-  if (n->mode & UDX_NAPI_FRAMED) {
+  if (n->mode == UDX_NAPI_FRAMED) {
     if (n->frame_len <= read) {
       n->frame_len = -1;
     } else if (n->read_buf_free == 0) {
@@ -539,7 +539,7 @@ NAPI_METHOD(udx_napi_stream_init) {
   NAPI_ARGV_UINT32(id, 2)
   NAPI_ARGV_UINT32(framed, 3)
 
-  stream->mode = UDX_NAPI_INTERACTIVE | (framed ? UDX_NAPI_FRAMED : 0);
+  stream->mode = framed ? UDX_NAPI_FRAMED : UDX_NAPI_INTERACTIVE;
 
   stream->frame_len = -1;
 
