@@ -644,8 +644,10 @@ process_packet (udx_socket_t *socket, char *buf, ssize_t buf_len, struct sockadd
 
   // We expect this to be a stream packet from now on
 
-  if (!(stream->status & UDX_STREAM_CONNECTED) && (stream->on_firewall != NULL && stream->on_firewall(stream, socket, addr))) {
-    return 1;
+  if (!(stream->status & UDX_STREAM_CONNECTED)) {
+    if (stream->on_firewall != NULL && stream->on_firewall(stream, socket, addr)) return 1;
+    // check twice, incase the on_firewall hook connected the stream...
+    if ((!(stream->status & UDX_STREAM_CONNECTED))) return 1;
   }
 
   udx_cirbuf_t *inc = &(stream->incoming);
