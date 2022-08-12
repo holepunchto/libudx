@@ -215,6 +215,8 @@ clear_incoming_packets (udx_stream_t *stream) {
 
 static void
 clear_outgoing_packets (udx_stream_t *stream) {
+  udx_fifo_t *q = &(stream->socket->send_queue);
+
   // We should make sure all existing packets do not send, and notify the user that they failed
   for (uint32_t seq = stream->remote_acked; seq != stream->seq; seq++) {
     udx_packet_t *pkt = (udx_packet_t *) udx__cirbuf_remove(&(stream->outgoing), seq);
@@ -223,7 +225,7 @@ clear_outgoing_packets (udx_stream_t *stream) {
 
     // Make sure to remove it from the fifo, if it was added
     if (pkt->status == UDX_PACKET_SENDING) {
-      udx__fifo_remove(&(stream->socket->send_queue), pkt, pkt->fifo_gc);
+      udx__fifo_remove(q, pkt, pkt->fifo_gc);
     }
 
     udx_stream_write_t *w = (udx_stream_write_t *) pkt->ctx;
@@ -235,6 +237,28 @@ clear_outgoing_packets (udx_stream_t *stream) {
     }
 
     free(pkt);
+  }
+
+  // also clear pending unordered packets, and the destroy packet if waiting
+  udx_fifo_t *u = &(stream->unordered);
+
+  while (u->len > 0) {
+    udx_packet_t *pkt = udx__fifo_shift(u);
+    if (pkt == NULL) continue;
+
+    udx__fifo_remove(q, pkt, pkt->fifo_gc);
+
+    if (pkt->type == UDX_PACKET_STREAM_SEND) {
+      udx_stream_send_t *req = pkt->ctx;
+
+      if (req->on_send != NULL) {
+        req->on_send(req, UV_ECANCELED);
+      }
+    }
+
+    if (pkt->type & UDX_PACKET_FREE_ON_SEND) {
+      free(pkt);
+    }
   }
 }
 
@@ -403,6 +427,7 @@ close_maybe (udx_stream_t *stream, int err) {
   other->set_id = stream->set_id;
 
   udx__cirbuf_remove(&(udx->streams_by_id), stream->local_id);
+  clear_outgoing_packets(stream);
   clear_incoming_packets(stream);
 
   // TODO: move the instance to a TIME_WAIT state, so we can handle retransmits
@@ -413,6 +438,7 @@ close_maybe (udx_stream_t *stream, int err) {
 
   udx__cirbuf_destroy(&(stream->incoming));
   udx__cirbuf_destroy(&(stream->outgoing));
+  udx__fifo_destroy(&(stream->unordered));
 
   if (stream->on_close != NULL) {
     stream->on_close(stream, err);
@@ -677,7 +703,6 @@ process_packet (udx_socket_t *socket, char *buf, ssize_t buf_len, struct sockadd
 
     if (type & UDX_HEADER_DESTROY) {
       stream->status |= UDX_STREAM_DESTROYED_REMOTE;
-      clear_outgoing_packets(stream);
       close_maybe(stream, UV_ECONNRESET);
       return 1;
     }
@@ -762,6 +787,11 @@ process_packet (udx_socket_t *socket, char *buf, ssize_t buf_len, struct sockadd
 }
 
 static void
+remove_next (udx_fifo_t *f) {
+  while (f->len > 0 && udx__fifo_shift(f) == NULL);
+}
+
+static void
 trigger_send_callback (udx_socket_t *socket, udx_packet_t *pkt) {
   if (pkt->type == UDX_PACKET_SEND) {
     udx_socket_send_t *req = pkt->ctx;
@@ -775,6 +805,9 @@ trigger_send_callback (udx_socket_t *socket, udx_packet_t *pkt) {
   if (pkt->type == UDX_PACKET_STREAM_SEND) {
     udx_stream_send_t *req = pkt->ctx;
 
+    udx_stream_t *stream = req->handle;
+    remove_next(&(stream->unordered));
+
     if (req->on_send != NULL) {
       req->on_send(req, 0);
     }
@@ -783,6 +816,7 @@ trigger_send_callback (udx_socket_t *socket, udx_packet_t *pkt) {
 
   if (pkt->type == UDX_PACKET_STREAM_DESTROY) {
     udx_stream_t *stream = pkt->ctx;
+    remove_next(&(stream->unordered));
 
     stream->status |= UDX_STREAM_DESTROYED;
     close_maybe(stream, 0);
@@ -1153,6 +1187,7 @@ udx_stream_init (udx_t *udx, udx_stream_t *handle, uint32_t local_id, udx_stream
   // Init stream write/read buffers
   udx__cirbuf_init(&(handle->outgoing), 16);
   udx__cirbuf_init(&(handle->incoming), 16);
+  udx__fifo_init(&(handle->unordered), 1);
 
   handle->set_id = udx->streams_len++;
 
@@ -1339,6 +1374,8 @@ udx_stream_send (udx_stream_send_t *req, udx_stream_t *handle, const uv_buf_t bu
   pkt->transmits = 0;
 
   pkt->fifo_gc = udx__fifo_push(&(socket->send_queue), pkt);
+  udx__fifo_push(&(handle->unordered), pkt);
+
   return update_poll(socket);
 }
 
@@ -1449,6 +1486,9 @@ udx_stream_destroy (udx_stream_t *handle) {
 
   handle->status |= UDX_STREAM_DESTROYING;
 
+  // clear the outgoing packets immediately as we don't want anything to leave to the network
+  // while the destroy packet is being flushed. we could also destroy incoming packets here, but
+  // that creates some reentry trickiness incase this was called from on_read.
   clear_outgoing_packets(handle);
 
   udx_packet_t *pkt = malloc(sizeof(udx_packet_t));
@@ -1465,6 +1505,7 @@ udx_stream_destroy (udx_stream_t *handle) {
   handle->seq++;
 
   udx__fifo_push(&(handle->socket->send_queue), pkt);
+  udx__fifo_push(&(handle->unordered), pkt);
 
   int err = update_poll(handle->socket);
   return err < 0 ? err : 1;
