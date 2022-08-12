@@ -107,6 +107,8 @@ static void
 trigger_socket_close (udx_socket_t *socket) {
   if (--socket->pending_closes) return;
 
+  udx__fifo_destroy(&(socket->send_queue));
+
   if (socket->on_close != NULL) {
     socket->on_close(socket);
   }
