@@ -193,6 +193,8 @@ struct udx_stream {
 
   udx_cirbuf_t outgoing;
   udx_cirbuf_t incoming;
+
+  udx_fifo_t unordered;
 };
 
 struct udx_packet {
