@@ -14,6 +14,7 @@
 
 #define UDX_NAPI_INTERACTIVE     0
 #define UDX_NAPI_NON_INTERACTIVE 1
+#define UDX_NAPI_FRAMED          2
 
 #define UDX_NAPI_CALLBACK(self, fn, src) \
   napi_env env = self->env; \
@@ -58,11 +59,13 @@ typedef struct {
 typedef struct {
   udx_stream_t stream;
 
+  int mode;
+
   char *read_buf;
   char *read_buf_head;
   size_t read_buf_free;
 
-  int mode;
+  ssize_t frame_len;
 
   napi_env env;
   napi_ref ctx;
@@ -171,6 +174,10 @@ on_udx_stream_read (udx_stream_t *stream, ssize_t read_len, const uv_buf_t *buf)
 
   udx_napi_stream_t *n = (udx_napi_stream_t *) stream;
 
+  if (n->mode == UDX_NAPI_FRAMED && n->frame_len == -1) {
+    n->frame_len = 3 + (buf->base[0] | (buf->base[1] << 8) | (buf->base[2] << 16));
+  }
+
   memcpy(n->read_buf_head, buf->base, buf->len);
 
   n->read_buf_head += buf->len;
@@ -180,7 +187,17 @@ on_udx_stream_read (udx_stream_t *stream, ssize_t read_len, const uv_buf_t *buf)
     return;
   }
 
-  size_t read = n->read_buf_head - n->read_buf;
+  ssize_t read = n->read_buf_head - n->read_buf;
+
+  if (n->mode == UDX_NAPI_FRAMED) {
+    if (n->frame_len <= read) {
+      n->frame_len = -1;
+    } else if (n->read_buf_free == 0) {
+      n->frame_len -= read;
+    } else {
+      return; // wait for more data
+    }
+  }
 
   UDX_NAPI_CALLBACK(n, n->on_data, {
     napi_value ret;
@@ -538,28 +555,31 @@ NAPI_METHOD(udx_napi_socket_close) {
 }
 
 NAPI_METHOD(udx_napi_stream_init) {
-  NAPI_ARGV(13)
+  NAPI_ARGV(14)
   NAPI_ARGV_BUFFER_CAST(udx_t *, udx, 0)
   NAPI_ARGV_BUFFER_CAST(udx_napi_stream_t *, stream, 1)
   NAPI_ARGV_UINT32(id, 2)
+  NAPI_ARGV_UINT32(framed, 3)
 
-  stream->mode = UDX_NAPI_INTERACTIVE;
+  stream->mode = framed ? UDX_NAPI_FRAMED : UDX_NAPI_INTERACTIVE;
+
+  stream->frame_len = -1;
 
   stream->read_buf = NULL;
   stream->read_buf_head = NULL;
   stream->read_buf_free = 0;
 
   stream->env = env;
-  napi_create_reference(env, argv[3], 1, &(stream->ctx));
-  napi_create_reference(env, argv[4], 1, &(stream->on_data));
-  napi_create_reference(env, argv[5], 1, &(stream->on_end));
-  napi_create_reference(env, argv[6], 1, &(stream->on_drain));
-  napi_create_reference(env, argv[7], 1, &(stream->on_ack));
-  napi_create_reference(env, argv[8], 1, &(stream->on_send));
-  napi_create_reference(env, argv[9], 1, &(stream->on_message));
-  napi_create_reference(env, argv[10], 1, &(stream->on_close));
-  napi_create_reference(env, argv[11], 1, &(stream->on_firewall));
-  napi_create_reference(env, argv[12], 1, &(stream->realloc));
+  napi_create_reference(env, argv[4], 1, &(stream->ctx));
+  napi_create_reference(env, argv[5], 1, &(stream->on_data));
+  napi_create_reference(env, argv[6], 1, &(stream->on_end));
+  napi_create_reference(env, argv[7], 1, &(stream->on_drain));
+  napi_create_reference(env, argv[8], 1, &(stream->on_ack));
+  napi_create_reference(env, argv[9], 1, &(stream->on_send));
+  napi_create_reference(env, argv[10], 1, &(stream->on_message));
+  napi_create_reference(env, argv[11], 1, &(stream->on_close));
+  napi_create_reference(env, argv[12], 1, &(stream->on_firewall));
+  napi_create_reference(env, argv[13], 1, &(stream->realloc));
 
   int err = udx_stream_init(udx, (udx_stream_t *) stream, id, on_udx_stream_close);
   if (err < 0) UDX_NAPI_THROW(err)

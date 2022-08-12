@@ -2,7 +2,7 @@ const UDX = require('../../')
 
 module.exports = { makeTwoStreams, makePairs, pipeStreamPairs }
 
-function makeTwoStreams (t) {
+function makeTwoStreams (t, opts) {
   const a = new UDX()
   const b = new UDX()
 
@@ -12,8 +12,8 @@ function makeTwoStreams (t) {
   aSocket.bind()
   bSocket.bind()
 
-  const aStream = a.createStream(1)
-  const bStream = b.createStream(2)
+  const aStream = a.createStream(1, opts)
+  const bStream = b.createStream(2, opts)
 
   aStream.connect(aSocket, bStream.id, bSocket.address().port, '127.0.0.1')
   bStream.connect(bSocket, aStream.id, aSocket.address().port, '127.0.0.1')
