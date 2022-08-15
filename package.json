@@ -12,8 +12,9 @@
     "binding.gyp"
   ],
   "scripts": {
-    "test": "standard && brittle test/*.js",
-    "test-all": "standard && brittle test/*.js test/slow/*.js",
+    "test": "standard && node test/all.js",
+    "test:all": "standard && brittle test/*.js test/slow/*.js",
+    "test:generate": "brittle -r test/all.js test/*.js",
     "bench": "node test/bench/bench.js",
     "prebuild": "prebuildify --napi --strip",
     "install": "node-gyp-build"
