@@ -13,7 +13,7 @@ writeALot(1024 * 1024 * 1024)
 writeALot(5 * 1024 * 1024 * 1024)
 
 function writeALot (send) {
-  test('write as fast as possible (' + fmt(send) + ')', { skip: isCI }, async function (t) {
+  test('write as fast as possible (' + fmt(send) + ')', { skip: isCI, timeout: 5 * 60 * 1000 }, async function (t) {
     t.timeout(10 * 60 * 1000)
     t.plan(5)
 

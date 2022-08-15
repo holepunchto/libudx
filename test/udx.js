@@ -22,7 +22,7 @@ test('lookup ipv6', async function (t) {
 test('lookup invalid', async function (t) {
   const udx = new UDX()
 
-  t.exception(udx.lookup('example.invalid.'))
+  await t.exception(udx.lookup('example.invalid.'))
 })
 
 test('network interfaces', async function (t) {

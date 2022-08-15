@@ -43,7 +43,7 @@
     "streamx": "^2.12.0"
   },
   "devDependencies": {
-    "brittle": "^2.0.3",
+    "brittle": "^3.0.0",
     "is-ci": "^3.0.1",
     "nanobench-utils": "^1.0.0",
     "prebuildify": "^5.0.0",
