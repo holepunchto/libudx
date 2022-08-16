@@ -219,8 +219,8 @@ test('can bind to ipv6 and receive from ipv4', async function (t) {
 
   a.on('message', async function (message, { host, family, port }) {
     t.alike(message, Buffer.from('hello'))
-    t.is(host, '::ffff:127.0.0.1')
-    t.is(family, 6)
+    t.is(host, '127.0.0.1')
+    t.is(family, 4)
     t.is(port, b.address().port)
     a.close()
     b.close()
@@ -252,7 +252,7 @@ test('can bind to ipv6 and send to ipv4', async function (t) {
   a.bind(0, '::')
   b.bind(0)
 
-  a.send(Buffer.from('hello'), b.address().port, '::ffff:127.0.0.1')
+  a.send(Buffer.from('hello'), b.address().port, '127.0.0.1')
 })
 
 test('send after close', async function (t) {
