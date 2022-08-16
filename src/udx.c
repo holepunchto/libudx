@@ -825,6 +825,19 @@ trigger_send_callback (udx_socket_t *socket, udx_packet_t *pkt) {
   }
 }
 
+static inline bool
+is_addr_v4_mapped (const struct sockaddr *addr) {
+  return addr->sa_family == AF_INET6 && IN6_IS_ADDR_V4MAPPED(&(((struct sockaddr_in6 *) addr)->sin6_addr));
+}
+
+static inline void
+addr_to_v4 (struct sockaddr *addr) {
+  struct sockaddr_in *in = (struct sockaddr_in *) addr;
+  in->sin_family = AF_INET;
+  in->sin_port = ((struct sockaddr_in6 *) addr)->sin6_port;
+  memcpy(&(in->sin_addr), &(((struct sockaddr_in6 *) addr)->sin6_addr.s6_addr[12]), sizeof(in->sin_addr));
+}
+
 static void
 on_uv_poll (uv_poll_t *handle, int status, int events) {
   udx_socket_t *socket = handle->data;
@@ -883,6 +896,10 @@ on_uv_poll (uv_poll_t *handle, int status, int events) {
     buf.len = 2048;
 
     ssize_t size = udx__recvmsg(socket, &buf, (struct sockaddr *) &addr, addr_len);
+
+    if (is_addr_v4_mapped((struct sockaddr *) &addr)) {
+      addr_to_v4((struct sockaddr *) &addr);
+    }
 
     if (size >= 0 && !process_packet(socket, b, size, (struct sockaddr *) &addr) && socket->on_recv != NULL) {
       buf.len = size;
