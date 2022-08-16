@@ -832,31 +832,37 @@ is_addr_v4_mapped (const struct sockaddr *addr) {
 
 static inline void
 addr_to_v4 (struct sockaddr_in6 *addr) {
-  struct sockaddr_in *in = (struct sockaddr_in *) addr;
-  in->sin_family = AF_INET;
-  in->sin_port = addr->sin6_port;
+  struct sockaddr_in in;
+  memset(&in, 0, sizeof(in));
+
+  in.sin_family = AF_INET;
+  in.sin_port = addr->sin6_port;
 #ifdef SIN6_LEN
-  in->sin_len = sizeof(struct sockaddr_in);
+  in.sin_len = sizeof(struct sockaddr_in);
 #endif
 
-  memcpy(&(in->sin_addr), &(addr->sin6_addr.s6_addr[12]), 4);
+  memcpy(&(in.sin_addr), &(addr->sin6_addr.s6_addr[12]), 4);
+
+  memcpy(addr, &in, sizeof(in));
 }
 
 static inline void
 addr_to_v6 (struct sockaddr_in *addr) {
-  struct sockaddr_in6 *in = (struct sockaddr_in6 *) addr;
-  in->sin6_family = AF_INET6;
-  in->sin6_port = addr->sin_port;
+  struct sockaddr_in6 in;
+  memset(&in, 0, sizeof(in));
+
+  in.sin6_family = AF_INET6;
+  in.sin6_port = addr->sin_port;
 #ifdef SIN6_LEN
-  in->sin6_len = sizeof(struct sockaddr_in6);
+  in.sin6_len = sizeof(struct sockaddr_in6);
 #endif
 
-  memset(&(in->sin6_addr), 0, 10);
+  in.sin6_addr.s6_addr[10] = 0xff;
+  in.sin6_addr.s6_addr[11] = 0xff;
 
-  in->sin6_addr.s6_addr[10] = 0xff;
-  in->sin6_addr.s6_addr[11] = 0xff;
+  memcpy(&(in.sin6_addr.s6_addr[12]), &(addr->sin_addr), 4);
 
-  memcpy(&(in->sin6_addr.s6_addr[12]), &(addr->sin_addr), 4);
+  memcpy(addr, &in, sizeof(in));
 }
 
 static void
