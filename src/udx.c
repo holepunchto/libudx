@@ -831,11 +831,32 @@ is_addr_v4_mapped (const struct sockaddr *addr) {
 }
 
 static inline void
-addr_to_v4 (struct sockaddr *addr) {
+addr_to_v4 (struct sockaddr_in6 *addr) {
   struct sockaddr_in *in = (struct sockaddr_in *) addr;
   in->sin_family = AF_INET;
-  in->sin_port = ((struct sockaddr_in6 *) addr)->sin6_port;
-  memcpy(&(in->sin_addr), &(((struct sockaddr_in6 *) addr)->sin6_addr.s6_addr[12]), sizeof(in->sin_addr));
+  in->sin_port = addr->sin6_port;
+#ifdef SIN6_LEN
+  in->sin_len = sizeof(struct sockaddr_in);
+#endif
+
+  memcpy(&(in->sin_addr), &(addr->sin6_addr.s6_addr[12]), 4);
+}
+
+static inline void
+addr_to_v6 (struct sockaddr_in *addr) {
+  struct sockaddr_in6 *in = (struct sockaddr_in6 *) addr;
+  in->sin6_family = AF_INET6;
+  in->sin6_port = addr->sin_port;
+#ifdef SIN6_LEN
+  in->sin6_len = sizeof(struct sockaddr_in6);
+#endif
+
+  memset(&(in->sin6_addr), 0, 10);
+
+  in->sin6_addr.s6_addr[10] = 0xff;
+  in->sin6_addr.s6_addr[11] = 0xff;
+
+  memcpy(&(in->sin6_addr.s6_addr[12]), &(addr->sin_addr), 4);
 }
 
 static void
@@ -854,6 +875,11 @@ on_uv_poll (uv_poll_t *handle, int status, int events) {
     bool adjust_ttl = pkt->ttl > 0 && socket->ttl != pkt->ttl;
 
     if (adjust_ttl) uv_udp_set_ttl((uv_udp_t *) socket, pkt->ttl);
+
+    if (socket->family == 6 && pkt->dest.ss_family == AF_INET) {
+      addr_to_v6((struct sockaddr_in *) &(pkt->dest));
+      pkt->dest_len = sizeof(struct sockaddr_in6);
+    }
 
     udx__sendmsg(socket, pkt->bufs, pkt->bufs_len, (struct sockaddr *) &(pkt->dest), pkt->dest_len);
 
@@ -898,7 +924,7 @@ on_uv_poll (uv_poll_t *handle, int status, int events) {
     ssize_t size = udx__recvmsg(socket, &buf, (struct sockaddr *) &addr, addr_len);
 
     if (is_addr_v4_mapped((struct sockaddr *) &addr)) {
-      addr_to_v4((struct sockaddr *) &addr);
+      addr_to_v4((struct sockaddr_in6 *) &addr);
     }
 
     if (size >= 0 && !process_packet(socket, b, size, (struct sockaddr *) &addr) && socket->on_recv != NULL) {
@@ -944,6 +970,7 @@ int
 udx_socket_init (udx_t *udx, udx_socket_t *handle) {
   ref_inc(udx);
 
+  handle->family = 0;
   handle->status = 0;
   handle->events = 0;
   handle->pending_closes = 0;
@@ -1021,6 +1048,14 @@ udx_socket_bind (udx_socket_t *handle, const struct sockaddr *addr) {
   uv_udp_t *socket = &(handle->socket);
   uv_poll_t *poll = &(handle->io_poll);
   uv_os_fd_t fd;
+
+  if (addr->sa_family == AF_INET) {
+    handle->family = 4;
+  } else if (addr->sa_family == AF_INET6) {
+    handle->family = 6;
+  } else {
+    return UV_EINVAL;
+  }
 
   // This might actually fail in practice, so
   int err = uv_udp_bind(socket, addr, 0);
