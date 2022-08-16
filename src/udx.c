@@ -788,7 +788,8 @@ process_packet (udx_socket_t *socket, char *buf, ssize_t buf_len, struct sockadd
 
 static void
 remove_next (udx_fifo_t *f) {
-  while (f->len > 0 && udx__fifo_shift(f) == NULL);
+  while (f->len > 0 && udx__fifo_shift(f) == NULL)
+    ;
 }
 
 static void

@@ -209,6 +209,29 @@ test('open + close a bunch of sockets', async function (t) {
   await p
 })
 
+test('can bind to ipv6 and receive ipv4', async function (t) {
+  t.plan(4)
+
+  const u = new UDX()
+
+  const a = u.createSocket()
+  const b = u.createSocket()
+
+  a.on('message', async function (message, { host, family, port }) {
+    t.alike(message, Buffer.from('hello'))
+    t.is(host, '::ffff:127.0.0.1')
+    t.is(family, 6)
+    t.is(port, b.address().port)
+    a.close()
+    b.close()
+  })
+
+  a.bind(0, '::')
+  b.bind(0)
+
+  b.send(Buffer.from('hello'), a.address().port, '127.0.0.1')
+})
+
 test('send after close', async function (t) {
   const u = new UDX()
 

@@ -3,6 +3,7 @@ list(APPEND tests
   lookup-invalid
   lookup-ipv6
   socket-send-recv
+  socket-send-recv-dualstack
   socket-send-recv-ipv6
   stream-destroy
   stream-destroy-before-connect
