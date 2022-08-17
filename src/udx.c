@@ -1412,6 +1412,11 @@ udx_stream_connect (udx_stream_t *handle, udx_socket_t *socket, uint32_t remote_
 
   memcpy(&(handle->remote_addr), remote_addr, handle->remote_addr_len);
 
+  if (socket->family == 6 && handle->remote_addr.ss_family == AF_INET) {
+    addr_to_v6((struct sockaddr_in *) &(handle->remote_addr));
+    handle->remote_addr_len = sizeof(struct sockaddr_in6);
+  }
+
   return update_poll(handle->socket);
 }
 
