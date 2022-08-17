@@ -715,8 +715,8 @@ test('localHost, localFamily and localPort', async function (t) {
   t.is(stream.localPort, 0)
 
   stream.on('connect', function () {
-    t.is(stream.localHost, '0.0.0.0')
-    t.is(stream.localFamily, 4)
+    t.is(stream.localHost, '::')
+    t.is(stream.localFamily, 6)
     t.is(typeof stream.localPort, 'number')
 
     stream.destroy()
