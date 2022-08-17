@@ -841,6 +841,7 @@ addr_to_v4 (struct sockaddr_in6 *addr) {
   in.sin_len = sizeof(struct sockaddr_in);
 #endif
 
+  // Copy the IPv4 address from the last 4 bytes of the IPv6 address.
   memcpy(&(in.sin_addr), &(addr->sin6_addr.s6_addr[12]), 4);
 
   memcpy(addr, &in, sizeof(in));
@@ -860,6 +861,7 @@ addr_to_v6 (struct sockaddr_in *addr) {
   in.sin6_addr.s6_addr[10] = 0xff;
   in.sin6_addr.s6_addr[11] = 0xff;
 
+  // Copy the IPv4 address to the last 4 bytes of the IPv6 address.
   memcpy(&(in.sin6_addr.s6_addr[12]), &(addr->sin_addr), 4);
 
   memcpy(addr, &in, sizeof(in));
