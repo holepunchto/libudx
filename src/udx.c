@@ -74,6 +74,48 @@ seq_compare (uint32_t a, uint32_t b) {
                             : 0;
 }
 
+static inline bool
+is_addr_v4_mapped (const struct sockaddr *addr) {
+  return addr->sa_family == AF_INET6 && IN6_IS_ADDR_V4MAPPED(&(((struct sockaddr_in6 *) addr)->sin6_addr));
+}
+
+static inline void
+addr_to_v4 (struct sockaddr_in6 *addr) {
+  struct sockaddr_in in;
+  memset(&in, 0, sizeof(in));
+
+  in.sin_family = AF_INET;
+  in.sin_port = addr->sin6_port;
+#ifdef SIN6_LEN
+  in.sin_len = sizeof(struct sockaddr_in);
+#endif
+
+  // Copy the IPv4 address from the last 4 bytes of the IPv6 address.
+  memcpy(&(in.sin_addr), &(addr->sin6_addr.s6_addr[12]), 4);
+
+  memcpy(addr, &in, sizeof(in));
+}
+
+static inline void
+addr_to_v6 (struct sockaddr_in *addr) {
+  struct sockaddr_in6 in;
+  memset(&in, 0, sizeof(in));
+
+  in.sin6_family = AF_INET6;
+  in.sin6_port = addr->sin_port;
+#ifdef SIN6_LEN
+  in.sin6_len = sizeof(struct sockaddr_in6);
+#endif
+
+  in.sin6_addr.s6_addr[10] = 0xff;
+  in.sin6_addr.s6_addr[11] = 0xff;
+
+  // Copy the IPv4 address to the last 4 bytes of the IPv6 address.
+  memcpy(&(in.sin6_addr.s6_addr[12]), &(addr->sin_addr), 4);
+
+  memcpy(addr, &in, sizeof(in));
+}
+
 static void
 on_uv_poll (uv_poll_t *handle, int status, int events);
 
@@ -672,8 +714,12 @@ process_packet (udx_socket_t *socket, char *buf, ssize_t buf_len, struct sockadd
 
   // We expect this to be a stream packet from now on
 
-  if (!(stream->status & UDX_STREAM_CONNECTED) && (stream->on_firewall != NULL && stream->on_firewall(stream, socket, addr))) {
-    return 1;
+  if (!(stream->status & UDX_STREAM_CONNECTED) && stream->on_firewall != NULL) {
+    if (is_addr_v4_mapped((struct sockaddr *) addr)) {
+      addr_to_v4((struct sockaddr_in6 *) addr);
+    }
+
+    if (stream->on_firewall(stream, socket, addr)) return 1;
   }
 
   udx_cirbuf_t *inc = &(stream->incoming);
@@ -825,48 +871,6 @@ trigger_send_callback (udx_socket_t *socket, udx_packet_t *pkt) {
   }
 }
 
-static inline bool
-is_addr_v4_mapped (const struct sockaddr *addr) {
-  return addr->sa_family == AF_INET6 && IN6_IS_ADDR_V4MAPPED(&(((struct sockaddr_in6 *) addr)->sin6_addr));
-}
-
-static inline void
-addr_to_v4 (struct sockaddr_in6 *addr) {
-  struct sockaddr_in in;
-  memset(&in, 0, sizeof(in));
-
-  in.sin_family = AF_INET;
-  in.sin_port = addr->sin6_port;
-#ifdef SIN6_LEN
-  in.sin_len = sizeof(struct sockaddr_in);
-#endif
-
-  // Copy the IPv4 address from the last 4 bytes of the IPv6 address.
-  memcpy(&(in.sin_addr), &(addr->sin6_addr.s6_addr[12]), 4);
-
-  memcpy(addr, &in, sizeof(in));
-}
-
-static inline void
-addr_to_v6 (struct sockaddr_in *addr) {
-  struct sockaddr_in6 in;
-  memset(&in, 0, sizeof(in));
-
-  in.sin6_family = AF_INET6;
-  in.sin6_port = addr->sin_port;
-#ifdef SIN6_LEN
-  in.sin6_len = sizeof(struct sockaddr_in6);
-#endif
-
-  in.sin6_addr.s6_addr[10] = 0xff;
-  in.sin6_addr.s6_addr[11] = 0xff;
-
-  // Copy the IPv4 address to the last 4 bytes of the IPv6 address.
-  memcpy(&(in.sin6_addr.s6_addr[12]), &(addr->sin_addr), 4);
-
-  memcpy(addr, &in, sizeof(in));
-}
-
 static void
 on_uv_poll (uv_poll_t *handle, int status, int events) {
   udx_socket_t *socket = handle->data;
@@ -931,12 +935,13 @@ on_uv_poll (uv_poll_t *handle, int status, int events) {
 
     ssize_t size = udx__recvmsg(socket, &buf, (struct sockaddr *) &addr, addr_len);
 
-    if (is_addr_v4_mapped((struct sockaddr *) &addr)) {
-      addr_to_v4((struct sockaddr_in6 *) &addr);
-    }
-
     if (size >= 0 && !process_packet(socket, b, size, (struct sockaddr *) &addr) && socket->on_recv != NULL) {
       buf.len = size;
+
+      if (is_addr_v4_mapped((struct sockaddr *) &addr)) {
+        addr_to_v4((struct sockaddr_in6 *) &addr);
+      }
+
       socket->on_recv(socket, size, &buf, (struct sockaddr *) &addr);
     }
 
