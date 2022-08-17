@@ -128,6 +128,7 @@ struct udx_socket {
   udx_t *udx;
   udx_cirbuf_t *streams_by_id; // for convenience
 
+  int family;
   int status;
   int readers;
   int events;

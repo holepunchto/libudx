@@ -74,6 +74,48 @@ seq_compare (uint32_t a, uint32_t b) {
                             : 0;
 }
 
+static inline bool
+is_addr_v4_mapped (const struct sockaddr *addr) {
+  return addr->sa_family == AF_INET6 && IN6_IS_ADDR_V4MAPPED(&(((struct sockaddr_in6 *) addr)->sin6_addr));
+}
+
+static inline void
+addr_to_v4 (struct sockaddr_in6 *addr) {
+  struct sockaddr_in in;
+  memset(&in, 0, sizeof(in));
+
+  in.sin_family = AF_INET;
+  in.sin_port = addr->sin6_port;
+#ifdef SIN6_LEN
+  in.sin_len = sizeof(struct sockaddr_in);
+#endif
+
+  // Copy the IPv4 address from the last 4 bytes of the IPv6 address.
+  memcpy(&(in.sin_addr), &(addr->sin6_addr.s6_addr[12]), 4);
+
+  memcpy(addr, &in, sizeof(in));
+}
+
+static inline void
+addr_to_v6 (struct sockaddr_in *addr) {
+  struct sockaddr_in6 in;
+  memset(&in, 0, sizeof(in));
+
+  in.sin6_family = AF_INET6;
+  in.sin6_port = addr->sin_port;
+#ifdef SIN6_LEN
+  in.sin6_len = sizeof(struct sockaddr_in6);
+#endif
+
+  in.sin6_addr.s6_addr[10] = 0xff;
+  in.sin6_addr.s6_addr[11] = 0xff;
+
+  // Copy the IPv4 address to the last 4 bytes of the IPv6 address.
+  memcpy(&(in.sin6_addr.s6_addr[12]), &(addr->sin_addr), 4);
+
+  memcpy(addr, &in, sizeof(in));
+}
+
 static void
 on_uv_poll (uv_poll_t *handle, int status, int events);
 
@@ -672,8 +714,12 @@ process_packet (udx_socket_t *socket, char *buf, ssize_t buf_len, struct sockadd
 
   // We expect this to be a stream packet from now on
 
-  if (!(stream->status & UDX_STREAM_CONNECTED) && (stream->on_firewall != NULL && stream->on_firewall(stream, socket, addr))) {
-    return 1;
+  if (!(stream->status & UDX_STREAM_CONNECTED) && stream->on_firewall != NULL) {
+    if (is_addr_v4_mapped((struct sockaddr *) addr)) {
+      addr_to_v4((struct sockaddr_in6 *) addr);
+    }
+
+    if (stream->on_firewall(stream, socket, addr)) return 1;
   }
 
   udx_cirbuf_t *inc = &(stream->incoming);
@@ -788,7 +834,8 @@ process_packet (udx_socket_t *socket, char *buf, ssize_t buf_len, struct sockadd
 
 static void
 remove_next (udx_fifo_t *f) {
-  while (f->len > 0 && udx__fifo_shift(f) == NULL);
+  while (f->len > 0 && udx__fifo_shift(f) == NULL)
+    ;
 }
 
 static void
@@ -841,6 +888,11 @@ on_uv_poll (uv_poll_t *handle, int status, int events) {
 
     if (adjust_ttl) uv_udp_set_ttl((uv_udp_t *) socket, pkt->ttl);
 
+    if (socket->family == 6 && pkt->dest.ss_family == AF_INET) {
+      addr_to_v6((struct sockaddr_in *) &(pkt->dest));
+      pkt->dest_len = sizeof(struct sockaddr_in6);
+    }
+
     udx__sendmsg(socket, pkt->bufs, pkt->bufs_len, (struct sockaddr *) &(pkt->dest), pkt->dest_len);
 
     pkt->time_sent = uv_hrtime() / 1e6;
@@ -885,6 +937,11 @@ on_uv_poll (uv_poll_t *handle, int status, int events) {
 
     if (size >= 0 && !process_packet(socket, b, size, (struct sockaddr *) &addr) && socket->on_recv != NULL) {
       buf.len = size;
+
+      if (is_addr_v4_mapped((struct sockaddr *) &addr)) {
+        addr_to_v4((struct sockaddr_in6 *) &addr);
+      }
+
       socket->on_recv(socket, size, &buf, (struct sockaddr *) &addr);
     }
 
@@ -926,6 +983,7 @@ int
 udx_socket_init (udx_t *udx, udx_socket_t *handle) {
   ref_inc(udx);
 
+  handle->family = 0;
   handle->status = 0;
   handle->events = 0;
   handle->pending_closes = 0;
@@ -1003,6 +1061,14 @@ udx_socket_bind (udx_socket_t *handle, const struct sockaddr *addr) {
   uv_udp_t *socket = &(handle->socket);
   uv_poll_t *poll = &(handle->io_poll);
   uv_os_fd_t fd;
+
+  if (addr->sa_family == AF_INET) {
+    handle->family = 4;
+  } else if (addr->sa_family == AF_INET6) {
+    handle->family = 6;
+  } else {
+    return UV_EINVAL;
+  }
 
   // This might actually fail in practice, so
   int err = uv_udp_bind(socket, addr, 0);
@@ -1350,6 +1416,11 @@ udx_stream_connect (udx_stream_t *handle, udx_socket_t *socket, uint32_t remote_
   }
 
   memcpy(&(handle->remote_addr), remote_addr, handle->remote_addr_len);
+
+  if (socket->family == 6 && handle->remote_addr.ss_family == AF_INET) {
+    addr_to_v6((struct sockaddr_in *) &(handle->remote_addr));
+    handle->remote_addr_len = sizeof(struct sockaddr_in6);
+  }
 
   return update_poll(handle->socket);
 }
