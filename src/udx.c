@@ -716,13 +716,31 @@ process_packet (udx_socket_t *socket, char *buf, ssize_t buf_len, struct sockadd
 
     if (relay->socket == NULL) return 0;
 
-    ((uint32_t *) buf)[1] = udx__swap_uint32_if_be(relay->remote_id);
+    uint32_t *h = (uint32_t *) buf;
+    h[1] = udx__swap_uint32_if_be(relay->remote_id);
 
     uv_buf_t b = uv_buf_init(buf, buf_len);
 
-    udx__sendmsg(relay->socket, &b, 1, (struct sockaddr *) &relay->remote_addr, relay->remote_addr_len);
+    int err = udx__sendmsg(relay->socket, &b, 1, (struct sockaddr *) &relay->remote_addr, relay->remote_addr_len);
+    if (err != EAGAIN) return 1;
 
-    return 1;
+    b.base += UDX_HEADER_SIZE;
+    b.len -= UDX_HEADER_SIZE;
+
+    udx_packet_t *pkt = malloc(sizeof(udx_packet_t));
+
+    init_stream_packet(pkt, type, relay, &b);
+
+    h = (uint32_t *) &(pkt->header);
+    h[3] = udx__swap_uint32_if_be(seq);
+    h[4] = udx__swap_uint32_if_be(ack);
+
+    pkt->status = UDX_PACKET_SENDING;
+    pkt->seq = seq;
+    pkt->type = 0;
+
+    udx__fifo_push(&(relay->socket->send_queue), pkt);
+    return update_poll(relay->socket);
   }
 
   if (!(stream->status & UDX_STREAM_CONNECTED) && stream->on_firewall != NULL) {
