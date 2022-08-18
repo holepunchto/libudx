@@ -1230,6 +1230,7 @@ udx_stream_init (udx_t *udx, udx_stream_t *handle, uint32_t local_id, udx_stream
   handle->out_of_order = 0;
   handle->recovery = 0;
   handle->socket = NULL;
+  handle->relay_to = NULL;
   handle->udx = udx;
 
   handle->mtu = UDX_DEFAULT_MTU;
