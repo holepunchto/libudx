@@ -9,6 +9,7 @@ list(APPEND tests
   stream-destroy-before-connect
   stream-preconnect
   stream-preconnect-same-socket
+  stream-relay
   stream-send-recv
   stream-send-recv-ipv6
   stream-write-read

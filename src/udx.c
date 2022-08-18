@@ -705,14 +705,25 @@ process_packet (udx_socket_t *socket, char *buf, ssize_t buf_len, struct sockadd
   uint32_t seq = udx__swap_uint32_if_be(*(i++));
   uint32_t ack = udx__swap_uint32_if_be(*i);
 
-  buf += UDX_HEADER_SIZE;
-  buf_len -= UDX_HEADER_SIZE;
-
   udx_stream_t *stream = (udx_stream_t *) udx__cirbuf_get(socket->streams_by_id, local_id);
 
   if (stream == NULL || stream->status & UDX_STREAM_DEAD) return 0;
 
   // We expect this to be a stream packet from now on
+
+  if (stream->relay_to) {
+    udx_stream_t *relay = stream->relay_to;
+
+    if (relay->socket == NULL) return 0;
+
+    ((uint32_t *) buf)[1] = udx__swap_uint32_if_be(relay->remote_id);
+
+    uv_buf_t b = uv_buf_init(buf, buf_len);
+
+    udx__sendmsg(relay->socket, &b, 1, (struct sockaddr *) &relay->remote_addr, relay->remote_addr_len);
+
+    return 1;
+  }
 
   if (!(stream->status & UDX_STREAM_CONNECTED) && stream->on_firewall != NULL) {
     if (is_addr_v4_mapped((struct sockaddr *) addr)) {
@@ -721,6 +732,9 @@ process_packet (udx_socket_t *socket, char *buf, ssize_t buf_len, struct sockadd
 
     if (stream->on_firewall(stream, socket, addr)) return 1;
   }
+
+  buf += UDX_HEADER_SIZE;
+  buf_len -= UDX_HEADER_SIZE;
 
   udx_cirbuf_t *inc = &(stream->incoming);
 
@@ -1423,6 +1437,13 @@ udx_stream_connect (udx_stream_t *handle, udx_socket_t *socket, uint32_t remote_
   }
 
   return update_poll(handle->socket);
+}
+
+int
+udx_stream_relay_to (udx_stream_t *handle, udx_stream_t *destination) {
+  handle->relay_to = destination;
+
+  return 0;
 }
 
 int
