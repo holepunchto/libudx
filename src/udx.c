@@ -1486,6 +1486,8 @@ udx_stream_connect (udx_stream_t *handle, udx_socket_t *socket, uint32_t remote_
 
 int
 udx_stream_relay_to (udx_stream_t *handle, udx_stream_t *destination) {
+  if (handle->relay_to != NULL) return UV_EINVAL;
+
   handle->relay_to = destination;
 
   udx__cirbuf_set(&(destination->relaying_streams), (udx_cirbuf_val_t *) handle);
