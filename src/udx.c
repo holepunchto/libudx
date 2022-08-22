@@ -478,6 +478,21 @@ close_maybe (udx_stream_t *stream, int err) {
     udx_stream_read_stop(stream);
   }
 
+  udx_stream_t *relay = stream->relay_to;
+
+  if (relay) {
+    udx__cirbuf_remove(&(relay->relaying_streams), stream->local_id);
+  }
+
+  udx_cirbuf_t relaying = stream->relaying_streams;
+
+  for (uint32_t i = 0; i < relaying.size; i++) {
+    udx_stream_t *stream = (udx_stream_t *) relaying.values[i];
+
+    if (stream) stream->relay_to = NULL;
+  }
+
+  udx__cirbuf_destroy(&(stream->relaying_streams));
   udx__cirbuf_destroy(&(stream->incoming));
   udx__cirbuf_destroy(&(stream->outgoing));
   udx__fifo_destroy(&(stream->unordered));
@@ -1292,6 +1307,8 @@ udx_stream_init (udx_t *udx, udx_stream_t *handle, uint32_t local_id, udx_stream
   handle->on_drain = NULL;
   handle->on_close = close_cb;
 
+  udx__cirbuf_init(&(handle->relaying_streams), 2);
+
   // Init stream write/read buffers
   udx__cirbuf_init(&(handle->outgoing), 16);
   udx__cirbuf_init(&(handle->incoming), 16);
@@ -1470,6 +1487,8 @@ udx_stream_connect (udx_stream_t *handle, udx_socket_t *socket, uint32_t remote_
 int
 udx_stream_relay_to (udx_stream_t *handle, udx_stream_t *destination) {
   handle->relay_to = destination;
+
+  udx__cirbuf_set(&(destination->relaying_streams), (udx_cirbuf_val_t *) handle);
 
   return 0;
 }

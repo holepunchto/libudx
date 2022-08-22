@@ -154,6 +154,7 @@ struct udx_stream {
   udx_socket_t *socket;
 
   udx_stream_t *relay_to;
+  udx_cirbuf_t relaying_streams;
 
   struct sockaddr_storage remote_addr;
   int remote_addr_len;
