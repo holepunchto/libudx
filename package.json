@@ -46,8 +46,9 @@
   "devDependencies": {
     "brittle": "^3.0.0",
     "is-ci": "^3.0.1",
-    "nanobench-utils": "^1.0.0",
+    "nanobench": "^2.1.1",
     "prebuildify": "^5.0.0",
-    "standard": "^16.0.4"
+    "standard": "^16.0.4",
+    "tiny-byte-size": "^1.0.1"
   }
 }
