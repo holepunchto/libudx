@@ -366,6 +366,8 @@ static int
 send_state_packet (udx_stream_t *stream) {
   if ((stream->status & UDX_STREAM_CONNECTED) == 0) return 0;
 
+  stream->deferred_ack = 0;
+
   uint32_t *sacks = NULL;
   uint32_t start = 0;
   uint32_t end = 0;
@@ -941,7 +943,11 @@ process_packet (udx_socket_t *socket, char *buf, ssize_t buf_len, struct sockadd
 
   // if data pkt, send an ack - use deferred acks as well...
   if (type & UDX_HEADER_DATA_OR_END) {
-    send_state_packet(stream);
+    if (stream->out_of_order) {
+      send_state_packet(stream);
+    } else if (stream->deferred_ack == 0) {
+      stream->deferred_ack = 1; // lets try with a clock single tick first
+    }
   }
 
   if ((stream->status & UDX_STREAM_SHOULD_END_REMOTE) == UDX_STREAM_END_REMOTE && seq_compare(stream->remote_ended, stream->ack) <= 0) {
@@ -1358,6 +1364,8 @@ udx_stream_init (udx_t *udx, udx_stream_t *handle, uint32_t local_id, udx_stream
   handle->srtt = 0;
   handle->rttvar = 0;
   handle->rto = 1000;
+  handle->rto_timeout = get_milliseconds() + handle->rto;
+  handle->deferred_ack = 0;
 
   handle->pkts_waiting = 0;
   handle->pkts_inflight = 0;
@@ -1365,8 +1373,6 @@ udx_stream_init (udx_t *udx, udx_stream_t *handle, uint32_t local_id, udx_stream
   handle->dup_acks = 0;
   handle->retransmits_waiting = 0;
   handle->seq_flushed = 0;
-
-  handle->rto_timeout = get_milliseconds() + handle->rto;
 
   handle->inflight = 0;
   handle->ssthresh = 0xff;
@@ -1494,9 +1500,23 @@ udx_stream_read_stop (udx_stream_t *handle) {
   return handle->socket == NULL ? 0 : update_poll(handle->socket);
 }
 
+static void
+check_deferred_ack (udx_stream_t *handle) {
+  if (handle->deferred_ack == 0) return;
+  if (--(handle->deferred_ack) > 0) return;
+  send_state_packet(handle);
+}
+
 int
 udx_stream_check_timeouts (udx_stream_t *handle) {
-  if (handle->remote_acked == handle->seq || (handle->status & UDX_STREAM_CONNECTED) == 0) return 0;
+  if ((handle->status & UDX_STREAM_CONNECTED) == 0) {
+    return 0;
+  }
+
+  if (handle->remote_acked == handle->seq) {
+    check_deferred_ack(handle);
+    return 0;
+  }
 
   const uint64_t now = handle->inflight ? get_milliseconds() : 0;
 
@@ -1546,6 +1566,8 @@ udx_stream_check_timeouts (udx_stream_t *handle) {
     printf("timeout! pkt loss detected - ssthresh=%zu cwnd=%zu inflight=%zu acked=%u seq=%u rtt=%i\n",
       handle->ssthresh, handle->cwnd, handle->inflight, handle->remote_acked, handle->seq_flushed, handle->srtt);
   }
+
+  check_deferred_ack(handle);
 
   int err = flush_waiting_packets(handle);
   return err < 0 ? err : 0;
