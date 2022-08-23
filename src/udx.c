@@ -713,38 +713,42 @@ relay_packet (udx_stream_t *stream, char *buf, ssize_t buf_len, int type, uint32
 
   udx_stream_t *relay = stream->relay_to;
 
+  if (relay->socket != NULL) {
+    uint32_t *h = (uint32_t *) buf;
+    h[1] = udx__swap_uint32_if_be(relay->remote_id);
+
+    uv_buf_t b = uv_buf_init(buf, buf_len);
+
+    int err = udx__sendmsg(relay->socket, &b, 1, (struct sockaddr *) &relay->remote_addr, relay->remote_addr_len);
+
+    if (err == EAGAIN) {
+      b.base += UDX_HEADER_SIZE;
+      b.len -= UDX_HEADER_SIZE;
+
+      udx_packet_t *pkt = malloc(sizeof(udx_packet_t));
+
+      init_stream_packet(pkt, type, relay, &b);
+
+      h = (uint32_t *) &(pkt->header);
+      h[3] = udx__swap_uint32_if_be(seq);
+      h[4] = udx__swap_uint32_if_be(ack);
+
+      pkt->status = UDX_PACKET_SENDING;
+      pkt->seq = seq;
+      pkt->type = 0;
+
+      udx__fifo_push(&(relay->socket->send_queue), pkt);
+
+      update_poll(relay->socket);
+    }
+  }
+
   if (type & UDX_HEADER_DESTROY) {
     stream->status |= UDX_STREAM_DESTROYED_REMOTE;
     close_maybe(stream, UV_ECONNRESET);
   }
 
-  if (relay->socket == NULL) return 0;
-
-  uint32_t *h = (uint32_t *) buf;
-  h[1] = udx__swap_uint32_if_be(relay->remote_id);
-
-  uv_buf_t b = uv_buf_init(buf, buf_len);
-
-  int err = udx__sendmsg(relay->socket, &b, 1, (struct sockaddr *) &relay->remote_addr, relay->remote_addr_len);
-  if (err != EAGAIN) return 1;
-
-  b.base += UDX_HEADER_SIZE;
-  b.len -= UDX_HEADER_SIZE;
-
-  udx_packet_t *pkt = malloc(sizeof(udx_packet_t));
-
-  init_stream_packet(pkt, type, relay, &b);
-
-  h = (uint32_t *) &(pkt->header);
-  h[3] = udx__swap_uint32_if_be(seq);
-  h[4] = udx__swap_uint32_if_be(ack);
-
-  pkt->status = UDX_PACKET_SENDING;
-  pkt->seq = seq;
-  pkt->type = 0;
-
-  udx__fifo_push(&(relay->socket->send_queue), pkt);
-  return update_poll(relay->socket);
+  return 1;
 }
 
 static int
