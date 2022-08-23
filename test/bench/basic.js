@@ -31,5 +31,5 @@ async function benchmarkThroughput (t, streamCount, multiplexMode, messageSize, 
     }
   })
 
-  t.comment(byteSize(total / elapsed * 1e3) + '/s')
+  t.comment(byteSize.perSecond(total, elapsed))
 }

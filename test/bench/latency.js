@@ -48,7 +48,7 @@ test('throughput, 600 ms latency ± 100 ms jitter', async (t) => {
       })
   }))
 
-  t.comment(byteSize(received / elapsed * 1e3) + '/s')
+  t.comment(byteSize.perSecond(received, elapsed))
 })
 
 function delay () {
