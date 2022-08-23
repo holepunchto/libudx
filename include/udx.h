@@ -149,6 +149,7 @@ struct udx_stream {
   int status;
   int out_of_order;
   int recovery;
+  int deferred_ack;
 
   udx_t *udx;
   udx_socket_t *socket;
