@@ -1226,7 +1226,7 @@ udx_stream_init (udx_t *udx, udx_stream_t *handle, uint32_t local_id, udx_stream
 
   handle->srtt = 0;
   handle->rttvar = 0;
-  handle->rto = 1000;
+  handle->rto = 2000;
   handle->rto_timeout = get_milliseconds() + handle->rto;
 
   handle->pkts_waiting = 0;
@@ -1236,7 +1236,7 @@ udx_stream_init (udx_t *udx, udx_stream_t *handle, uint32_t local_id, udx_stream
   handle->retransmits_waiting = 0;
 
   handle->inflight = 0;
-  handle->ssthresh = 0xffff;
+  handle->ssthresh = 0xffffffff;
   handle->cwnd = 2 * handle->mtu;
   handle->rwnd = 0;
 
