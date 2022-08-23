@@ -74,6 +74,11 @@ seq_compare (uint32_t a, uint32_t b) {
                             : 0;
 }
 
+static uint32_t
+seq_max (uint32_t a, uint32_t b) {
+  return seq_compare(a, b) < 0 ? b : a;
+}
+
 static inline bool
 is_addr_v4_mapped (const struct sockaddr *addr) {
   return addr->sa_family == AF_INET6 && IN6_IS_ADDR_V4MAPPED(&(((struct sockaddr_in6 *) addr)->sin6_addr));
@@ -704,7 +709,7 @@ process_data_packet (udx_stream_t *stream, int type, uint32_t seq, char *data, s
 
 static int
 relay_packet (udx_stream_t *stream, char *buf, ssize_t buf_len, int type, uint32_t seq, uint32_t ack) {
-  stream->seq = max_uint32(stream->seq, seq);
+  stream->seq = seq_max(stream->seq, seq);
 
   udx_stream_t *relay = stream->relay_to;
 
