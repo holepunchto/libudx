@@ -935,15 +935,17 @@ on_uv_poll (uv_poll_t *handle, int status, int events) {
 
     ssize_t size = udx__recvmsg(socket, &buf, (struct sockaddr *) &addr, addr_len);
 
-    if (size >= 0 && !process_packet(socket, b, size, (struct sockaddr *) &addr) && socket->on_recv != NULL) {
-      buf.len = size;
+    do {
+      if (size >= 0 && !process_packet(socket, b, size, (struct sockaddr *) &addr) && socket->on_recv != NULL) {
+        buf.len = size;
 
-      if (is_addr_v4_mapped((struct sockaddr *) &addr)) {
-        addr_to_v4((struct sockaddr_in6 *) &addr);
+        if (is_addr_v4_mapped((struct sockaddr *) &addr)) {
+          addr_to_v4((struct sockaddr_in6 *) &addr);
+        }
+
+        socket->on_recv(socket, size, &buf, (struct sockaddr *) &addr);
       }
-
-      socket->on_recv(socket, size, &buf, (struct sockaddr *) &addr);
-    }
+    } while ((size = udx__recvmsg(socket, &buf, (struct sockaddr *) &addr, addr_len)) > 0);
 
     return;
   }
