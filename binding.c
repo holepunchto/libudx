@@ -6,6 +6,8 @@
 
 #include "include/udx.h"
 
+#define UDX_MIN_BUF 2 * UDX_DEFAULT_MTU
+
 #define UDX_NAPI_THROW(err) \
   { \
     napi_throw_error(env, uv_err_name(err), uv_strerror(err)); \
@@ -186,7 +188,7 @@ on_udx_stream_read (udx_stream_t *stream, ssize_t read_len, const uv_buf_t *buf)
   n->read_buf_head += buf->len;
   n->read_buf_free -= buf->len;
 
-  if (n->mode == UDX_NAPI_NON_INTERACTIVE && n->read_buf_free >= 2 * UDX_DEFAULT_MTU) {
+  if (n->mode == UDX_NAPI_NON_INTERACTIVE && n->read_buf_free >= 2 * UDX_MIN_BUF) {
     return;
   }
 
@@ -195,7 +197,7 @@ on_udx_stream_read (udx_stream_t *stream, ssize_t read_len, const uv_buf_t *buf)
   if (n->mode == UDX_NAPI_FRAMED) {
     if (n->frame_len <= read) {
       n->frame_len = -1;
-    } else if (n->read_buf_free < 2 * UDX_DEFAULT_MTU) {
+    } else if (n->read_buf_free < 2 * UDX_MIN_BUF) {
       n->frame_len -= read;
     } else {
       return; // wait for more data

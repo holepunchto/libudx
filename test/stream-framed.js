@@ -1,4 +1,5 @@
 const test = require('brittle')
+const b4a = require('b4a')
 const { makeTwoStreams } = require('./helpers')
 
 test('framed mode', function (t) {
@@ -22,7 +23,7 @@ test('framed mode, large message', function (t) {
 
   const [a, b] = makeTwoStreams(t, { framed: true })
 
-  const buf = Buffer.alloc(3 + 1024 * 4096 /* 4 MiB */)
+  const buf = b4a.alloc(3 + 1024 * 4096 /* 4 MiB */)
 
   buf[2] = 0x40
 
@@ -33,7 +34,7 @@ test('framed mode, large message', function (t) {
       recv.push(buffer)
     })
     .on('end', () => {
-      t.alike(Buffer.concat(recv), buf)
+      t.alike(b4a.concat(recv), buf)
 
       a.destroy()
       b.destroy()
