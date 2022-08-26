@@ -75,7 +75,7 @@ function makePairs (n, multiplexMode = 'single') {
 }
 
 async function pipeStreamPairs (streams, messageSize, limit) {
-  const msg = Buffer.alloc(messageSize).fill('a')
+  const msg = b4a.alloc(messageSize).fill('a')
   const proms = []
   for (const pair of streams) {
     const [streamA, streamB] = pair

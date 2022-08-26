@@ -1,4 +1,5 @@
 const test = require('brittle')
+const b4a = require('b4a')
 const UDX = require('../../')
 
 test('default firewall - same socket', async function (t) {
@@ -23,5 +24,5 @@ test('default firewall - same socket', async function (t) {
   })
 
   a.connect(socket, 2, socket.address().port)
-  a.write(Buffer.from('hello'))
+  a.write(b4a.from('hello'))
 })

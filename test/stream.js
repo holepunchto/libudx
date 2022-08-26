@@ -1,4 +1,5 @@
 const test = require('brittle')
+const b4a = require('b4a')
 const proxy = require('./helpers/proxy')
 const UDX = require('../')
 const { makeTwoStreams } = require('./helpers')
@@ -9,7 +10,7 @@ test('tiny echo stream', async function (t) {
   const [a, b] = makeTwoStreams(t)
 
   a.on('data', function (data) {
-    t.alike(data, Buffer.from('echo: hello world'), 'a received echoed data')
+    t.alike(data, b4a.from('echo: hello world'), 'a received echoed data')
   })
 
   a.on('end', function () {
@@ -25,8 +26,8 @@ test('tiny echo stream', async function (t) {
   })
 
   b.on('data', function (data) {
-    t.alike(data, Buffer.from('hello world'), 'b received data')
-    b.write(Buffer.concat([Buffer.from('echo: '), data]))
+    t.alike(data, b4a.from('hello world'), 'b received data')
+    b.write(b4a.concat([b4a.from('echo: '), data]))
   })
 
   b.on('end', function () {
@@ -42,7 +43,7 @@ test('tiny echo stream', async function (t) {
     t.pass('b closed')
   })
 
-  a.write(Buffer.from('hello world'))
+  a.write(b4a.from('hello world'))
   a.end()
 })
 
@@ -109,7 +110,7 @@ test('only one side writes', async function (t) {
   })
 
   b.on('data', function (data) {
-    t.alike(data, Buffer.from('hello world'), 'b received data')
+    t.alike(data, b4a.from('hello world'), 'b received data')
   })
 
   b.on('end', function () {
@@ -125,7 +126,7 @@ test('only one side writes', async function (t) {
     t.pass('b closed')
   })
 
-  a.write(Buffer.from('hello world'))
+  a.write(b4a.from('hello world'))
   a.end()
 })
 
@@ -153,7 +154,7 @@ test('unordered messages', async function (t) {
   const expected = []
 
   b.on('message', function (buf) {
-    b.send(Buffer.from('echo: ' + buf.toString()))
+    b.send(b4a.from('echo: ' + buf.toString()))
   })
 
   a.on('error', function () {
@@ -175,9 +176,9 @@ test('unordered messages', async function (t) {
     }
   })
 
-  a.send(Buffer.from('a'))
-  a.send(Buffer.from('bc'))
-  a.send(Buffer.from('d'))
+  a.send(b4a.from('a'))
+  a.send(b4a.from('bc'))
+  a.send(b4a.from('d'))
 })
 
 test('try send unordered messages', async function (t) {
@@ -187,7 +188,7 @@ test('try send unordered messages', async function (t) {
   const expected = []
 
   b.on('message', function (buf) {
-    b.trySend(Buffer.from('echo: ' + buf.toString()))
+    b.trySend(b4a.from('echo: ' + buf.toString()))
   })
 
   a.on('error', function () {
@@ -209,9 +210,9 @@ test('try send unordered messages', async function (t) {
     }
   })
 
-  a.trySend(Buffer.from('a'))
-  a.trySend(Buffer.from('bc'))
-  a.trySend(Buffer.from('d'))
+  a.trySend(b4a.from('a'))
+  a.trySend(b4a.from('bc'))
+  a.trySend(b4a.from('d'))
 })
 
 test('ipv6 streams', async function (t) {
@@ -234,7 +235,7 @@ test('ipv6 streams', async function (t) {
   b.connect(bSocket, 1, aSocket.address().port, '::1')
 
   a.on('data', function (data) {
-    t.alike(data, Buffer.from('hello world'))
+    t.alike(data, b4a.from('hello world'))
     a.end()
   })
 
@@ -305,7 +306,7 @@ test('preconnect flow', async function (t) {
   const b = u.createStream(2)
 
   b.connect(socket, 1, socket.address().port)
-  b.write(Buffer.from('hello'))
+  b.write(b4a.from('hello'))
   b.end()
 
   let closed = 0
@@ -349,7 +350,7 @@ test('destroy streams and close socket in callback', async function (t) {
     t.pass('closed')
   })
 
-  b.write(Buffer.from('hello'))
+  b.write(b4a.from('hello'))
 })
 
 test('write empty buffer', async function (t) {
@@ -359,7 +360,7 @@ test('write empty buffer', async function (t) {
 
   a
     .on('data', function (data) {
-      t.alike(data, Buffer.alloc(0))
+      t.alike(data, b4a.alloc(0))
     })
     .on('close', function () {
       t.pass('a closed')
@@ -370,7 +371,7 @@ test('write empty buffer', async function (t) {
     .on('close', function () {
       t.pass('b closed')
     })
-    .end(Buffer.alloc(0))
+    .end(b4a.alloc(0))
 })
 
 test('out of order packets', async function (t) {
@@ -403,7 +404,7 @@ test('out of order packets', async function (t) {
   bStream.connect(b, 1, p.address().port)
 
   for (let i = 0; i < count; i++) {
-    aStream.write(Buffer.from(i.toString()))
+    aStream.write(b4a.from(i.toString()))
   }
 
   bStream.on('data', function (data) {
@@ -461,8 +462,8 @@ test('out of order reads but can destroy (memleak test)', async function (t) {
   aStream.connect(a, 2, p.address().port)
   bStream.connect(b, 1, p.address().port)
 
-  aStream.write(Buffer.from('a'))
-  aStream.write(Buffer.from('b'))
+  aStream.write(b4a.from('a'))
+  aStream.write(b4a.from('b'))
 
   aStream.on('close', function () {
     t.pass('a stream closed')
@@ -516,7 +517,7 @@ test('write string', async function (t) {
 
   a
     .on('data', function (data) {
-      t.alike(data, Buffer.from('hello world'))
+      t.alike(data, b4a.from('hello world'))
     })
     .on('close', function () {
       t.pass('a closed')
@@ -582,7 +583,7 @@ test.skip('throw in data callback', async function (t) {
     throw new Error('boom')
   })
 
-  b.end(Buffer.from('hello'))
+  b.end(b4a.from('hello'))
 
   process.once('uncaughtException', async (err) => {
     t.is(err.message, 'boom')
@@ -623,7 +624,7 @@ test('seq and ack wraparound', async function (t) {
     }
   })
 
-  for (let i = 0; i < 10; i++) a.write(Buffer.of(i))
+  for (let i = 0; i < 10; i++) a.write(b4a.from([i]))
 })
 
 test('busy and idle events', async function (t) {
@@ -746,5 +747,5 @@ test('write exceeding mtu triggers event', async function (t) {
 
   t.is(stream.mtu, 1200)
 
-  stream.write(Buffer.alloc(stream.mtu * 2))
+  stream.write(b4a.alloc(stream.mtu * 2))
 })

@@ -25,7 +25,7 @@ function writeALot (send) {
     let recvBytes = 0
     let sentBytes = 0
 
-    const buf = Buffer.alloc(Math.min(send, 65536))
+    const buf = b4a.alloc(Math.min(send, 65536))
 
     a.setInteractive(false)
 
