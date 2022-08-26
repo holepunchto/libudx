@@ -180,7 +180,11 @@ on_udx_stream_read (udx_stream_t *stream, ssize_t read_len, const uv_buf_t *buf)
   if (buf->len > n->read_buf_free) return;
 
   if (n->mode == UDX_NAPI_FRAMED && n->frame_len == -1) {
-    n->frame_len = 3 + (buf->base[0] | (buf->base[1] << 8) | (buf->base[2] << 16));
+    if (buf->len < 3) {
+      n->mode = UDX_NAPI_INTERACTIVE;
+    } else {
+      n->frame_len = 3 + (buf->base[0] | (buf->base[1] << 8) | (buf->base[2] << 16));
+    }
   }
 
   memcpy(n->read_buf_head, buf->base, buf->len);
@@ -195,7 +199,9 @@ on_udx_stream_read (udx_stream_t *stream, ssize_t read_len, const uv_buf_t *buf)
   ssize_t read = n->read_buf_head - n->read_buf;
 
   if (n->mode == UDX_NAPI_FRAMED) {
-    if (n->frame_len <= read) {
+    if (n->frame_len < read) {
+      n->mode = UDX_NAPI_INTERACTIVE;
+    } else if (n->frame_len == read) {
       n->frame_len = -1;
     } else if (n->read_buf_free < UDX_MIN_BUF) {
       n->frame_len -= read;

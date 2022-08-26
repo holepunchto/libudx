@@ -42,3 +42,46 @@ test('framed mode, large message', function (t) {
 
   a.end(buf)
 })
+
+test('framed mode, several frames', function (t) {
+  t.plan(1)
+
+  const [a, b] = makeTwoStreams(t, { framed: true })
+
+  const buf = b4a.from([0x2, 0x0, 0x0, 0x4, 0x5])
+
+  const recv = []
+
+  b
+    .on('data', (buffer) => {
+      recv.push(buffer)
+    })
+    .on('end', () => {
+      t.alike(b4a.concat(recv), b4a.concat([buf, buf, buf]))
+
+      a.destroy()
+      b.destroy()
+    })
+
+  a.write(buf)
+  a.write(buf)
+  a.end(buf)
+})
+
+test('framed mode, invalid frame', function (t) {
+  t.plan(1)
+
+  const [a, b] = makeTwoStreams(t, { framed: true })
+
+  const buf = b4a.from([0x1 /* too short, leftover data */, 0x0, 0x0, 0x4, 0x5])
+
+  b
+    .on('data', (buffer) => {
+      t.alike(buffer, buf)
+
+      a.destroy()
+      b.destroy()
+    })
+
+  a.write(buf)
+})
