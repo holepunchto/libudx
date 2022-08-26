@@ -945,6 +945,8 @@ on_uv_poll (uv_poll_t *handle, int status, int events) {
 
         socket->on_recv(socket, size, &buf, (struct sockaddr *) &addr);
       }
+
+      buf.len = 2048;
     } while ((size = udx__recvmsg(socket, &buf, (struct sockaddr *) &addr, addr_len)) > 0);
 
     return;
