@@ -6,6 +6,8 @@
 
 #include "include/udx.h"
 
+#define UDX_MIN_BUF 2 * UDX_DEFAULT_MTU
+
 #define UDX_NAPI_THROW(err) \
   { \
     napi_throw_error(env, uv_err_name(err), uv_strerror(err)); \
@@ -174,8 +176,15 @@ on_udx_stream_read (udx_stream_t *stream, ssize_t read_len, const uv_buf_t *buf)
 
   udx_napi_stream_t *n = (udx_napi_stream_t *) stream;
 
+  // ignore the message if it doesn't fit in the read buffer
+  if (buf->len > n->read_buf_free) return;
+
   if (n->mode == UDX_NAPI_FRAMED && n->frame_len == -1) {
-    n->frame_len = 3 + (buf->base[0] | (buf->base[1] << 8) | (buf->base[2] << 16));
+    if (buf->len < 3) {
+      n->mode = UDX_NAPI_INTERACTIVE;
+    } else {
+      n->frame_len = 3 + (buf->base[0] | (buf->base[1] << 8) | (buf->base[2] << 16));
+    }
   }
 
   memcpy(n->read_buf_head, buf->base, buf->len);
@@ -183,16 +192,18 @@ on_udx_stream_read (udx_stream_t *stream, ssize_t read_len, const uv_buf_t *buf)
   n->read_buf_head += buf->len;
   n->read_buf_free -= buf->len;
 
-  if (n->mode == UDX_NAPI_NON_INTERACTIVE && n->read_buf_free >= 2 * UDX_DEFAULT_MTU) {
+  if (n->mode == UDX_NAPI_NON_INTERACTIVE && n->read_buf_free >= UDX_MIN_BUF) {
     return;
   }
 
   ssize_t read = n->read_buf_head - n->read_buf;
 
   if (n->mode == UDX_NAPI_FRAMED) {
-    if (n->frame_len <= read) {
+    if (n->frame_len < read) {
+      n->mode = UDX_NAPI_INTERACTIVE;
+    } else if (n->frame_len == read) {
       n->frame_len = -1;
-    } else if (n->read_buf_free == 0) {
+    } else if (n->read_buf_free < UDX_MIN_BUF) {
       n->frame_len -= read;
     } else {
       return; // wait for more data
