@@ -1,3 +1,4 @@
+const b4a = require('b4a')
 const UDX = require('../../')
 
 module.exports = { makeTwoStreams, makePairs, pipeStreamPairs }
