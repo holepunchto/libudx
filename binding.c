@@ -174,6 +174,9 @@ on_udx_stream_read (udx_stream_t *stream, ssize_t read_len, const uv_buf_t *buf)
 
   udx_napi_stream_t *n = (udx_napi_stream_t *) stream;
 
+  // ignore the message if it doesn't fit in the read buffer
+  if (buf->len > n->read_buf_free) return;
+
   if (n->mode == UDX_NAPI_FRAMED && n->frame_len == -1) {
     n->frame_len = 3 + (buf->base[0] | (buf->base[1] << 8) | (buf->base[2] << 16));
   }
@@ -192,7 +195,7 @@ on_udx_stream_read (udx_stream_t *stream, ssize_t read_len, const uv_buf_t *buf)
   if (n->mode == UDX_NAPI_FRAMED) {
     if (n->frame_len <= read) {
       n->frame_len = -1;
-    } else if (n->read_buf_free == 0) {
+    } else if (n->read_buf_free < 2 * UDX_DEFAULT_MTU) {
       n->frame_len -= read;
     } else {
       return; // wait for more data
