@@ -39,6 +39,7 @@ extern "C" {
 #define UDX_PACKET_SENDING  2
 #define UDX_PACKET_INFLIGHT 3
 
+#define UDX_PACKET_STREAM_RELAY   0b0
 #define UDX_PACKET_STREAM_STATE   0b00001
 #define UDX_PACKET_STREAM_WRITE   0b00010
 #define UDX_PACKET_STREAM_SEND    0b00100
@@ -152,6 +153,9 @@ struct udx_stream {
 
   udx_t *udx;
   udx_socket_t *socket;
+
+  udx_stream_t *relay_to;
+  udx_cirbuf_t relaying_streams;
 
   struct sockaddr_storage remote_addr;
   int remote_addr_len;
@@ -345,6 +349,9 @@ udx_stream_set_ack (udx_stream_t *handle, uint32_t ack);
 
 int
 udx_stream_connect (udx_stream_t *handle, udx_socket_t *socket, uint32_t remote_id, const struct sockaddr *remote_addr);
+
+int
+udx_stream_relay_to (udx_stream_t *handle, udx_stream_t *destination);
 
 int
 udx_stream_firewall (udx_stream_t *handle, udx_stream_firewall_cb firewall_cb);

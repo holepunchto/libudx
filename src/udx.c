@@ -74,6 +74,11 @@ seq_compare (uint32_t a, uint32_t b) {
                             : 0;
 }
 
+static uint32_t
+seq_max (uint32_t a, uint32_t b) {
+  return seq_compare(a, b) < 0 ? b : a;
+}
+
 static inline bool
 is_addr_v4_mapped (const struct sockaddr *addr) {
   return addr->sa_family == AF_INET6 && IN6_IS_ADDR_V4MAPPED(&(((struct sockaddr_in6 *) addr)->sin6_addr));
@@ -478,6 +483,21 @@ close_maybe (udx_stream_t *stream, int err) {
     udx_stream_read_stop(stream);
   }
 
+  udx_stream_t *relay = stream->relay_to;
+
+  if (relay) {
+    udx__cirbuf_remove(&(relay->relaying_streams), stream->local_id);
+  }
+
+  udx_cirbuf_t relaying = stream->relaying_streams;
+
+  for (uint32_t i = 0; i < relaying.size; i++) {
+    udx_stream_t *stream = (udx_stream_t *) relaying.values[i];
+
+    if (stream) stream->relay_to = NULL;
+  }
+
+  udx__cirbuf_destroy(&(stream->relaying_streams));
   udx__cirbuf_destroy(&(stream->incoming));
   udx__cirbuf_destroy(&(stream->outgoing));
   udx__fifo_destroy(&(stream->unordered));
@@ -688,6 +708,50 @@ process_data_packet (udx_stream_t *stream, int type, uint32_t seq, char *data, s
 }
 
 static int
+relay_packet (udx_stream_t *stream, char *buf, ssize_t buf_len, int type, uint32_t seq, uint32_t ack) {
+  stream->seq = seq_max(stream->seq, seq);
+
+  udx_stream_t *relay = stream->relay_to;
+
+  if (relay->socket != NULL) {
+    uint32_t *h = (uint32_t *) buf;
+    h[1] = udx__swap_uint32_if_be(relay->remote_id);
+
+    uv_buf_t b = uv_buf_init(buf, buf_len);
+
+    int err = udx__sendmsg(relay->socket, &b, 1, (struct sockaddr *) &relay->remote_addr, relay->remote_addr_len);
+
+    if (err == EAGAIN) {
+      b.base += UDX_HEADER_SIZE;
+      b.len -= UDX_HEADER_SIZE;
+
+      udx_packet_t *pkt = malloc(sizeof(udx_packet_t));
+
+      init_stream_packet(pkt, type, relay, &b);
+
+      h = (uint32_t *) &(pkt->header);
+      h[3] = udx__swap_uint32_if_be(seq);
+      h[4] = udx__swap_uint32_if_be(ack);
+
+      pkt->status = UDX_PACKET_SENDING;
+      pkt->type = UDX_PACKET_STREAM_RELAY;
+      pkt->seq = seq;
+
+      udx__fifo_push(&(relay->socket->send_queue), pkt);
+
+      update_poll(relay->socket);
+    }
+  }
+
+  if (type & UDX_HEADER_DESTROY) {
+    stream->status |= UDX_STREAM_DESTROYED_REMOTE;
+    close_maybe(stream, UV_ECONNRESET);
+  }
+
+  return 1;
+}
+
+static int
 process_packet (udx_socket_t *socket, char *buf, ssize_t buf_len, struct sockaddr *addr) {
   if (buf_len < UDX_HEADER_SIZE) return 0;
 
@@ -705,9 +769,6 @@ process_packet (udx_socket_t *socket, char *buf, ssize_t buf_len, struct sockadd
   uint32_t seq = udx__swap_uint32_if_be(*(i++));
   uint32_t ack = udx__swap_uint32_if_be(*i);
 
-  buf += UDX_HEADER_SIZE;
-  buf_len -= UDX_HEADER_SIZE;
-
   udx_stream_t *stream = (udx_stream_t *) udx__cirbuf_get(socket->streams_by_id, local_id);
 
   if (stream == NULL || stream->status & UDX_STREAM_DEAD) return 0;
@@ -721,6 +782,11 @@ process_packet (udx_socket_t *socket, char *buf, ssize_t buf_len, struct sockadd
 
     if (stream->on_firewall(stream, socket, addr)) return 1;
   }
+
+  if (stream->relay_to) return relay_packet(stream, buf, buf_len, type, seq, ack);
+
+  buf += UDX_HEADER_SIZE;
+  buf_len -= UDX_HEADER_SIZE;
 
   udx_cirbuf_t *inc = &(stream->incoming);
 
@@ -1216,6 +1282,7 @@ udx_stream_init (udx_t *udx, udx_stream_t *handle, uint32_t local_id, udx_stream
   handle->out_of_order = 0;
   handle->recovery = 0;
   handle->socket = NULL;
+  handle->relay_to = NULL;
   handle->udx = udx;
 
   handle->mtu = UDX_DEFAULT_MTU;
@@ -1249,6 +1316,8 @@ udx_stream_init (udx_t *udx, udx_stream_t *handle, uint32_t local_id, udx_stream
   handle->on_recv = NULL;
   handle->on_drain = NULL;
   handle->on_close = close_cb;
+
+  udx__cirbuf_init(&(handle->relaying_streams), 2);
 
   // Init stream write/read buffers
   udx__cirbuf_init(&(handle->outgoing), 16);
@@ -1426,6 +1495,17 @@ udx_stream_connect (udx_stream_t *handle, udx_socket_t *socket, uint32_t remote_
 }
 
 int
+udx_stream_relay_to (udx_stream_t *handle, udx_stream_t *destination) {
+  if (handle->relay_to != NULL) return UV_EINVAL;
+
+  handle->relay_to = destination;
+
+  udx__cirbuf_set(&(destination->relaying_streams), (udx_cirbuf_val_t *) handle);
+
+  return 0;
+}
+
+int
 udx_stream_send (udx_stream_send_t *req, udx_stream_t *handle, const uv_buf_t bufs[], unsigned int bufs_len, udx_stream_send_cb cb) {
   assert(bufs_len == 1);
 
@@ -1562,21 +1642,23 @@ udx_stream_destroy (udx_stream_t *handle) {
   // that creates some reentry trickiness incase this was called from on_read.
   clear_outgoing_packets(handle);
 
-  udx_packet_t *pkt = malloc(sizeof(udx_packet_t));
+  if (handle->relay_to == NULL) {
+    udx_packet_t *pkt = malloc(sizeof(udx_packet_t));
 
-  uv_buf_t buf = uv_buf_init(NULL, 0);
+    uv_buf_t buf = uv_buf_init(NULL, 0);
 
-  init_stream_packet(pkt, UDX_HEADER_DESTROY, handle, &buf);
+    init_stream_packet(pkt, UDX_HEADER_DESTROY, handle, &buf);
 
-  pkt->status = UDX_PACKET_SENDING;
-  pkt->type = UDX_PACKET_STREAM_DESTROY;
-  pkt->ttl = 0;
-  pkt->ctx = handle;
+    pkt->status = UDX_PACKET_SENDING;
+    pkt->type = UDX_PACKET_STREAM_DESTROY;
+    pkt->ttl = 0;
+    pkt->ctx = handle;
 
-  handle->seq++;
+    handle->seq++;
 
-  udx__fifo_push(&(handle->socket->send_queue), pkt);
-  udx__fifo_push(&(handle->unordered), pkt);
+    udx__fifo_push(&(handle->socket->send_queue), pkt);
+    udx__fifo_push(&(handle->unordered), pkt);
+  }
 
   int err = update_poll(handle->socket);
   return err < 0 ? err : 1;
