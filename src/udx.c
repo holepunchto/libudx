@@ -734,8 +734,8 @@ relay_packet (udx_stream_t *stream, char *buf, ssize_t buf_len, int type, uint32
       h[4] = udx__swap_uint32_if_be(ack);
 
       pkt->status = UDX_PACKET_SENDING;
+      pkt->type = UDX_PACKET_STREAM_RELAY;
       pkt->seq = seq;
-      pkt->type = 0;
 
       udx__fifo_push(&(relay->socket->send_queue), pkt);
 
