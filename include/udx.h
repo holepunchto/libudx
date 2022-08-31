@@ -10,6 +10,7 @@ extern "C" {
 #include <uv.h>
 
 // TODO: research the packets sizes a bit more
+#define UDX_MSS 1460 // just used for congestion to avoid too many variables...
 #define UDX_DEFAULT_MTU 1200
 #define UDX_HEADER_SIZE 20
 
@@ -179,18 +180,24 @@ struct udx_stream {
   uint32_t rttvar;
   uint32_t rto;
 
-  uint64_t rto_timeout;
-
   uint32_t pkts_waiting;        // how many packets are added locally but not sent?
   uint32_t pkts_inflight;       // packets inflight to the other peer
   uint32_t pkts_buffered;       // how many (data) packets received but not processed (out of order)?
   uint32_t dup_acks;            // how many duplicate acks received? Used for fast retransmit
+  uint32_t fast_retransmit_seq; // which pkt are we waiting for to be acked in fast retransmit
   uint32_t retransmits_waiting; // how many retransmits are waiting to be sent? if 0, then inflight iteration is faster
+  uint32_t seq_flushed;         // highest seq that has been flushed
+
+  // timestamps...
+  uint64_t cubic_k;
+  uint64_t cubic_t;
+  uint64_t rto_timeout;
 
   size_t inflight;
   size_t ssthresh;
   size_t cwnd;
   size_t rwnd;
+  size_t cubic_w_max;
 
   size_t stats_sacks;
   size_t stats_pkts_sent;

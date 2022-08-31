@@ -3,6 +3,7 @@
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
+#include <math.h>
 #include <uv.h>
 
 #include "../include/udx.h"
@@ -247,6 +248,24 @@ update_poll (udx_socket_t *socket) {
 }
 
 static void
+unqueue_first_transmits (udx_stream_t *stream) {
+  for (uint32_t seq = stream->seq_flushed; seq != stream->remote_acked; seq--) {
+    udx_packet_t *pkt = (udx_packet_t *) udx__cirbuf_get(&(stream->outgoing), seq);
+
+    if (pkt == NULL || pkt->transmits != 0 || pkt->status != UDX_PACKET_SENDING) break;
+
+    pkt->status = UDX_PACKET_WAITING;
+
+    stream->pkts_waiting++;
+    stream->pkts_inflight--;
+    stream->inflight -= pkt->size;
+    stream->seq_flushed--;
+
+    udx__fifo_remove(&(stream->socket->send_queue), pkt, pkt->fifo_gc);
+  }
+}
+
+static void
 clear_incoming_packets (udx_stream_t *stream) {
   uint32_t seq = stream->ack;
   udx_cirbuf_t *inc = &(stream->incoming);
@@ -422,6 +441,8 @@ send_data_packet (udx_stream_t *stream, udx_packet_t *pkt) {
   if (pkt->is_retransmit) {
     pkt->is_retransmit = 0;
     stream->retransmits_waiting--;
+  } else if (seq_compare(stream->seq_flushed, pkt->seq) < 0) {
+    stream->seq_flushed = pkt->seq;
   }
 
   stream->stats_pkts_sent++;
@@ -511,14 +532,60 @@ close_maybe (udx_stream_t *stream, int err) {
   return 1;
 }
 
+static void
+increase_cwnd (udx_stream_t *stream, uint64_t time) {
+  if (stream->cwnd < stream->ssthresh) { // If slowstart, grow exponential
+    stream->cwnd += UDX_MSS;
+    return;
+  }
+
+  // We are not in congestion avoidance! Did we just enter? If so clock it.
+  if (stream->cubic_t == 0) {
+    stream->cubic_t = time;
+    // If this is after a timeout (w_max == 0), clock w_max to cwnd per spec. k is set to 0 already.
+    if (stream->cubic_w_max == 0) stream->cubic_w_max = stream->cwnd;
+  }
+
+  int64_t t = time - stream->cubic_t;
+  int64_t d = t - (int64_t) stream->cubic_k;
+
+  // W_est(t) = W_max*beta_cubic + [3*(1-beta_cubic)/(1+beta_cubic)] * (t/RTT) (Eq. 4)
+  // W_est(t) = W_max*0.7 + [3*(1-0.7)/(1+0.7)] * (t/RTT)
+  // W_est(t) = (7 * W_max + 90 / 17 * (t/RTT)) / 10
+  size_t w_est = (7 * stream->cubic_w_max / UDX_MSS + t * 90 / stream->srtt / 17) / 10;
+
+  // W_cubic(t) = C*(t-K)^3 + W_max (Eq. 1)
+  // W_cubic(t) = 0.4*(t-K)^3 + W_max
+  // W_cubic(t) = 4*(t-K)^3/10 + W_max
+  size_t w_cubic = 4 * d * d * d / 10000000000 + (stream->cubic_w_max / UDX_MSS);
+
+// printf("w_cubic = %zu, w_est = %zu, cwnd = %zu, t = %zu, rtt = %zu, inflight = %zu\n", w_cubic, w_est, stream->cwnd, t, stream->srtt, stream->inflight);
+
+  if (w_cubic < w_est) {
+    stream->cwnd = UDX_MSS * w_est;
+    if (stream->cwnd < 2 * UDX_MSS) stream->cwnd = 2 * UDX_MSS;
+    return;
+  }
+// printf("1 congestions is now %zu (inc=%zu, ssthresh=%zu, t=%zu)\n", stream->cwnd, 0, stream->ssthresh, t);
+
+  d += stream->srtt;
+  w_cubic = 4 * d * d * d / 10000000000 + (stream->cubic_w_max / UDX_MSS);
+
+  size_t inc = UDX_MSS * w_cubic;
+  if (inc > stream->cwnd) stream->cwnd += UDX_MSS * ((inc - stream->cwnd) / stream->cwnd);
+
+// printf("w_cubic ( + rtt) = %zu, inc = %zu\n", w_cubic, inc);
+// printf("2 congestions is now %zu (inc=%zu, ssthresh=%zu, t=%zu)\n", stream->cwnd, inc, stream->ssthresh, t);
+
+  // sanity check
+}
+
 static int
-ack_packet (udx_stream_t *stream, uint32_t seq, int sack) {
+ack_packet (udx_stream_t *stream, uint32_t seq, int sack, int grow_cwnd) {
   udx_cirbuf_t *out = &(stream->outgoing);
   udx_packet_t *pkt = (udx_packet_t *) udx__cirbuf_remove(out, seq);
 
   if (pkt == NULL) return 0;
-
-  int fast_rt = pkt->is_retransmit == UDX_FAST_RETRANSMIT;
 
   if (pkt->is_retransmit) {
     pkt->is_retransmit = 0;
@@ -532,7 +599,8 @@ ack_packet (udx_stream_t *stream, uint32_t seq, int sack) {
   }
 
   if (pkt->transmits == 1) {
-    const uint32_t rtt = (uint32_t) (get_milliseconds() - pkt->time_sent);
+    const uint64_t time = get_milliseconds();
+    const uint32_t rtt = (uint32_t) (time - pkt->time_sent);
 
     // First round trip time sample
     if (stream->srtt == 0) {
@@ -551,16 +619,12 @@ ack_packet (udx_stream_t *stream, uint32_t seq, int sack) {
     // RTO <- SRTT + max (G, K*RTTVAR) where K is 4 maxed with 1s
     stream->rto = max_uint32(stream->srtt + max_uint32(UDX_CLOCK_GRANULARITY_MS, 4 * stream->rttvar), 1000);
 
-    // Congestion control...
-    if (stream->cwnd < stream->ssthresh || fast_rt) {
-      stream->cwnd += stream->mtu;
+    // Congestion control... If we are at the tip of cwnd, grow the window, otherwise reset timer.
+    if (grow_cwnd) {
+      increase_cwnd(stream, time);
     } else {
-      stream->cwnd += max_uint32((stream->mtu * stream->mtu) / stream->cwnd, 1);
+      stream->cubic_t = 0;
     }
-  }
-
-  if (!sack) { // Reset rto timer when new data is ack'ed (inorder)
-    stream->rto_timeout = get_milliseconds() + stream->rto;
   }
 
   // If this packet was queued for sending we need to remove it from the queue.
@@ -591,8 +655,8 @@ ack_packet (udx_stream_t *stream, uint32_t seq, int sack) {
   return 1;
 }
 
-static void
-process_sacks (udx_stream_t *stream, char *buf, size_t buf_len) {
+static uint32_t
+process_sacks (udx_stream_t *stream, char *buf, size_t buf_len, int grow_cwnd) {
   uint32_t n = 0;
   uint32_t *sacks = (uint32_t *) buf;
 
@@ -602,8 +666,8 @@ process_sacks (udx_stream_t *stream, char *buf, size_t buf_len) {
     int32_t len = seq_diff(end, start);
 
     for (int32_t j = 0; j < len; j++) {
-      int a = ack_packet(stream, start + j, 1);
-      if (a == 2) return; // ended
+      int a = ack_packet(stream, start + j, 1, grow_cwnd);
+      if (a == 2) return 0; // ended
       if (a == 1) {
         n++;
       }
@@ -613,66 +677,68 @@ process_sacks (udx_stream_t *stream, char *buf, size_t buf_len) {
   if (n) {
     stream->stats_sacks += n;
   }
+
+  return n;
 }
 
 static void
 fast_retransmit (udx_stream_t *stream) {
-  udx_cirbuf_t *out = &(stream->outgoing);
+  uint64_t time = get_milliseconds();
 
+// printf("pre fast rt, inflight=%zu, pkts_inflight=%u ssthresh=%zu, cwnd=%zu acked=%i seq=%i, delta=%i srtt=%i\n", stream->inflight, stream->pkts_inflight, stream->ssthresh, stream->cwnd, stream->remote_acked, stream->seq_flushed, stream->seq_flushed - stream->remote_acked, stream->srtt);
   // TODO: if a sack exists, can be maintained independently instead like we do with out-of-order pkts
-  int sacked = 0;
-  int32_t len = seq_diff(stream->seq, stream->remote_acked);
 
-  for (int32_t i = 0; i < len; i++) {
-    udx_packet_t *pkt = (udx_packet_t *) udx__cirbuf_get(out, stream->remote_acked + i);
-    if (!pkt) { // if cleared, it's been acked, ie a SACK
-      sacked = 1;
-      break;
-    }
+  // enter recovery mode if are not in it already!
+  if (stream->recovery == 0) {
+printf("pre fast rt, inflight=%zu, pkts_inflight=%u ssthresh=%zu, cwnd=%zu acked=%i seq=%i, delta=%i srtt=%i\n", stream->inflight, stream->pkts_inflight, stream->ssthresh, stream->cwnd, stream->remote_acked, stream->seq_flushed, stream->seq_flushed - stream->remote_acked, stream->srtt);
+    // easy win is to clear packets that are in the queue - they def wont help if sent.
+    unqueue_first_transmits(stream);
+
+    // recover until the full window is packa
+    stream->recovery = seq_diff(stream->seq_flushed, stream->remote_acked);
+
+    // adjust congestion
+    stream->cubic_w_max = stream->cwnd;
+    stream->ssthresh = max_uint32(7 * stream->cwnd / 10, 2 * UDX_MSS);
+    stream->cwnd = stream->ssthresh;
+
+    // K = cubic_root(W_max*(1-beta_cubic)/C) (Eq. 2)
+    // K = cubic_root(W_max*(1-0.7)/0.4)
+    // K = cubic_root(W_max * 3 / 4)
+    stream->cubic_k = (uint64_t) (1000 * cbrt((long double) stream->cubic_w_max * 3 / 4 / UDX_MSS));
+    stream->cubic_t = 0;
+
+printf("entering recovery mode! total recovery length = %u (remote_acked %u, seq_flushed %u, window %u)\n", stream->recovery, stream->remote_acked, stream->seq_flushed, stream->seq_flushed - stream->remote_acked);
   }
-
-  if (!sacked) return;
 
   int resent = 0;
 
-  // 1024 is just arbitrary, max length of the full segment missing
-  for (int i = 0; i < 1024; i++) {
-    udx_packet_t *pkt = (udx_packet_t *) udx__cirbuf_get(out, stream->remote_acked + i);
-    if (pkt == NULL || pkt->transmits != 1 || pkt->status != UDX_PACKET_INFLIGHT || pkt->is_retransmit) break;
+  while (resent < 32) {
+    // resend lost packet immediately!
+    udx_packet_t *lost_pkt = (udx_packet_t *) udx__cirbuf_get(&(stream->outgoing), stream->remote_acked + resent);
+
+    // sanity check
+    if (lost_pkt == NULL || lost_pkt->transmits != 1 || lost_pkt->status != UDX_PACKET_INFLIGHT || lost_pkt->is_retransmit) break;
 
     resent++;
-
-    pkt->status = UDX_PACKET_WAITING;
-    pkt->is_retransmit = UDX_FAST_RETRANSMIT;
-
-    stream->inflight -= pkt->size;
-    stream->pkts_waiting++;
-    stream->pkts_inflight--;
-    stream->retransmits_waiting++;
     stream->stats_fast_rt++;
+    stream->stats_pkts_sent++;
+
+    lost_pkt->status = UDX_PACKET_SENDING;
+    lost_pkt->fifo_gc = udx__fifo_push(&(stream->socket->send_queue), lost_pkt);
+
+    // record this packet so we know when it's packed...
+    stream->fast_retransmit_seq = lost_pkt->seq;
   }
 
   if (resent > 0) {
-    if (stream->recovery == 0) {
-      stream->ssthresh = max_uint32(2 * stream->mtu, stream->inflight / 2);
-      stream->cwnd = stream->ssthresh + 3 * stream->mtu;
-
-      // set recovery to how many packets we've sent but has not been fully acked (could be maintained elsewhere)
-      stream->recovery = len;
-      for (uint32_t seq = stream->seq; seq != stream->remote_acked; seq--) {
-        udx_packet_t *pkt = (udx_packet_t *) udx__cirbuf_get(out, seq);
-        // if NULL it was SACK'ed ie, transmitted
-        if (pkt == NULL || pkt->transmits > 0) break;
-        stream->recovery--;
-      }
-    }
-
+  printf("resent %u pkts\n", resent);
     // reset the timeout to allow the data to get to the remote before triggering congestion
-    stream->rto_timeout = get_milliseconds() + stream->rto;
-
-    debug_printf("fast rt, ssthresh=%zu, cwnd=%zu resending=%i acked=%i seq=%i)\n", stream->ssthresh, stream->cwnd, resent, stream->remote_acked, stream->seq);
+    stream->rto_timeout = time + stream->rto;
   }
-};
+
+// printf("fast rt, ssthresh=%zu, cwnd=%zu resending=%u acked=%i seq=%i, delta=%i srtt=%i\n", stream->ssthresh, stream->cwnd, lost_pkt->seq, stream->remote_acked, stream->seq, stream->seq_flushed - stream->remote_acked, stream->srtt);
+}
 
 static void
 process_data_packet (udx_stream_t *stream, int type, uint32_t seq, char *data, ssize_t data_len) {
@@ -774,7 +840,6 @@ process_packet (udx_socket_t *socket, char *buf, ssize_t buf_len, struct sockadd
   if (stream == NULL || stream->status & UDX_STREAM_DEAD) return 0;
 
   // We expect this to be a stream packet from now on
-
   if (!(stream->status & UDX_STREAM_CONNECTED) && stream->on_firewall != NULL) {
     if (is_addr_v4_mapped((struct sockaddr *) addr)) {
       addr_to_v4((struct sockaddr_in6 *) addr);
@@ -789,10 +854,9 @@ process_packet (udx_socket_t *socket, char *buf, ssize_t buf_len, struct sockadd
   buf_len -= UDX_HEADER_SIZE;
 
   udx_cirbuf_t *inc = &(stream->incoming);
+  int grow_cwnd = stream->inflight + 2 * UDX_MSS >= stream->cwnd;
 
-  if (type & UDX_HEADER_SACK) {
-    process_sacks(stream, buf, buf_len);
-  }
+  uint32_t sacked = (type & UDX_HEADER_SACK) ? process_sacks(stream, buf, buf_len, grow_cwnd) : 0;
 
   // Done with header processing now.
   // For future compat, make sure we are now pointing at the actual data using the data_offset
@@ -850,22 +914,24 @@ process_packet (udx_socket_t *socket, char *buf, ssize_t buf_len, struct sockadd
 
   int32_t len = seq_diff(ack, stream->remote_acked);
 
-  if (len) { // if anything acked, no dups
+  if (len) {
+    // if anything acked, reset dups
     stream->dup_acks = 0;
-  } else if ((type & UDX_HEADER_DATA_OR_END) == 0) {
-    // if 3 dups received acking other data, run fast_retransmit
-    if (++(stream->dup_acks) == 3) {
-      fast_retransmit(stream);
-    }
+    // also reset rto, since things are moving forward...
+    stream->rto_timeout = get_milliseconds() + stream->rto;
+  } else if (sacked > 0 && (stream->recovery == 0 || stream->fast_retransmit_seq < ack) && ++(stream->dup_acks) >= 3) {
+    // otherwise if this packed sacked data, it (optionally) a prev fast_retransmit or, and we got 3 dups
+    fast_retransmit(stream);
   }
 
   for (int32_t j = 0; j < len; j++) {
     if (stream->recovery > 0 && --(stream->recovery) == 0) {
       // The end of fast recovery, adjust according to the spec
       if (stream->ssthresh < stream->cwnd) stream->cwnd = stream->ssthresh;
+      printf("end of fast recovery... (total retransmits %zu / %zu)\n", stream->stats_fast_rt, stream->stats_pkts_sent);
     }
 
-    int a = ack_packet(stream, stream->remote_acked++, 0);
+    int a = ack_packet(stream, stream->remote_acked++, 0, grow_cwnd);
 
     if (a == 0 || a == 1) continue;
     if (a == 2) { // it ended, so ack that and trigger close
@@ -1296,18 +1362,23 @@ udx_stream_init (udx_t *udx, udx_stream_t *handle, uint32_t local_id, udx_stream
   handle->srtt = 0;
   handle->rttvar = 0;
   handle->rto = 1000;
-  handle->rto_timeout = get_milliseconds() + handle->rto;
 
   handle->pkts_waiting = 0;
   handle->pkts_inflight = 0;
   handle->pkts_buffered = 0;
   handle->dup_acks = 0;
   handle->retransmits_waiting = 0;
+  handle->seq_flushed = 0;
+
+  handle->rto_timeout = get_milliseconds() + handle->rto;
+  handle->cubic_k = 0;
+  handle->cubic_t = 0;
 
   handle->inflight = 0;
   handle->ssthresh = 0xffff;
-  handle->cwnd = 2 * handle->mtu;
+  handle->cwnd = 2 * UDX_MSS;
   handle->rwnd = 0;
+  handle->cubic_w_max = 0;
 
   handle->stats_sacks = 0;
   handle->stats_pkts_sent = 0;
@@ -1362,7 +1433,7 @@ udx_stream_get_seq (udx_stream_t *handle, uint32_t *seq) {
 
 int
 udx_stream_set_seq (udx_stream_t *handle, uint32_t seq) {
-  handle->seq = seq;
+  handle->seq = handle->seq_flushed = seq;
   return 0;
 }
 
@@ -1431,16 +1502,27 @@ udx_stream_check_timeouts (udx_stream_t *handle) {
   const uint64_t now = handle->inflight ? get_milliseconds() : 0;
 
   if (now > handle->rto_timeout) {
+    // Bail out of fast recovery mode if we are in it
+    if (handle->recovery > 0) handle->recovery = 0;
+
+    // Make sure to clear all new packets that are in the queue
+    unqueue_first_transmits(handle);
+
     // Ensure it backs off until data is acked...
     handle->rto_timeout = now + 2 * handle->rto;
 
     // Update congestion control
-    handle->ssthresh = max_uint32(2 * handle->mtu, handle->inflight / 2);
+    handle->ssthresh = max_uint32(7 * handle->cwnd / 10, 2 * UDX_MSS);
     handle->cwnd = 2 * handle->mtu;
+
+    // Reset cubic state
+    handle->cubic_w_max = 0;
+    handle->cubic_t = 0;
+    handle->cubic_k = 0;
 
     // Consider all packet losts - seems to be the simple consensus across different stream impls
     // which we like cause it is nice and simple to implement.
-    for (uint32_t seq = handle->remote_acked; seq != handle->seq; seq++) {
+    for (uint32_t seq = handle->remote_acked; seq != handle->seq_flushed; seq++) {
       udx_packet_t *pkt = (udx_packet_t *) udx__cirbuf_get(&(handle->outgoing), seq);
 
       if (pkt == NULL || pkt->status != UDX_PACKET_INFLIGHT || pkt->is_retransmit) continue;
@@ -1460,7 +1542,7 @@ udx_stream_check_timeouts (udx_stream_t *handle) {
       handle->retransmits_waiting++;
     }
 
-    debug_printf("pkt loss! congestion, ssthresh=%zu, cwnd=%zu\n", handle->ssthresh, handle->cwnd);
+    printf("pkt loss! congestion, ssthresh=%zu, cwnd=%zu inflight=%zu\n", handle->ssthresh, handle->cwnd, handle->inflight);
   }
 
   int err = flush_waiting_packets(handle);
