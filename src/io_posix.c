@@ -40,5 +40,5 @@ udx__recvmsg (udx_socket_t *handle, uv_buf_t *buf, struct sockaddr *addr, int ad
     size = recvmsg(handle->io_poll.io_watcher.fd, &h, 0);
   } while (size == -1 && errno == EINTR);
 
-  return size == -1 ? (errno == EWOULDBLOCK ? 0 : uv_translate_sys_error(errno)) : size;
+  return size == -1 ? uv_translate_sys_error(errno) : size;
 }
