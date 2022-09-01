@@ -902,13 +902,9 @@ on_uv_poll (uv_poll_t *handle, int status, int events) {
     }
   }
 
-  while (socket->send_queue.len > 0 && events & UV_WRITABLE) {
+  while (events & UV_WRITABLE && socket->send_queue.len > 0) {
     udx_packet_t *pkt = (udx_packet_t *) udx__fifo_shift(&(socket->send_queue));
     if (pkt == NULL) continue;
-
-    assert(pkt->status == UDX_PACKET_SENDING);
-    pkt->status = UDX_PACKET_INFLIGHT;
-    pkt->transmits++;
 
     bool adjust_ttl = pkt->ttl > 0 && socket->ttl != pkt->ttl;
 
@@ -928,6 +924,9 @@ on_uv_poll (uv_poll_t *handle, int status, int events) {
       break;
     }
 
+    assert(pkt->status == UDX_PACKET_SENDING);
+    pkt->status = UDX_PACKET_INFLIGHT;
+    pkt->transmits++;
     pkt->time_sent = uv_hrtime() / 1e6;
 
     int type = pkt->type;
