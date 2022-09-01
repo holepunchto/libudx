@@ -940,15 +940,37 @@ trigger_send_callback (udx_socket_t *socket, udx_packet_t *pkt) {
 static void
 on_uv_poll (uv_poll_t *handle, int status, int events) {
   udx_socket_t *socket = handle->data;
+  ssize_t size;
 
-  if (socket->send_queue.len > 0 && events & UV_WRITABLE) {
+  if (events & UV_READABLE) {
+    struct sockaddr_storage addr;
+    int addr_len = sizeof(addr);
+    uv_buf_t buf;
+
+    memset(&addr, 0, addr_len);
+
+    char b[2048];
+    buf.base = (char *) &b;
+    buf.len = 2048;
+
+    while ((size = udx__recvmsg(socket, &buf, (struct sockaddr *) &addr, addr_len)) >= 0) {
+      if (!process_packet(socket, b, size, (struct sockaddr *) &addr) && socket->on_recv != NULL) {
+        buf.len = size;
+
+        if (is_addr_v4_mapped((struct sockaddr *) &addr)) {
+          addr_to_v4((struct sockaddr_in6 *) &addr);
+        }
+
+        socket->on_recv(socket, size, &buf, (struct sockaddr *) &addr);
+      }
+
+      buf.len = 2048;
+    }
+  }
+
+  while (events & UV_WRITABLE && socket->send_queue.len > 0) {
     udx_packet_t *pkt = (udx_packet_t *) udx__fifo_shift(&(socket->send_queue));
-
-    if (pkt == NULL) return;
-
-    assert(pkt->status == UDX_PACKET_SENDING);
-    pkt->status = UDX_PACKET_INFLIGHT;
-    pkt->transmits++;
+    if (pkt == NULL) continue;
 
     bool adjust_ttl = pkt->ttl > 0 && socket->ttl != pkt->ttl;
 
@@ -959,11 +981,19 @@ on_uv_poll (uv_poll_t *handle, int status, int events) {
       pkt->dest_len = sizeof(struct sockaddr_in6);
     }
 
-    udx__sendmsg(socket, pkt->bufs, pkt->bufs_len, (struct sockaddr *) &(pkt->dest), pkt->dest_len);
-
-    pkt->time_sent = uv_hrtime() / 1e6;
+    size = udx__sendmsg(socket, pkt->bufs, pkt->bufs_len, (struct sockaddr *) &(pkt->dest), pkt->dest_len);
 
     if (adjust_ttl) uv_udp_set_ttl((uv_udp_t *) socket, socket->ttl);
+
+    if (size == UV_EAGAIN) {
+      udx__fifo_undo(&(socket->send_queue));
+      break;
+    }
+
+    assert(pkt->status == UDX_PACKET_SENDING);
+    pkt->status = UDX_PACKET_INFLIGHT;
+    pkt->transmits++;
+    pkt->time_sent = uv_hrtime() / 1e6;
 
     int type = pkt->type;
 
@@ -977,41 +1007,13 @@ on_uv_poll (uv_poll_t *handle, int status, int events) {
     }
 
     // queue another write, might be able to do this smarter...
-    if (socket->send_queue.len > 0) {
-      return;
-    }
+    if (socket->send_queue.len > 0) continue;
 
     // if the socket is under closure, we need to trigger shutdown now since no important writes are pending
     if (socket->status & UDX_SOCKET_CLOSING) {
       close_handles(socket);
       return;
     }
-  }
-
-  if (events & UV_READABLE) {
-    struct sockaddr_storage addr;
-    int addr_len = sizeof(addr);
-    uv_buf_t buf;
-
-    memset(&addr, 0, addr_len);
-
-    char b[2048];
-    buf.base = (char *) &b;
-    buf.len = 2048;
-
-    ssize_t size = udx__recvmsg(socket, &buf, (struct sockaddr *) &addr, addr_len);
-
-    if (size >= 0 && !process_packet(socket, b, size, (struct sockaddr *) &addr) && socket->on_recv != NULL) {
-      buf.len = size;
-
-      if (is_addr_v4_mapped((struct sockaddr *) &addr)) {
-        addr_to_v4((struct sockaddr_in6 *) &addr);
-      }
-
-      socket->on_recv(socket, size, &buf, (struct sockaddr *) &addr);
-    }
-
-    return;
   }
 
   // update the poll if the socket is still active.

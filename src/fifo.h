@@ -15,6 +15,9 @@ void *
 udx__fifo_shift (udx_fifo_t *f);
 
 void
+udx__fifo_undo (udx_fifo_t *f);
+
+void
 udx__fifo_grow (udx_fifo_t *f);
 
 uint32_t

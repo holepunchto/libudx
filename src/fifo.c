@@ -33,6 +33,12 @@ udx__fifo_shift (udx_fifo_t *f) {
 }
 
 void
+udx__fifo_undo (udx_fifo_t *f) {
+  f->btm = (f->btm - 1) & f->mask;
+  f->len++;
+}
+
+void
 udx__fifo_grow (udx_fifo_t *f) {
   uint32_t mask = 2 * f->mask + 1;
 
