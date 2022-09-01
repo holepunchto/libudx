@@ -426,7 +426,7 @@ send_state_packet (udx_stream_t *stream) {
 
 static int
 send_data_packet (udx_stream_t *stream, udx_packet_t *pkt) {
-  if (stream->inflight + pkt->size > stream->cwnd) {
+  if (stream->inflight + pkt->size > stream->cwnd * UDX_MSS) {
     return 0;
   }
 
@@ -535,7 +535,7 @@ close_maybe (udx_stream_t *stream, int err) {
 static void
 increase_cwnd (udx_stream_t *stream, uint64_t time) {
   if (stream->cwnd < stream->ssthresh) { // If slowstart, grow exponential
-    stream->cwnd += UDX_MSS;
+    stream->cwnd++;
     return;
   }
 
@@ -552,27 +552,26 @@ increase_cwnd (udx_stream_t *stream, uint64_t time) {
   // W_est(t) = W_max*beta_cubic + [3*(1-beta_cubic)/(1+beta_cubic)] * (t/RTT) (Eq. 4)
   // W_est(t) = W_max*0.7 + [3*(1-0.7)/(1+0.7)] * (t/RTT)
   // W_est(t) = (7 * W_max + 90 / 17 * (t/RTT)) / 10
-  size_t w_est = (7 * stream->cubic_w_max / UDX_MSS + t * 90 / stream->srtt / 17) / 10;
+  size_t w_est = (7 * stream->cubic_w_max + t * 90 / stream->srtt / 17) / 10;
 
   // W_cubic(t) = C*(t-K)^3 + W_max (Eq. 1)
   // W_cubic(t) = 0.4*(t-K)^3 + W_max
   // W_cubic(t) = 4*(t-K)^3/10 + W_max
-  size_t w_cubic = 4 * d * d * d / 10000000000 + (stream->cubic_w_max / UDX_MSS);
+  size_t w_cubic = 4 * d * d * d / 10000000000 + stream->cubic_w_max;
 
 // printf("w_cubic = %zu, w_est = %zu, cwnd = %zu, t = %zu, rtt = %zu, inflight = %zu\n", w_cubic, w_est, stream->cwnd, t, stream->srtt, stream->inflight);
 
   if (w_cubic < w_est) {
-    stream->cwnd = UDX_MSS * w_est;
-    if (stream->cwnd < 2 * UDX_MSS) stream->cwnd = 2 * UDX_MSS;
+    stream->cwnd = w_est;
+    if (stream->cwnd < 2) stream->cwnd = 2;
     return;
   }
 // printf("1 congestions is now %zu (inc=%zu, ssthresh=%zu, t=%zu)\n", stream->cwnd, 0, stream->ssthresh, t);
 
   d += stream->srtt;
-  w_cubic = 4 * d * d * d / 10000000000 + (stream->cubic_w_max / UDX_MSS);
+  w_cubic = 4 * d * d * d / 10000000000 + stream->cubic_w_max;
 
-  size_t inc = UDX_MSS * w_cubic;
-  if (inc > stream->cwnd) stream->cwnd += UDX_MSS * ((inc - stream->cwnd) / stream->cwnd);
+  if (w_cubic > stream->cwnd) stream->cwnd += ((w_cubic - stream->cwnd) / stream->cwnd);
 
 // printf("w_cubic ( + rtt) = %zu, inc = %zu\n", w_cubic, inc);
 // printf("2 congestions is now %zu (inc=%zu, ssthresh=%zu, t=%zu)\n", stream->cwnd, inc, stream->ssthresh, t);
@@ -699,13 +698,13 @@ printf("pre fast rt, inflight=%zu, pkts_inflight=%u ssthresh=%zu, cwnd=%zu acked
 
     // adjust congestion
     stream->cubic_w_max = stream->cwnd;
-    stream->ssthresh = max_uint32(7 * stream->cwnd / 10, 2 * UDX_MSS);
+    stream->ssthresh = max_uint32(7 * stream->cwnd / 10, 2);
     stream->cwnd = stream->ssthresh;
 
     // K = cubic_root(W_max*(1-beta_cubic)/C) (Eq. 2)
     // K = cubic_root(W_max*(1-0.7)/0.4)
     // K = cubic_root(W_max * 3 / 4)
-    stream->cubic_k = (uint64_t) (1000 * cbrt((long double) stream->cubic_w_max * 3 / UDX_MSS / 4));
+    stream->cubic_k = (uint64_t) (1000 * cbrt((long double) stream->cubic_w_max * 3 / 4));
     stream->cubic_t = 0;
 
 printf("entering recovery mode! total recovery length = %u (remote_acked %u, seq_flushed %u, window %u)\n", stream->recovery, stream->remote_acked, stream->seq_flushed, stream->seq_flushed - stream->remote_acked);
@@ -854,7 +853,7 @@ process_packet (udx_socket_t *socket, char *buf, ssize_t buf_len, struct sockadd
   buf_len -= UDX_HEADER_SIZE;
 
   udx_cirbuf_t *inc = &(stream->incoming);
-  int grow_cwnd = stream->inflight + 2 * UDX_MSS >= stream->cwnd;
+  int grow_cwnd = stream->inflight + 2 * UDX_MSS >= stream->cwnd * UDX_MSS;
 
   uint32_t sacked = (type & UDX_HEADER_SACK) ? process_sacks(stream, buf, buf_len, grow_cwnd) : 0;
 
@@ -1376,7 +1375,7 @@ udx_stream_init (udx_t *udx, udx_stream_t *handle, uint32_t local_id, udx_stream
 
   handle->inflight = 0;
   handle->ssthresh = 0xffff;
-  handle->cwnd = 2 * UDX_MSS;
+  handle->cwnd = 2;
   handle->rwnd = 0;
   handle->cubic_w_max = 0;
 
@@ -1512,8 +1511,8 @@ udx_stream_check_timeouts (udx_stream_t *handle) {
     handle->rto_timeout = now + 2 * handle->rto;
 
     // Update congestion control
-    handle->ssthresh = max_uint32(7 * handle->cwnd / 10, 2 * UDX_MSS);
-    handle->cwnd = 2 * handle->mtu;
+    handle->ssthresh = max_uint32(7 * handle->cwnd / 10, 2);
+    handle->cwnd = 2;
 
     // Reset cubic state
     handle->cubic_w_max = 0;
