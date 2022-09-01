@@ -705,7 +705,7 @@ printf("pre fast rt, inflight=%zu, pkts_inflight=%u ssthresh=%zu, cwnd=%zu acked
     // K = cubic_root(W_max*(1-beta_cubic)/C) (Eq. 2)
     // K = cubic_root(W_max*(1-0.7)/0.4)
     // K = cubic_root(W_max * 3 / 4)
-    stream->cubic_k = (uint64_t) (1000 * cbrt((long double) stream->cubic_w_max * 3 / 4 / UDX_MSS));
+    stream->cubic_k = (uint64_t) (1000 * cbrt((long double) stream->cubic_w_max * 3 / UDX_MSS / 4));
     stream->cubic_t = 0;
 
 printf("entering recovery mode! total recovery length = %u (remote_acked %u, seq_flushed %u, window %u)\n", stream->recovery, stream->remote_acked, stream->seq_flushed, stream->seq_flushed - stream->remote_acked);
