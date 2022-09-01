@@ -699,12 +699,15 @@ fast_retransmit (udx_stream_t *stream) {
 
   int resent = 0;
 
-  while (resent < 32) {
+  for (uint32_t seq = stream->remote_acked; seq != stream->seq_flushed && resent < 16; seq++) {
     // resend lost packet immediately!
-    udx_packet_t *lost_pkt = (udx_packet_t *) udx__cirbuf_get(&(stream->outgoing), stream->remote_acked + resent);
+    udx_packet_t *lost_pkt = (udx_packet_t *) udx__cirbuf_get(&(stream->outgoing), seq);
 
     // sanity check
-    if (lost_pkt == NULL || lost_pkt->transmits != 1 || lost_pkt->status != UDX_PACKET_INFLIGHT || lost_pkt->is_retransmit) break;
+    if (lost_pkt == NULL || lost_pkt->transmits != 1 || lost_pkt->status != UDX_PACKET_INFLIGHT || lost_pkt->is_retransmit) {
+      if (resent < 3) continue;
+      break;
+    }
 
     resent++;
     stream->stats_fast_rt++;
@@ -719,8 +722,8 @@ fast_retransmit (udx_stream_t *stream) {
 
   if (resent > 0) {
     // reset the timeout to allow the data to get to the remote before triggering congestion
-    stream->rto_timeout = time + stream->rto;
-  }
+    stream->rto_timeout = get_milliseconds() + stream->rto;
+    update_poll(stream->socket);
 
     printf("fast recovery: resending lost range (%u pkts)\n", resent);
   }
@@ -1489,7 +1492,8 @@ udx_stream_check_timeouts (udx_stream_t *handle) {
 
   if (now > handle->rto_timeout) {
     // Bail out of fast recovery mode if we are in it
-    if (handle->recovery > 0) handle->recovery = 0;
+    handle->recovery = 0;
+    handle->dup_acks = 0;
 
     // Make sure to clear all new packets that are in the queue
     unqueue_first_transmits(handle);
