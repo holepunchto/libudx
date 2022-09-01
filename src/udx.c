@@ -1642,23 +1642,27 @@ udx_stream_destroy (udx_stream_t *handle) {
   // that creates some reentry trickiness incase this was called from on_read.
   clear_outgoing_packets(handle);
 
-  if (handle->relay_to == NULL) {
-    udx_packet_t *pkt = malloc(sizeof(udx_packet_t));
-
-    uv_buf_t buf = uv_buf_init(NULL, 0);
-
-    init_stream_packet(pkt, UDX_HEADER_DESTROY, handle, &buf);
-
-    pkt->status = UDX_PACKET_SENDING;
-    pkt->type = UDX_PACKET_STREAM_DESTROY;
-    pkt->ttl = 0;
-    pkt->ctx = handle;
-
-    handle->seq++;
-
-    udx__fifo_push(&(handle->socket->send_queue), pkt);
-    udx__fifo_push(&(handle->unordered), pkt);
+  if (handle->relay_to != NULL) {
+    handle->status |= UDX_STREAM_DESTROYED;
+    close_maybe(handle, 0);
+    return 0;
   }
+
+  udx_packet_t *pkt = malloc(sizeof(udx_packet_t));
+
+  uv_buf_t buf = uv_buf_init(NULL, 0);
+
+  init_stream_packet(pkt, UDX_HEADER_DESTROY, handle, &buf);
+
+  pkt->status = UDX_PACKET_SENDING;
+  pkt->type = UDX_PACKET_STREAM_DESTROY;
+  pkt->ttl = 0;
+  pkt->ctx = handle;
+
+  handle->seq++;
+
+  udx__fifo_push(&(handle->socket->send_queue), pkt);
+  udx__fifo_push(&(handle->unordered), pkt);
 
   int err = update_poll(handle->socket);
   return err < 0 ? err : 1;
