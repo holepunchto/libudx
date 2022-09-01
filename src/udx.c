@@ -559,24 +559,16 @@ increase_cwnd (udx_stream_t *stream, uint64_t time) {
   // W_cubic(t) = 4*(t-K)^3/10 + W_max
   size_t w_cubic = 4 * d * d * d / 10000000000 + stream->cubic_w_max;
 
-// printf("w_cubic = %zu, w_est = %zu, cwnd = %zu, t = %zu, rtt = %zu, inflight = %zu\n", w_cubic, w_est, stream->cwnd, t, stream->srtt, stream->inflight);
-
   if (w_cubic < w_est) {
     stream->cwnd = w_est;
     if (stream->cwnd < 2) stream->cwnd = 2;
     return;
   }
-// printf("1 congestions is now %zu (inc=%zu, ssthresh=%zu, t=%zu)\n", stream->cwnd, 0, stream->ssthresh, t);
 
   d += stream->srtt;
   w_cubic = 4 * d * d * d / 10000000000 + stream->cubic_w_max;
 
   if (w_cubic > stream->cwnd) stream->cwnd += ((w_cubic - stream->cwnd) / stream->cwnd);
-
-// printf("w_cubic ( + rtt) = %zu, inc = %zu\n", w_cubic, inc);
-// printf("2 congestions is now %zu (inc=%zu, ssthresh=%zu, t=%zu)\n", stream->cwnd, inc, stream->ssthresh, t);
-
-  // sanity check
 }
 
 static int
@@ -682,14 +674,8 @@ process_sacks (udx_stream_t *stream, char *buf, size_t buf_len, int grow_cwnd) {
 
 static void
 fast_retransmit (udx_stream_t *stream) {
-  uint64_t time = get_milliseconds();
-
-// printf("pre fast rt, inflight=%zu, pkts_inflight=%u ssthresh=%zu, cwnd=%zu acked=%i seq=%i, delta=%i srtt=%i\n", stream->inflight, stream->pkts_inflight, stream->ssthresh, stream->cwnd, stream->remote_acked, stream->seq_flushed, stream->seq_flushed - stream->remote_acked, stream->srtt);
-  // TODO: if a sack exists, can be maintained independently instead like we do with out-of-order pkts
-
   // enter recovery mode if are not in it already!
   if (stream->recovery == 0) {
-printf("pre fast rt, inflight=%zu, pkts_inflight=%u ssthresh=%zu, cwnd=%zu acked=%i seq=%i, delta=%i srtt=%i\n", stream->inflight, stream->pkts_inflight, stream->ssthresh, stream->cwnd, stream->remote_acked, stream->seq_flushed, stream->seq_flushed - stream->remote_acked, stream->srtt);
     // easy win is to clear packets that are in the queue - they def wont help if sent.
     unqueue_first_transmits(stream);
 
@@ -707,7 +693,8 @@ printf("pre fast rt, inflight=%zu, pkts_inflight=%u ssthresh=%zu, cwnd=%zu acked
     stream->cubic_k = (uint64_t) (1000 * cbrt((long double) stream->cubic_w_max * 3 / 4));
     stream->cubic_t = 0;
 
-printf("entering recovery mode! total recovery length = %u (remote_acked %u, seq_flushed %u, window %u)\n", stream->recovery, stream->remote_acked, stream->seq_flushed, stream->seq_flushed - stream->remote_acked);
+    printf("fast recovery: started, recovery=%u inflight=%zu cwnd=%zu (was %zu) acked=%u, seq=%u srtt=%u\n",
+      stream->recovery, stream->inflight, stream->cwnd, stream->cubic_w_max, stream->remote_acked, stream->seq_flushed, stream->srtt);
   }
 
   int resent = 0;
@@ -731,12 +718,12 @@ printf("entering recovery mode! total recovery length = %u (remote_acked %u, seq
   }
 
   if (resent > 0) {
-  printf("resent %u pkts\n", resent);
     // reset the timeout to allow the data to get to the remote before triggering congestion
     stream->rto_timeout = time + stream->rto;
   }
 
-// printf("fast rt, ssthresh=%zu, cwnd=%zu resending=%u acked=%i seq=%i, delta=%i srtt=%i\n", stream->ssthresh, stream->cwnd, lost_pkt->seq, stream->remote_acked, stream->seq, stream->seq_flushed - stream->remote_acked, stream->srtt);
+    printf("fast recovery: resending lost range (%u pkts)\n", resent);
+  }
 }
 
 static void
@@ -927,7 +914,7 @@ process_packet (udx_socket_t *socket, char *buf, ssize_t buf_len, struct sockadd
     if (stream->recovery > 0 && --(stream->recovery) == 0) {
       // The end of fast recovery, adjust according to the spec
       if (stream->ssthresh < stream->cwnd) stream->cwnd = stream->ssthresh;
-      printf("end of fast recovery... (total retransmits %zu / %zu)\n", stream->stats_fast_rt, stream->stats_pkts_sent);
+      printf("fast recovery: ended, total retransmits %zu / %zu\n", stream->stats_fast_rt, stream->stats_pkts_sent);
     }
 
     int a = ack_packet(stream, stream->remote_acked++, 0, grow_cwnd);
@@ -1541,7 +1528,8 @@ udx_stream_check_timeouts (udx_stream_t *handle) {
       handle->retransmits_waiting++;
     }
 
-    printf("pkt loss! congestion, ssthresh=%zu, cwnd=%zu inflight=%zu\n", handle->ssthresh, handle->cwnd, handle->inflight);
+    printf("timeout! pkt loss detected - ssthresh=%zu cwnd=%zu inflight=%zu acked=%u rtt=%i\n",
+      handle->ssthresh, handle->cwnd, handle->inflight, handle->remote_acked, handle->srtt);
   }
 
   int err = flush_waiting_packets(handle);
