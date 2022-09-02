@@ -539,36 +539,43 @@ increase_cwnd (udx_stream_t *stream, uint64_t time) {
     return;
   }
 
+  size_t cwnd = stream->cwnd;
+
+  if (stream->cubic_delay_min == 0 || stream->srtt < stream->cubic_delay_min) {
+    stream->cubic_delay_min = stream->srtt;
+  }
+
   // We are not in congestion avoidance! Did we just enter? If so clock it.
   if (stream->cubic_t == 0) {
     stream->cubic_t = time;
     // If this is after a timeout (w_max == 0), clock w_max to cwnd per spec. k is set to 0 already.
-    if (stream->cubic_w_max == 0) stream->cubic_w_max = stream->cwnd;
+    if (stream->cubic_last_cwnd == 0) stream->cubic_last_cwnd = cwnd;
   }
 
-  int64_t t = time - stream->cubic_t;
-  int64_t d = t - (int64_t) stream->cubic_k;
+  uint64_t t = time - stream->cubic_t;
+  uint64_t d = t < stream->cubic_k ? stream->cubic_k - t : t - stream->cubic_k;
 
   // W_est(t) = W_max*beta_cubic + [3*(1-beta_cubic)/(1+beta_cubic)] * (t/RTT) (Eq. 4)
   // W_est(t) = W_max*0.7 + [3*(1-0.7)/(1+0.7)] * (t/RTT)
   // W_est(t) = (7 * W_max + 90 / 17 * (t/RTT)) / 10
-  size_t w_est = (7 * stream->cubic_w_max + t * 90 / stream->srtt / 17) / 10;
+  size_t w_est = (7 * stream->cubic_last_cwnd + t * 90 / stream->srtt / 17) / 10;
 
   // W_cubic(t) = C*(t-K)^3 + W_max (Eq. 1)
   // W_cubic(t) = 0.4*(t-K)^3 + W_max
   // W_cubic(t) = 4*(t-K)^3/10 + W_max
-  size_t w_cubic = 4 * d * d * d / 10000000000 + stream->cubic_w_max;
+  size_t w_cubic = 4 * d * d * d / 10000000000 + stream->cubic_last_cwnd;
 
   if (w_cubic < w_est) {
-    stream->cwnd = w_est;
-    if (stream->cwnd < 2) stream->cwnd = 2;
-    return;
+    cwnd = w_est < 2 ? 2 : w_est;
+  } else {
+    d += stream->cubic_delay_min;
+    w_cubic = 4 * d * d * d / 10000000000 + stream->cubic_last_cwnd;
+    if (w_cubic > cwnd) cwnd += ((w_cubic - cwnd) / cwnd);
   }
 
-  d += stream->srtt;
-  w_cubic = 4 * d * d * d / 10000000000 + stream->cubic_w_max;
-
-  if (w_cubic > stream->cwnd) stream->cwnd += ((w_cubic - stream->cwnd) / stream->cwnd);
+  if (cwnd > stream->cwnd) {
+    stream->cwnd++;
+  }
 }
 
 static int
@@ -589,7 +596,7 @@ ack_packet (udx_stream_t *stream, uint32_t seq, int sack, int grow_cwnd) {
     stream->inflight -= pkt->size;
   }
 
-  if (pkt->transmits == 1) {
+  if (pkt->status == UDX_PACKET_INFLIGHT && pkt->transmits == 1) {
     const uint64_t time = get_milliseconds();
     const uint32_t rtt = (uint32_t) (time - pkt->time_sent);
 
@@ -597,7 +604,6 @@ ack_packet (udx_stream_t *stream, uint32_t seq, int sack, int grow_cwnd) {
     if (stream->srtt == 0) {
       stream->srtt = rtt;
       stream->rttvar = rtt / 2;
-      stream->rto = stream->srtt + max_uint32(UDX_CLOCK_GRANULARITY_MS, 4 * stream->rttvar);
     } else {
       const uint32_t delta = rtt < stream->srtt ? stream->srtt - rtt : rtt - stream->srtt;
       // RTTVAR <- (1 - beta) * RTTVAR + beta * |SRTT - R'| where beta is 1/4
@@ -683,18 +689,18 @@ fast_retransmit (udx_stream_t *stream) {
     stream->recovery = seq_diff(stream->seq_flushed, stream->remote_acked);
 
     // adjust congestion
-    stream->cubic_w_max = stream->cwnd;
+    stream->cubic_last_cwnd = stream->cwnd;
     stream->ssthresh = max_uint32(7 * stream->cwnd / 10, 2);
     stream->cwnd = stream->ssthresh;
 
     // K = cubic_root(W_max*(1-beta_cubic)/C) (Eq. 2)
     // K = cubic_root(W_max*(1-0.7)/0.4)
     // K = cubic_root(W_max * 3 / 4)
-    stream->cubic_k = (uint64_t) (1000 * cbrt((long double) stream->cubic_w_max * 3 / 4));
+    stream->cubic_k = (uint64_t) (1000 * cbrt((long double) stream->cubic_last_cwnd * 3 / 4));
     stream->cubic_t = 0;
 
     printf("fast recovery: started, recovery=%u inflight=%zu cwnd=%zu (was %zu) acked=%u, seq=%u srtt=%u\n",
-      stream->recovery, stream->inflight, stream->cwnd, stream->cubic_w_max, stream->remote_acked, stream->seq_flushed, stream->srtt);
+      stream->recovery, stream->inflight, stream->cwnd, stream->cubic_last_cwnd, stream->remote_acked, stream->seq_flushed, stream->srtt);
   }
 
   int resent = 0;
@@ -725,7 +731,7 @@ fast_retransmit (udx_stream_t *stream) {
     stream->rto_timeout = get_milliseconds() + stream->rto;
     update_poll(stream->socket);
 
-    printf("fast recovery: resending lost range (%u pkts)\n", resent);
+    printf("fast recovery: resending lost range (%u pkts) cwnd=%zu\n", resent, stream->cwnd);
   }
 }
 
@@ -908,7 +914,7 @@ process_packet (udx_socket_t *socket, char *buf, ssize_t buf_len, struct sockadd
     stream->dup_acks = 0;
     // also reset rto, since things are moving forward...
     stream->rto_timeout = get_milliseconds() + stream->rto;
-  } else if (sacked > 0 && (stream->recovery == 0 || stream->fast_retransmit_seq < ack) && ++(stream->dup_acks) >= 3) {
+  } else if (sacked > 0 && (stream->recovery == 0 || stream->fast_retransmit_seq < ack) && (stream->recovery || ++(stream->dup_acks) >= 3)) {
     // otherwise if this packed sacked data, it (optionally) a prev fast_retransmit or, and we got 3 dups
     fast_retransmit(stream);
   }
@@ -917,7 +923,8 @@ process_packet (udx_socket_t *socket, char *buf, ssize_t buf_len, struct sockadd
     if (stream->recovery > 0 && --(stream->recovery) == 0) {
       // The end of fast recovery, adjust according to the spec
       if (stream->ssthresh < stream->cwnd) stream->cwnd = stream->ssthresh;
-      printf("fast recovery: ended, total retransmits %zu / %zu\n", stream->stats_fast_rt, stream->stats_pkts_sent);
+      printf("fast recovery: ended, total retransmits %zu / %zu, inflight=%zu, cwnd=%zu, acked=%u, seq=%u\n",
+        stream->stats_fast_rt, stream->stats_pkts_sent, stream->inflight, stream->cwnd, stream->remote_acked + 1, stream->seq_flushed);
     }
 
     int a = ack_packet(stream, stream->remote_acked++, 0, grow_cwnd);
@@ -1360,14 +1367,17 @@ udx_stream_init (udx_t *udx, udx_stream_t *handle, uint32_t local_id, udx_stream
   handle->seq_flushed = 0;
 
   handle->rto_timeout = get_milliseconds() + handle->rto;
-  handle->cubic_k = 0;
-  handle->cubic_t = 0;
 
   handle->inflight = 0;
-  handle->ssthresh = 0xffff;
+  handle->ssthresh = 0xff;
   handle->cwnd = 2;
   handle->rwnd = 0;
-  handle->cubic_w_max = 0;
+
+  // cubic state (congestion)
+  handle->cubic_delay_min = 0;
+  handle->cubic_last_cwnd = 0;
+  handle->cubic_k = 0;
+  handle->cubic_t = 0;
 
   handle->stats_sacks = 0;
   handle->stats_pkts_sent = 0;
@@ -1506,7 +1516,8 @@ udx_stream_check_timeouts (udx_stream_t *handle) {
     handle->cwnd = 2;
 
     // Reset cubic state
-    handle->cubic_w_max = 0;
+    handle->cubic_delay_min = 0;
+    handle->cubic_last_cwnd = 0;
     handle->cubic_t = 0;
     handle->cubic_k = 0;
 
@@ -1532,8 +1543,8 @@ udx_stream_check_timeouts (udx_stream_t *handle) {
       handle->retransmits_waiting++;
     }
 
-    printf("timeout! pkt loss detected - ssthresh=%zu cwnd=%zu inflight=%zu acked=%u rtt=%i\n",
-      handle->ssthresh, handle->cwnd, handle->inflight, handle->remote_acked, handle->srtt);
+    printf("timeout! pkt loss detected - ssthresh=%zu cwnd=%zu inflight=%zu acked=%u seq=%u rtt=%i\n",
+      handle->ssthresh, handle->cwnd, handle->inflight, handle->remote_acked, handle->seq_flushed, handle->srtt);
   }
 
   int err = flush_waiting_packets(handle);

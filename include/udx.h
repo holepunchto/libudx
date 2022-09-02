@@ -189,15 +189,18 @@ struct udx_stream {
   uint32_t seq_flushed;         // highest seq that has been flushed
 
   // timestamps...
-  uint64_t cubic_k;
-  uint64_t cubic_t;
   uint64_t rto_timeout;
 
   size_t inflight;
   size_t ssthresh;
   size_t cwnd;
   size_t rwnd;
-  size_t cubic_w_max;
+
+  // cubic state
+  uint32_t cubic_delay_min;
+  size_t cubic_last_cwnd;
+  uint64_t cubic_k;
+  uint64_t cubic_t;
 
   size_t stats_sacks;
   size_t stats_pkts_sent;
