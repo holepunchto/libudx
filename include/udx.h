@@ -143,6 +143,19 @@ struct udx_socket {
   udx_socket_close_cb on_close;
 };
 
+typedef struct udx_cong {
+  uint32_t K;
+  uint32_t ack_cnt;
+  uint32_t origin_point;
+  uint32_t delay_min;
+  uint32_t cnt;
+  uint64_t last_time;
+  uint64_t start_time;
+  uint32_t last_max_cwnd;
+  uint32_t last_cwnd;
+  uint32_t tcp_cwnd;
+} udx_cong_t;
+
 struct udx_stream {
   uint32_t local_id; // must be first entry, so its compat with the cirbuf
   uint32_t remote_id;
@@ -195,17 +208,15 @@ struct udx_stream {
   size_t inflight;
   size_t ssthresh;
   size_t cwnd;
+  size_t cwnd_cnt;
   size_t rwnd;
-
-  // cubic state
-  uint32_t cubic_delay_min;
-  size_t cubic_last_cwnd;
-  uint64_t cubic_k;
-  uint64_t cubic_t;
 
   size_t stats_sacks;
   size_t stats_pkts_sent;
   size_t stats_fast_rt;
+
+  // congestion state
+  udx_cong_t cong;
 
   udx_cirbuf_t outgoing;
   udx_cirbuf_t incoming;
