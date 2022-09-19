@@ -1011,7 +1011,7 @@ process_packet (udx_socket_t *socket, char *buf, ssize_t buf_len, struct sockadd
   int32_t len = seq_diff(ack, stream->remote_acked);
 
   if (len) {
-    ack_update(stream, len, is_limited);
+    if (len > 0) ack_update(stream, len, is_limited);
   } else if (sacked > 0 && (stream->recovery == 0 || stream->fast_retransmit_seq < ack) && (stream->recovery || ++(stream->dup_acks) >= 3)) {
     // otherwise if this packed sacked data, it (optionally) a prev fast_retransmit or, and we got 3 dups
     fast_retransmit(stream);
