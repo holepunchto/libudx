@@ -262,6 +262,14 @@ update_poll (udx_socket_t *socket) {
 
 // cubic congestion as per the paper https://www.cs.princeton.edu/courses/archive/fall16/cos561/papers/Cubic08.pdf
 
+static uint64_t start = 0;
+
+static void
+debug_stats (udx_stream_t *stream) {
+  if (!start) start = get_milliseconds();
+  printf("%llu %u %u %u\n", get_milliseconds() - start, stream->cwnd, stream->cwnd_cnt, stream->srtt);
+}
+
 static void
 increase_cwnd (udx_stream_t *stream, uint32_t cnt, uint32_t acked) {
   // smooth out applying the window increase using the counters...
@@ -303,6 +311,8 @@ reduce_cwnd (udx_stream_t *stream, int reset) {
 
   stream->cwnd = stream->ssthresh = upd < 2 ? 2 : upd;
   stream->cwnd_cnt = 0; // TODO: dbl check that we should reset this
+
+  debug_stats(stream);
 }
 
 static void
@@ -692,6 +702,8 @@ ack_update (udx_stream_t *stream, uint32_t acked, bool is_limited) {
     update_congestion(c, stream->cwnd, acked, time);
     increase_cwnd(stream, c->cnt, acked);
   }
+
+  debug_stats(stream);
 }
 
 static int
@@ -1636,6 +1648,7 @@ udx_stream_check_timeouts (udx_stream_t *handle) {
       if (pkt == NULL || pkt->status != UDX_PACKET_INFLIGHT || pkt->is_retransmit) continue;
 
       if (pkt->transmits >= UDX_MAX_TRANSMITS) {
+        printf("# timeout now!!\n");
         handle->status |= UDX_STREAM_DESTROYED;
         close_maybe(handle, UV_ETIMEDOUT);
         return 1;
