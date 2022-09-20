@@ -205,6 +205,7 @@ struct udx_stream {
   // timestamps...
   uint64_t rto_timeout;
 
+  size_t sacks;
   size_t inflight;
   size_t ssthresh;
   size_t cwnd;

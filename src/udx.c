@@ -686,7 +686,7 @@ ack_update (udx_stream_t *stream, uint32_t acked, bool is_limited) {
   udx_cong_t *c = &(stream->cong);
 
   // If we are application limited, just reset the epic and return...
-  if (is_limited) {
+  if (is_limited || stream->recovery) {
     c->start_time = 0;
     return;
   }
@@ -711,7 +711,14 @@ ack_packet (udx_stream_t *stream, uint32_t seq, int sack) {
   udx_cirbuf_t *out = &(stream->outgoing);
   udx_packet_t *pkt = (udx_packet_t *) udx__cirbuf_remove(out, seq);
 
-  if (pkt == NULL) return 0;
+  if (pkt == NULL) {
+    if (!sack) stream->sacks--; // packet not here, was sacked before
+    return 0;
+  }
+
+  if (sack) {
+    stream->sacks++;
+  }
 
   if (pkt->is_retransmit) {
     pkt->is_retransmit = 0;
@@ -1482,6 +1489,7 @@ udx_stream_init (udx_t *udx, udx_stream_t *handle, uint32_t local_id, udx_stream
   handle->retransmits_waiting = 0;
   handle->seq_flushed = 0;
 
+  handle->sacks = 0;
   handle->inflight = 0;
   handle->ssthresh = 255;
   handle->cwnd = 2;
