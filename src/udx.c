@@ -909,55 +909,6 @@ process_sacks (udx_stream_t *stream, char *buf, size_t buf_len) {
 }
 
 static void
-fast_retransmit (udx_stream_t *stream) {
-return;
-  // enter recovery mode if are not in it already!
-  if (stream->recovery == 0) {
-    // easy win is to clear packets that are in the queue - they def wont help if sent.
-    unqueue_first_transmits(stream);
-
-    // recover until the full window is packa
-    stream->recovery = seq_diff(stream->seq_flushed, stream->remote_acked);
-
-    reduce_cwnd(stream, false);
-
-    printf("# fast recovery: started, recovery=%u inflight=%zu cwnd=%zu acked=%u, seq=%u srtt=%u\n",
-      stream->recovery, stream->inflight, stream->cwnd, stream->remote_acked, stream->seq_flushed, stream->srtt);
-  }
-
-  int resent = 0;
-
-  for (uint32_t seq = stream->remote_acked; seq != stream->seq_flushed && resent < 16; seq++) {
-    // resend lost packet immediately!
-    udx_packet_t *lost_pkt = (udx_packet_t *) udx__cirbuf_get(&(stream->outgoing), seq);
-
-    // sanity check
-    if (lost_pkt == NULL || lost_pkt->transmits != 1 || lost_pkt->status != UDX_PACKET_INFLIGHT || lost_pkt->is_retransmit) {
-      if (resent < 3) continue;
-      break;
-    }
-
-    resent++;
-    stream->stats_fast_rt++;
-    stream->stats_pkts_sent++;
-
-    lost_pkt->status = UDX_PACKET_SENDING;
-    lost_pkt->fifo_gc = udx__fifo_push(&(stream->socket->send_queue), lost_pkt);
-
-    // record this packet so we know when it's packed...
-    stream->fast_retransmit_seq = lost_pkt->seq;
-  }
-
-  if (resent > 0) {
-    // reset the timeout to allow the data to get to the remote before triggering congestion
-    stream->rto_timeout = get_milliseconds() + stream->rto;
-    update_poll(stream->socket);
-
-    printf("# fast recovery: resending lost range (%u pkts) cwnd=%zu\n", resent, stream->cwnd);
-  }
-}
-
-static void
 process_data_packet (udx_stream_t *stream, int type, uint32_t seq, char *data, ssize_t data_len) {
   if (seq == stream->ack && type == UDX_HEADER_DATA) {
     // Fast path - next in line, no need to memcpy it, stack allocate the struct and call on_read...
@@ -1070,11 +1021,12 @@ process_packet (udx_socket_t *socket, char *buf, ssize_t buf_len, struct sockadd
   buf += UDX_HEADER_SIZE;
   buf_len -= UDX_HEADER_SIZE;
 
-  udx_cirbuf_t *inc = &(stream->incoming);
-
+  size_t header_len = (data_offset > 0 && data_offset < buf_len) ? data_offset : buf_len;
   bool is_limited = stream->inflight + 2 * UDX_MSS < stream->cwnd * UDX_MSS;
 
-  uint32_t sacked = (type & UDX_HEADER_SACK) ? process_sacks(stream, buf, buf_len) : 0;
+  if (type & UDX_HEADER_SACK) {
+    process_sacks(stream, buf, header_len);
+  }
 
   // Done with header processing now.
   // For future compat, make sure we are now pointing at the actual data using the data_offset
@@ -1083,6 +1035,8 @@ process_packet (udx_socket_t *socket, char *buf, ssize_t buf_len, struct sockadd
     buf += data_offset;
     buf_len -= data_offset;
   }
+
+  udx_cirbuf_t *inc = &(stream->incoming);
 
   // For all stream packets, ensure that they are causally newer (or same)
   if (seq_compare(stream->ack, seq) <= 0) {
@@ -1132,16 +1086,11 @@ process_packet (udx_socket_t *socket, char *buf, ssize_t buf_len, struct sockadd
 
   int32_t len = seq_diff(ack, stream->remote_acked);
 
-  if (len) {
-    if (len > 0) ack_update(stream, len, is_limited);
-  } else if (sacked > 0 && (stream->recovery == 0 || stream->fast_retransmit_seq < ack) && (stream->recovery || ++(stream->dup_acks) >= 3)) {
-    // otherwise if this packed sacked data, it (optionally) a prev fast_retransmit or, and we got 3 dups
-    fast_retransmit(stream);
-  }
+  if (len > 0) ack_update(stream, len, is_limited);
 
   for (int32_t j = 0; j < len; j++) {
     if (stream->recovery > 0 && --(stream->recovery) == 0) {
-      // The end of fast recovery, adjust according to the spec
+      // The end of fast recovery, adjust according to the spec (unsure if we need this as we do not modify cwnd during recovery but oh well...)
       if (stream->ssthresh < stream->cwnd) stream->cwnd = stream->ssthresh;
       printf("# fast recovery: ended, total retransmits %zu / %zu, inflight=%zu, cwnd=%zu, acked=%u, seq=%u\n",
         stream->stats_fast_rt, stream->stats_pkts_sent, stream->inflight, stream->cwnd, stream->remote_acked + 1, stream->seq_flushed);
@@ -1745,7 +1694,7 @@ rack_detect_loss(handle);
   check++;
   if (check == 1000) {
     check = 0;
-    printf("# sacks are %zu, rack_rtt_min %u, reordering_seen %u, reo %u, drops %u\n", handle->sacks, handle->rack_rtt_min, handle->reordering_seen, rack_update_reo_wnd(handle), drops);
+    printf("# sacks are %zu, rack_rtt_min %u, reordering_seen %u, reo %u, drops %u srtt=%u\n", handle->sacks, handle->rack_rtt_min, handle->reordering_seen, rack_update_reo_wnd(handle), drops, handle->srtt);
   }
 
   if (handle->remote_acked == handle->seq) {
