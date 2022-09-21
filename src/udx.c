@@ -674,6 +674,86 @@ close_maybe (udx_stream_t *stream, int err) {
   return 1;
 }
 
+static bool
+rack_sent_after (uint64_t t1, uint32_t seq1, uint64_t t2, uint32_t seq2) {
+  return t1 > t2 || (t1 == t2 && seq_compare(seq2, seq1) < 0);
+}
+
+static uint32_t
+rack_update_reo_wnd (udx_stream_t *stream) {
+  // TODO: add the DSACK logic also (skipped for now as we didnt impl and only recommended...)
+
+  if (!stream->reordering_seen) {
+    if (stream->recovery) return 0;
+    if (stream->sacks >= 3) return 0;
+  }
+
+  uint32_t r = stream->rack_rtt_min / 4;
+  return r < stream->srtt ? r : stream->srtt;
+}
+
+static int drops = 0;
+
+static uint64_t
+rack_detect_loss (udx_stream_t *stream) {
+  uint64_t timeout = 0;
+  uint32_t reo_wnd = rack_update_reo_wnd(stream);
+  uint64_t now = 0;
+
+  int resending = 0;
+
+  for (uint32_t seq = stream->remote_acked; seq != stream->seq_flushed; seq++) {
+    udx_packet_t *pkt = (udx_packet_t *) udx__cirbuf_get(&(stream->outgoing), seq);
+    if (pkt == NULL || pkt->transmits == 0 || pkt->status != UDX_PACKET_INFLIGHT) continue;
+
+    if (pkt->time_sent > 0 && rack_sent_after(stream->rack_time_sent, stream->rack_next_seq, pkt->time_sent, pkt->seq + 1)) {
+      if (!now) now = get_milliseconds();
+      int64_t remaining = pkt->time_sent + stream->rack_rtt + reo_wnd - now;
+      if (remaining <= 0) {
+        pkt->time_sent = 0;
+
+        pkt->status = UDX_PACKET_WAITING;
+        pkt->is_retransmit = UDX_FAST_RETRANSMIT;
+
+        stream->inflight -= pkt->size;
+        stream->pkts_waiting++;
+        stream->pkts_inflight--;
+        stream->retransmits_waiting++;
+
+        stream->stats_fast_rt++;
+
+        resending++;
+
+                   // Segment.lost = TRUE
+                   // Segment.xmit_ts = INFINITE_TS
+drops++;
+        printf("# LOST LOST LOST %u\n", pkt->seq);
+      } else if (remaining > (int64_t) timeout) {
+        timeout = remaining;
+      }
+    }
+  }
+
+  if (resending) {
+    if (stream->recovery == 0) {
+      // easy win is to clear packets that are in the queue - they def wont help if sent.
+      unqueue_first_transmits(stream);
+
+      // recover until the full window is packa
+      stream->recovery = seq_diff(stream->seq_flushed, stream->remote_acked);
+
+      reduce_cwnd(stream, false);
+
+      printf("# fast recovery 2: started, recovery=%u inflight=%zu cwnd=%zu acked=%u, seq=%u srtt=%u\n",
+        stream->recovery, stream->inflight, stream->cwnd, stream->remote_acked, stream->seq_flushed, stream->srtt);
+    }
+
+    flush_waiting_packets(stream);
+  }
+
+  return timeout;
+}
+
 static void
 ack_update (udx_stream_t *stream, uint32_t acked, bool is_limited) {
   uint64_t time = get_milliseconds();
@@ -684,6 +764,8 @@ ack_update (udx_stream_t *stream, uint32_t acked, bool is_limited) {
   stream->rto_timeout = time + stream->rto;
 
   udx_cong_t *c = &(stream->cong);
+
+rack_detect_loss(stream);
 
   // If we are application limited, just reset the epic and return...
   if (is_limited || stream->recovery) {
@@ -731,9 +813,20 @@ ack_packet (udx_stream_t *stream, uint32_t seq, int sack) {
     stream->inflight -= pkt->size;
   }
 
-  if (pkt->status == UDX_PACKET_INFLIGHT && pkt->transmits == 1) {
-    const uint64_t time = get_milliseconds();
-    const uint32_t rtt = (uint32_t) (time - pkt->time_sent);
+  const uint64_t time = get_milliseconds();
+  const uint32_t rtt = (uint32_t) (time - pkt->time_sent);
+  const uint32_t next = seq + 1;
+
+  if (seq_compare(stream->rack_fack, next) < 0) {
+    stream->rack_fack = next;
+  } else if (seq_compare(next, stream->rack_fack) < 0 && pkt->transmits == 1) {
+    stream->reordering_seen = true;
+  }
+
+  if (pkt->status == UDX_PACKET_INFLIGHT && pkt->transmits == 1 && pkt->time_sent > 0) {
+    if (stream->rack_rtt_min == 0 || stream->rack_rtt_min > rtt) {
+      stream->rack_rtt_min = rtt;
+    }
 
     // First round trip time sample
     if (stream->srtt == 0) {
@@ -750,6 +843,15 @@ ack_packet (udx_stream_t *stream, uint32_t seq, int sack) {
 
     // RTO <- SRTT + max (G, K*RTTVAR) where K is 4 maxed with 1s
     stream->rto = max_uint32(stream->srtt + max_uint32(UDX_CLOCK_GRANULARITY_MS, 4 * stream->rttvar), 1000);
+  }
+
+  if (pkt->transmits == 1 || (rtt >= stream->rack_rtt_min && stream->rack_rtt_min > 0)) {
+    stream->rack_rtt = rtt;
+
+    if (rack_sent_after(pkt->time_sent, next, stream->rack_time_sent, stream->rack_next_seq)) {
+      stream->rack_time_sent = pkt->time_sent;
+      stream->rack_next_seq = next;
+    }
   }
 
   // If this packet was queued for sending we need to remove it from the queue.
@@ -808,6 +910,7 @@ process_sacks (udx_stream_t *stream, char *buf, size_t buf_len) {
 
 static void
 fast_retransmit (udx_stream_t *stream) {
+return;
   // enter recovery mode if are not in it already!
   if (stream->recovery == 0) {
     // easy win is to clear packets that are in the queue - they def wont help if sent.
@@ -1480,6 +1583,13 @@ udx_stream_init (udx_t *udx, udx_stream_t *handle, uint32_t local_id, udx_stream
   handle->rttvar = 0;
   handle->rto = 1000;
   handle->rto_timeout = get_milliseconds() + handle->rto;
+
+  handle->rack_rtt_min = 0;
+  handle->rack_rtt = 0;
+  handle->rack_time_sent = 0;
+  handle->rack_next_seq = 0;
+  handle->rack_fack = 0;
+
   handle->deferred_ack = 0;
 
   handle->pkts_waiting = 0;
@@ -1489,6 +1599,7 @@ udx_stream_init (udx_t *udx, udx_stream_t *handle, uint32_t local_id, udx_stream
   handle->retransmits_waiting = 0;
   handle->seq_flushed = 0;
 
+  handle->reordering_seen = false;
   handle->sacks = 0;
   handle->inflight = 0;
   handle->ssthresh = 255;
@@ -1621,10 +1732,20 @@ check_deferred_ack (udx_stream_t *handle) {
   send_state_packet(handle);
 }
 
+static int check = 0;
+
 int
 udx_stream_check_timeouts (udx_stream_t *handle) {
   if ((handle->status & UDX_STREAM_CONNECTED) == 0) {
     return 0;
+  }
+
+rack_detect_loss(handle);
+
+  check++;
+  if (check == 1000) {
+    check = 0;
+    printf("# sacks are %zu, rack_rtt_min %u, reordering_seen %u, reo %u, drops %u\n", handle->sacks, handle->rack_rtt_min, handle->reordering_seen, rack_update_reo_wnd(handle), drops);
   }
 
   if (handle->remote_acked == handle->seq) {

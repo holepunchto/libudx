@@ -194,6 +194,13 @@ struct udx_stream {
   uint32_t rttvar;
   uint32_t rto;
 
+  // rack data...
+  uint32_t rack_rtt_min;
+  uint32_t rack_rtt;
+  uint64_t rack_time_sent;
+  uint32_t rack_next_seq;
+  uint32_t rack_fack;
+
   uint32_t pkts_waiting;        // how many packets are added locally but not sent?
   uint32_t pkts_inflight;       // packets inflight to the other peer
   uint32_t pkts_buffered;       // how many (data) packets received but not processed (out of order)?
@@ -204,6 +211,8 @@ struct udx_stream {
 
   // timestamps...
   uint64_t rto_timeout;
+
+  bool reordering_seen;
 
   size_t sacks;
   size_t inflight;
