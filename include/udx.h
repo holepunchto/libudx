@@ -166,6 +166,9 @@ struct udx_stream {
   int recovery;
   int deferred_ack;
 
+  bool reordering_seen;
+  int retransmitting;
+
   udx_t *udx;
   udx_socket_t *socket;
 
@@ -211,8 +214,6 @@ struct udx_stream {
 
   // timestamps...
   uint64_t rto_timeout;
-
-  bool reordering_seen;
 
   size_t sacks;
   size_t inflight;

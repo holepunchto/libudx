@@ -583,6 +583,7 @@ send_data_packet (udx_stream_t *stream, udx_packet_t *pkt) {
   if (pkt->is_retransmit) {
     pkt->is_retransmit = 0;
     stream->retransmits_waiting--;
+    if (pkt->transmits == 1) stream->retransmitting++;
   } else if (seq_compare(stream->seq_flushed, pkt->seq) < 0) {
     stream->seq_flushed = pkt->seq;
   }
@@ -704,31 +705,36 @@ rack_detect_loss (udx_stream_t *stream) {
 
   for (uint32_t seq = stream->remote_acked; seq != stream->seq_flushed; seq++) {
     udx_packet_t *pkt = (udx_packet_t *) udx__cirbuf_get(&(stream->outgoing), seq);
+
     if (pkt == NULL || pkt->transmits == 0 || pkt->status != UDX_PACKET_INFLIGHT) continue;
 
-    if (rack_sent_after(stream->rack_time_sent, stream->rack_next_seq, pkt->time_sent, pkt->seq + 1)) {
-      if (!now) now = get_milliseconds();
+    if (!rack_sent_after(stream->rack_time_sent, stream->rack_next_seq, pkt->time_sent, pkt->seq + 1)) {
+      // if no retransmitting packets this is oldest package and hence no need to skip anything else
+      if (stream->retransmitting) continue;
+      else break;
+    }
 
-      int64_t remaining = pkt->time_sent + stream->rack_rtt + reo_wnd - now;
+    if (!now) now = get_milliseconds();
 
-      if (remaining <= 0) {
-        pkt->status = UDX_PACKET_WAITING;
-        pkt->is_retransmit = UDX_FAST_RETRANSMIT;
+    int64_t remaining = pkt->time_sent + stream->rack_rtt + reo_wnd - now;
 
-        stream->inflight -= pkt->size;
-        stream->pkts_waiting++;
-        stream->pkts_inflight--;
-        stream->retransmits_waiting++;
+    if (remaining <= 0) {
+      pkt->status = UDX_PACKET_WAITING;
+      pkt->is_retransmit = UDX_FAST_RETRANSMIT;
 
-        stream->stats_fast_rt++;
+      stream->inflight -= pkt->size;
+      stream->pkts_waiting++;
+      stream->pkts_inflight--;
+      stream->retransmits_waiting++;
 
-        resending++;
+      stream->stats_fast_rt++;
+
+      resending++;
 
 drops++;
 
-      } else if ((uint64_t) remaining > timeout) {
-        timeout = remaining;
-      }
+    } else if ((uint64_t) remaining > timeout) {
+      timeout = remaining;
     }
   }
 
@@ -807,6 +813,8 @@ ack_packet (udx_stream_t *stream, uint32_t seq, int sack) {
     pkt->is_retransmit = 0;
     stream->retransmits_waiting--;
     stream->pkts_waiting--;
+  } else if ((pkt->status == UDX_PACKET_INFLIGHT && pkt->transmits > 1) || (pkt->status == UDX_PACKET_SENDING && pkt->transmits > 0)) {
+    stream->retransmitting--;
   }
 
   if (pkt->status == UDX_PACKET_INFLIGHT || pkt->status == UDX_PACKET_SENDING) {
@@ -1523,6 +1531,9 @@ udx_stream_init (udx_t *udx, udx_stream_t *handle, uint32_t local_id, udx_stream
   handle->relay_to = NULL;
   handle->udx = udx;
 
+  handle->reordering_seen = false;
+  handle->retransmitting = 0;
+
   handle->mtu = UDX_DEFAULT_MTU;
 
   handle->seq = 0;
@@ -1549,7 +1560,6 @@ udx_stream_init (udx_t *udx, udx_stream_t *handle, uint32_t local_id, udx_stream
   handle->retransmits_waiting = 0;
   handle->seq_flushed = 0;
 
-  handle->reordering_seen = false;
   handle->sacks = 0;
   handle->inflight = 0;
   handle->ssthresh = 255;
@@ -1695,7 +1705,7 @@ rack_detect_loss(handle);
   check++;
   if (check == 1000) {
     check = 0;
-    printf("# sacks are %zu, rack_rtt_min %u, reordering_seen %u, reo %u, drops %u srtt=%u\n", handle->sacks, handle->rack_rtt_min, handle->reordering_seen, rack_update_reo_wnd(handle), drops, handle->srtt);
+    printf("# sacks are %zu, rack_rtt_min %u, reordering_seen %u, reo %u, drops %u srtt=%u retransmitting=%u\n", handle->sacks, handle->rack_rtt_min, handle->reordering_seen, rack_update_reo_wnd(handle), drops, handle->srtt, handle->retransmitting);
   }
 
   if (handle->remote_acked == handle->seq) {
