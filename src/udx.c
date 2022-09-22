@@ -706,12 +706,12 @@ rack_detect_loss (udx_stream_t *stream) {
     udx_packet_t *pkt = (udx_packet_t *) udx__cirbuf_get(&(stream->outgoing), seq);
     if (pkt == NULL || pkt->transmits == 0 || pkt->status != UDX_PACKET_INFLIGHT) continue;
 
-    if (pkt->time_sent > 0 && rack_sent_after(stream->rack_time_sent, stream->rack_next_seq, pkt->time_sent, pkt->seq + 1)) {
+    if (rack_sent_after(stream->rack_time_sent, stream->rack_next_seq, pkt->time_sent, pkt->seq + 1)) {
       if (!now) now = get_milliseconds();
-      int64_t remaining = pkt->time_sent + stream->rack_rtt + reo_wnd - now;
-      if (remaining <= 0) {
-        pkt->time_sent = 0;
 
+      int64_t remaining = pkt->time_sent + stream->rack_rtt + reo_wnd - now;
+
+      if (remaining <= 0) {
         pkt->status = UDX_PACKET_WAITING;
         pkt->is_retransmit = UDX_FAST_RETRANSMIT;
 
@@ -724,11 +724,9 @@ rack_detect_loss (udx_stream_t *stream) {
 
         resending++;
 
-                   // Segment.lost = TRUE
-                   // Segment.xmit_ts = INFINITE_TS
 drops++;
-        printf("# LOST LOST LOST %u\n", pkt->seq);
-      } else if (remaining > (int64_t) timeout) {
+
+      } else if ((uint64_t) remaining > timeout) {
         timeout = remaining;
       }
     }
@@ -768,7 +766,10 @@ ack_update (udx_stream_t *stream, uint32_t acked, bool is_limited) {
 rack_detect_loss(stream);
 
   // If we are application limited, just reset the epic and return...
-  if (is_limited || stream->recovery) {
+  // The delay_min check here, was added due to massive latency increase (ie multiple seconds) due to router buffering
+  // Perhaps research other approaches for this, but since delay_min is adjusted based on congestion this seems OK but
+  // but surely better ways exists for this
+  if (is_limited || stream->recovery || (c->delay_min > 0 && stream->srtt > c->delay_min * 4)) {
     c->start_time = 0;
     return;
   }
@@ -823,7 +824,7 @@ ack_packet (udx_stream_t *stream, uint32_t seq, int sack) {
     stream->reordering_seen = true;
   }
 
-  if (pkt->status == UDX_PACKET_INFLIGHT && pkt->transmits == 1 && pkt->time_sent > 0) {
+  if (pkt->status == UDX_PACKET_INFLIGHT && pkt->transmits == 1) {
     if (stream->rack_rtt_min == 0 || stream->rack_rtt_min > rtt) {
       stream->rack_rtt_min = rtt;
     }
@@ -845,7 +846,7 @@ ack_packet (udx_stream_t *stream, uint32_t seq, int sack) {
     stream->rto = max_uint32(stream->srtt + max_uint32(UDX_CLOCK_GRANULARITY_MS, 4 * stream->rttvar), 1000);
   }
 
-  if (pkt->transmits == 1 || (rtt >= stream->rack_rtt_min && stream->rack_rtt_min > 0)) {
+  if (pkt->status == UDX_PACKET_INFLIGHT && (pkt->transmits == 1 || (rtt >= stream->rack_rtt_min && stream->rack_rtt_min > 0))) {
     stream->rack_rtt = rtt;
 
     if (rack_sent_after(pkt->time_sent, next, stream->rack_time_sent, stream->rack_next_seq)) {
