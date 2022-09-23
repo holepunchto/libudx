@@ -48,7 +48,6 @@
 #define UDX_CONG_CUBE_FACTOR UDX_CONG_C_SCALE / UDX_CONG_C
 #define UDX_CONG_MAX_CWND 65536
 
-#define DEBUG_STATS 1
 #ifdef DEBUG_STATS
 static uint64_t debug_start = 0;
 
