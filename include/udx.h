@@ -207,24 +207,20 @@ struct udx_stream {
   uint32_t pkts_waiting;        // how many packets are added locally but not sent?
   uint32_t pkts_inflight;       // packets inflight to the other peer
   uint32_t pkts_buffered;       // how many (data) packets received but not processed (out of order)?
-  uint32_t dup_acks;            // how many duplicate acks received? Used for fast retransmit
-  uint32_t fast_retransmit_seq; // which pkt are we waiting for to be acked in fast retransmit
   uint32_t retransmits_waiting; // how many retransmits are waiting to be sent? if 0, then inflight iteration is faster
   uint32_t seq_flushed;         // highest seq that has been flushed
 
   // timestamps...
   uint64_t rto_timeout;
+  uint64_t rack_timeout;
 
-  size_t sacks;
   size_t inflight;
-  size_t ssthresh;
-  size_t cwnd;
-  size_t cwnd_cnt;
-  size_t rwnd;
 
-  size_t stats_sacks;
-  size_t stats_pkts_sent;
-  size_t stats_fast_rt;
+  uint32_t sacks;
+  uint32_t ssthresh;
+  uint32_t cwnd;
+  uint32_t cwnd_cnt;
+  uint32_t rwnd;
 
   // congestion state
   udx_cong_t cong;
