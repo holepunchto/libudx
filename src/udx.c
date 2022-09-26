@@ -46,6 +46,7 @@
 #define UDX_CONG_BETA_UNIT 1024
 #define UDX_CONG_BETA_SCALE (8 * (UDX_CONG_BETA_UNIT + UDX_CONG_BETA) / 3 / (UDX_CONG_BETA_UNIT - UDX_CONG_BETA)) // 3B/(2-B) scaled 8
 #define UDX_CONG_CUBE_FACTOR UDX_CONG_C_SCALE / UDX_CONG_C
+#define UDX_CONG_INIT_CWND 10
 #define UDX_CONG_MAX_CWND 65536
 
 #ifdef DEBUG_STATS
@@ -1559,7 +1560,7 @@ udx_stream_init (udx_t *udx, udx_stream_t *handle, uint32_t local_id, udx_stream
   handle->sacks = 0;
   handle->inflight = 0;
   handle->ssthresh = 255;
-  handle->cwnd = 2;
+  handle->cwnd = UDX_CONG_INIT_CWND;
   handle->cwnd_cnt = 0;
   handle->rwnd = 0;
 
