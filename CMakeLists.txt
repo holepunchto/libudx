@@ -2,6 +2,10 @@ cmake_minimum_required(VERSION 3.22)
 
 project(udx C)
 
+if (WIN32)
+  set(CMAKE_WINDOWS_EXPORT_ALL_SYMBOLS ON)
+endif()
+
 add_subdirectory(vendor/libuv EXCLUDE_FROM_ALL)
 
 add_library(udx OBJECT)
