@@ -5,13 +5,13 @@
 extern "C" {
 #endif
 
+#include <math.h>
 #include <stdbool.h>
 #include <stdint.h>
-#include <math.h>
 #include <uv.h>
 
 // TODO: research the packets sizes a bit more
-#define UDX_MSS 1460 // just used for congestion to avoid too many variables...
+#define UDX_MSS         1460 // just used for congestion to avoid too many variables...
 #define UDX_DEFAULT_MTU 1200
 #define UDX_HEADER_SIZE 20
 
