@@ -85,8 +85,6 @@ target_link_libraries(
   udx_static
   PUBLIC
     uv
-  PRIVATE
-    m
 )
 
 if (UNIX)
