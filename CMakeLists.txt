@@ -63,9 +63,15 @@ target_link_libraries(
   udx_shared
   PUBLIC
     uv
-  PRIVATE
-    m
 )
+
+if (UNIX)
+  target_link_libraries(
+    udx_shared
+    PRIVATE
+      m
+  )
+endif()
 
 add_library(udx_static STATIC $<TARGET_OBJECTS:udx>)
 
@@ -78,10 +84,18 @@ set_target_properties(
 target_link_libraries(
   udx_static
   PUBLIC
-    uv_a
+    uv
   PRIVATE
     m
 )
+
+if (UNIX)
+  target_link_libraries(
+    udx_static
+    PRIVATE
+      m
+  )
+endif()
 
 install(TARGETS udx_shared udx_static)
 
