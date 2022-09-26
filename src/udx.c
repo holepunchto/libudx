@@ -1,9 +1,9 @@
 #include <assert.h>
+#include <math.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <stdlib.h>
 #include <string.h>
-#include <math.h>
 #include <uv.h>
 
 #include "../include/udx.h"
@@ -40,14 +40,14 @@
 #define UDX_SLOW_RETRANSMIT 1
 #define UDX_FAST_RETRANSMIT 2
 
-#define UDX_CONG_C 400 // C=0.4 (inverse) in scaled 1000
-#define UDX_CONG_C_SCALE 1e12 // ms/s ** 3 * c-scale
-#define UDX_CONG_BETA 731 // b=0.3, BETA = 1-b, scaled 1024
-#define UDX_CONG_BETA_UNIT 1024
-#define UDX_CONG_BETA_SCALE (8 * (UDX_CONG_BETA_UNIT + UDX_CONG_BETA) / 3 / (UDX_CONG_BETA_UNIT - UDX_CONG_BETA)) // 3B/(2-B) scaled 8
+#define UDX_CONG_C           400  // C=0.4 (inverse) in scaled 1000
+#define UDX_CONG_C_SCALE     1e12 // ms/s ** 3 * c-scale
+#define UDX_CONG_BETA        731  // b=0.3, BETA = 1-b, scaled 1024
+#define UDX_CONG_BETA_UNIT   1024
+#define UDX_CONG_BETA_SCALE  (8 * (UDX_CONG_BETA_UNIT + UDX_CONG_BETA) / 3 / (UDX_CONG_BETA_UNIT - UDX_CONG_BETA)) // 3B/(2-B) scaled 8
 #define UDX_CONG_CUBE_FACTOR UDX_CONG_C_SCALE / UDX_CONG_C
-#define UDX_CONG_INIT_CWND 10
-#define UDX_CONG_MAX_CWND 65536
+#define UDX_CONG_INIT_CWND   10
+#define UDX_CONG_MAX_CWND    65536
 
 #ifdef DEBUG_STATS
 static uint64_t debug_start = 0;
@@ -61,7 +61,6 @@ debug_print_cwnd_stats (udx_stream_t *stream) {
 static void
 debug_print_cwnd_stats (udx_stream_t *stream) {}
 #endif
-
 
 typedef struct {
   uint32_t seq; // must be the first entry, so its compat with the cirbuf
@@ -309,9 +308,8 @@ reduce_cwnd (udx_stream_t *stream, int reset) {
   } else {
     c->start_time = 0;
     c->last_max_cwnd = stream->cwnd < c->last_max_cwnd
-      ? (stream->cwnd * (UDX_CONG_BETA_UNIT + UDX_CONG_BETA)) / (2 * UDX_CONG_BETA_UNIT)
-      : stream->cwnd
-    ;
+                         ? (stream->cwnd * (UDX_CONG_BETA_UNIT + UDX_CONG_BETA)) / (2 * UDX_CONG_BETA_UNIT)
+                         : stream->cwnd;
   }
 
   uint32_t upd = (stream->cwnd * UDX_CONG_BETA) / UDX_CONG_BETA_UNIT;
@@ -360,14 +358,13 @@ update_congestion (udx_cong_t *c, uint32_t cwnd, uint32_t acked, uint64_t time) 
   uint64_t delta = UDX_CONG_C * d * d * d / UDX_CONG_C_SCALE;
 
   uint32_t target = t < c->K
-    ? c->origin_point - delta
-    : c->origin_point + delta
-  ;
+                      ? c->origin_point - delta
+                      : c->origin_point + delta;
 
   // the higher cnt, the slower it applies...
   c->cnt = target > cwnd
-    ? cwnd / (target - cwnd)
-    : 100 * cwnd; // ie very slowly
+             ? cwnd / (target - cwnd)
+             : 100 * cwnd; // ie very slowly
   ;
 
   // when we have no estimate of current bw make sure to not be too conservative
@@ -747,8 +744,7 @@ rack_detect_loss (udx_stream_t *stream) {
 
       reduce_cwnd(stream, false);
 
-      debug_printf("fast recovery: started, recovery=%u inflight=%zu cwnd=%u acked=%u, seq=%u srtt=%u\n",
-        stream->recovery, stream->inflight, stream->cwnd, stream->remote_acked, stream->seq_flushed, stream->srtt);
+      debug_printf("fast recovery: started, recovery=%u inflight=%zu cwnd=%u acked=%u, seq=%u srtt=%u\n", stream->recovery, stream->inflight, stream->cwnd, stream->remote_acked, stream->seq_flushed, stream->srtt);
     }
 
     flush_waiting_packets(stream);
@@ -1096,8 +1092,7 @@ process_packet (udx_socket_t *socket, char *buf, ssize_t buf_len, struct sockadd
       // The end of fast recovery, adjust according to the spec (unsure if we need this as we do not modify cwnd during recovery but oh well...)
       if (stream->ssthresh < stream->cwnd) stream->cwnd = stream->ssthresh;
 
-      debug_printf("fast recovery: ended, inflight=%zu, cwnd=%u, acked=%u, seq=%u\n",
-        stream->inflight, stream->cwnd, stream->remote_acked + 1, stream->seq_flushed);
+      debug_printf("fast recovery: ended, inflight=%zu, cwnd=%u, acked=%u, seq=%u\n", stream->inflight, stream->cwnd, stream->remote_acked + 1, stream->seq_flushed);
     }
 
     int a = ack_packet(stream, stream->remote_acked++, 0);
@@ -1737,8 +1732,7 @@ udx_stream_check_timeouts (udx_stream_t *handle) {
       handle->retransmits_waiting++;
     }
 
-    debug_printf("timeout! pkt loss detected - inflight=%zu ssthresh=%u cwnd=%u acked=%u seq=%u rtt=%u\n",
-      handle->inflight, handle->ssthresh, handle->cwnd, handle->remote_acked, handle->seq_flushed, handle->srtt);
+    debug_printf("timeout! pkt loss detected - inflight=%zu ssthresh=%u cwnd=%u acked=%u seq=%u rtt=%u\n", handle->inflight, handle->ssthresh, handle->cwnd, handle->remote_acked, handle->seq_flushed, handle->srtt);
   }
 
   check_deferred_ack(handle);
