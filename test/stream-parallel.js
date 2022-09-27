@@ -2,6 +2,7 @@ const test = require('brittle')
 const { makePairs, pipeStreamPairs } = require('./helpers')
 
 test('16 parallel streams on 1 socket', function (t) {
+  t.timeout(60000)
   const { streams, close } = makePairs(16, 'single')
   t.teardown(close)
   t.plan(1)
@@ -13,6 +14,7 @@ test('16 parallel streams on 1 socket', function (t) {
 })
 
 test('16 parallel streams on 16 sockets', function (t) {
+  t.timeout(60000)
   const { streams, close } = makePairs(16, 'multi')
   t.teardown(close)
   t.plan(1)
