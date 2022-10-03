@@ -49,19 +49,6 @@
 #define UDX_CONG_INIT_CWND   10
 #define UDX_CONG_MAX_CWND    65536
 
-#ifdef DEBUG_STATS
-static uint64_t debug_start = 0;
-
-static void
-debug_print_cwnd_stats (udx_stream_t *stream) {
-  if (!debug_start) debug_start = uv_hrtime() / 1000000;
-  printf("%llu %u %u %u\n", (uv_hrtime() / 1000000) - debug_start, stream->cwnd, stream->cwnd_cnt, stream->srtt);
-}
-#else
-static void
-debug_print_cwnd_stats (udx_stream_t *stream) {}
-#endif
-
 typedef struct {
   uint32_t seq; // must be the first entry, so its compat with the cirbuf
 
