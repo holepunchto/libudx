@@ -382,7 +382,9 @@ update_congestion (udx_cong_t *c, uint32_t cwnd, uint32_t acked, uint64_t time) 
 
 static void
 unqueue_first_transmits (udx_stream_t *stream) {
-  for (uint32_t seq = stream->seq_flushed; seq != stream->remote_acked; seq--) {
+  if (stream->seq_flushed == stream->remote_acked) return;
+
+  for (uint32_t seq = stream->seq_flushed - 1; seq != stream->remote_acked; seq--) {
     udx_packet_t *pkt = (udx_packet_t *) udx__cirbuf_get(&(stream->outgoing), seq);
 
     if (pkt == NULL || pkt->transmits != 0 || pkt->status != UDX_PACKET_SENDING) break;
