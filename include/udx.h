@@ -5,11 +5,13 @@
 extern "C" {
 #endif
 
+#include <math.h>
 #include <stdbool.h>
 #include <stdint.h>
 #include <uv.h>
 
 // TODO: research the packets sizes a bit more
+#define UDX_MSS         1460 // just used for congestion to avoid too many variables...
 #define UDX_DEFAULT_MTU 1200
 #define UDX_HEADER_SIZE 20
 
@@ -142,6 +144,19 @@ struct udx_socket {
   udx_socket_close_cb on_close;
 };
 
+typedef struct udx_cong {
+  uint32_t K;
+  uint32_t ack_cnt;
+  uint32_t origin_point;
+  uint32_t delay_min;
+  uint32_t cnt;
+  uint64_t last_time;
+  uint64_t start_time;
+  uint32_t last_max_cwnd;
+  uint32_t last_cwnd;
+  uint32_t tcp_cwnd;
+} udx_cong_t;
+
 struct udx_stream {
   uint32_t local_id; // must be first entry, so its compat with the cirbuf
   uint32_t remote_id;
@@ -150,6 +165,10 @@ struct udx_stream {
   int status;
   int out_of_order;
   int recovery;
+  int deferred_ack;
+
+  bool reordering_seen;
+  int retransmitting;
 
   udx_t *udx;
   udx_socket_t *socket;
@@ -179,22 +198,33 @@ struct udx_stream {
   uint32_t rttvar;
   uint32_t rto;
 
-  uint64_t rto_timeout;
+  // rack data...
+  uint32_t rack_rtt_min;
+  uint32_t rack_rtt;
+  uint64_t rack_time_sent;
+  uint32_t rack_next_seq;
+  uint32_t rack_fack;
 
   uint32_t pkts_waiting;        // how many packets are added locally but not sent?
   uint32_t pkts_inflight;       // packets inflight to the other peer
   uint32_t pkts_buffered;       // how many (data) packets received but not processed (out of order)?
-  uint32_t dup_acks;            // how many duplicate acks received? Used for fast retransmit
   uint32_t retransmits_waiting; // how many retransmits are waiting to be sent? if 0, then inflight iteration is faster
+  uint32_t seq_flushed;         // highest seq that has been flushed
+
+  // timestamps...
+  uint64_t rto_timeout;
+  uint64_t rack_timeout;
 
   size_t inflight;
-  size_t ssthresh;
-  size_t cwnd;
-  size_t rwnd;
 
-  size_t stats_sacks;
-  size_t stats_pkts_sent;
-  size_t stats_fast_rt;
+  uint32_t sacks;
+  uint32_t ssthresh;
+  uint32_t cwnd;
+  uint32_t cwnd_cnt;
+  uint32_t rwnd;
+
+  // congestion state
+  udx_cong_t cong;
 
   udx_cirbuf_t outgoing;
   udx_cirbuf_t incoming;

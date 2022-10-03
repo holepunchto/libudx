@@ -17,9 +17,12 @@ list(APPEND tests
 )
 
 foreach(test IN LISTS tests)
-  add_executable(test_${test} ${test}.c)
+  add_executable(${test} ${test}.c)
 
-  target_link_libraries(test_${test} udx_static)
+  target_link_libraries(${test} udx_shared)
 
-  add_test(${test} test_${test})
+  add_test(
+    NAME ${test} 
+    COMMAND ${test}
+  )
 endforeach()

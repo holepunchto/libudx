@@ -2,6 +2,12 @@ cmake_minimum_required(VERSION 3.22)
 
 project(udx C)
 
+set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
+
+if (WIN32)
+  set(CMAKE_WINDOWS_EXPORT_ALL_SYMBOLS ON)
+endif()
+
 add_subdirectory(vendor/libuv EXCLUDE_FROM_ALL)
 
 add_library(udx OBJECT)
@@ -65,6 +71,14 @@ target_link_libraries(
     uv
 )
 
+if (UNIX)
+  target_link_libraries(
+    udx_shared
+    PRIVATE
+      m
+  )
+endif()
+
 add_library(udx_static STATIC $<TARGET_OBJECTS:udx>)
 
 set_target_properties(
@@ -76,8 +90,16 @@ set_target_properties(
 target_link_libraries(
   udx_static
   PUBLIC
-    uv_a
+    uv
 )
+
+if (UNIX)
+  target_link_libraries(
+    udx_static
+    PRIVATE
+      m
+  )
+endif()
 
 install(TARGETS udx_shared udx_static)
 
