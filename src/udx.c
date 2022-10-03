@@ -314,52 +314,54 @@ update_congestion (udx_cong_t *c, uint32_t cwnd, uint32_t acked, uint64_t time) 
   // sanity check that didn't just enter this
   if (c->last_cwnd == cwnd && (time - c->last_time) <= 3) return;
 
+  uint64_t delta;
+
   // make sure we don't over run this
-  if (c->start_time && time == c->last_time) goto tcp_friendly;
+  if (!c->start_time || time != c->last_time) {
+    c->last_cwnd = cwnd;
+    c->last_time = time;
 
-  c->last_cwnd = cwnd;
-  c->last_time = time;
+    // we just entered this, init all state
+    if (c->start_time == 0) {
+      c->start_time = time;
+      c->ack_cnt = acked;
+      c->tcp_cwnd = cwnd;
 
-  // we just entered this, init all state
-  if (c->start_time == 0) {
-    c->start_time = time;
-    c->ack_cnt = acked;
-    c->tcp_cwnd = cwnd;
+      if (c->last_max_cwnd <= cwnd) {
+        c->K = 0;
+        c->origin_point = cwnd;
+      } else {
+        c->K = cubic_root(UDX_CONG_CUBE_FACTOR * (c->last_max_cwnd - cwnd));
+        c->origin_point = c->last_max_cwnd;
+      }
+    }
 
-    if (c->last_max_cwnd <= cwnd) {
-      c->K = 0;
-      c->origin_point = cwnd;
-    } else {
-      c->K = cubic_root(UDX_CONG_CUBE_FACTOR * (c->last_max_cwnd - cwnd));
-      c->origin_point = c->last_max_cwnd;
+    // time since epoch + delay
+    uint32_t t = time - c->start_time + c->delay_min;
+
+    // |t- K|
+    uint64_t d = (t < c->K) ? (c->K - t) : (t - c->K);
+
+    // C * (t - K)^3
+    delta = UDX_CONG_C * d * d * d / UDX_CONG_C_SCALE;
+
+    uint32_t target = t < c->K
+                        ? c->origin_point - delta
+                        : c->origin_point + delta;
+
+    // the higher cnt, the slower it applies...
+    c->cnt = target > cwnd
+               ? cwnd / (target - cwnd)
+               : 100 * cwnd; // ie very slowly
+    ;
+
+    // when we have no estimate of current bw make sure to not be too conservative
+    if (c->last_cwnd == 0 && c->cnt > 20) {
+      c->cnt = 20;
     }
   }
 
-  // time since epoch + delay
-  uint32_t t = time - c->start_time + c->delay_min;
-
-  // |t- K|
-  uint64_t d = (t < c->K) ? (c->K - t) : (t - c->K);
-
-  // C * (t - K)^3
-  uint64_t delta = UDX_CONG_C * d * d * d / UDX_CONG_C_SCALE;
-
-  uint32_t target = t < c->K
-                      ? c->origin_point - delta
-                      : c->origin_point + delta;
-
-  // the higher cnt, the slower it applies...
-  c->cnt = target > cwnd
-             ? cwnd / (target - cwnd)
-             : 100 * cwnd; // ie very slowly
-  ;
-
-  // when we have no estimate of current bw make sure to not be too conservative
-  if (c->last_cwnd == 0 && c->cnt > 20) {
-    c->cnt = 20;
-  }
-
-tcp_friendly:
+  // check tcp friendly mode
 
   delta = (UDX_CONG_BETA_SCALE * cwnd) >> 3;
 
