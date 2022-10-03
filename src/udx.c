@@ -586,8 +586,8 @@ send_data_packet (udx_stream_t *stream, udx_packet_t *pkt) {
     pkt->is_retransmit = 0;
     stream->retransmits_waiting--;
     if (pkt->transmits == 1) stream->retransmitting++;
-  } else if (seq_compare(stream->seq_flushed, pkt->seq) < 0) {
-    stream->seq_flushed = pkt->seq;
+  } else if (seq_compare(stream->seq_flushed, pkt->seq) <= 0) {
+    stream->seq_flushed = pkt->seq + 1;
   }
 
   pkt->fifo_gc = udx__fifo_push(&(stream->socket->send_queue), pkt);
