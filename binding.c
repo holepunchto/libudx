@@ -151,10 +151,10 @@ on_udx_close (udx_socket_t *self) {
 
   UDX_NAPI_CALLBACK(n, n->on_close, {NAPI_MAKE_CALLBACK(env, NULL, ctx, callback, 0, NULL, NULL)})
 
-  napi_delete_reference(env, n->ctx);
   napi_delete_reference(env, n->on_send);
   napi_delete_reference(env, n->on_message);
   napi_delete_reference(env, n->on_close);
+  napi_delete_reference(env, n->ctx);
 }
 
 static void
@@ -281,7 +281,6 @@ on_udx_stream_close (udx_stream_t *stream, int status) {
     })
   }
 
-  napi_delete_reference(n->env, n->ctx);
   napi_delete_reference(n->env, n->on_data);
   napi_delete_reference(n->env, n->on_end);
   napi_delete_reference(n->env, n->on_drain);
@@ -291,6 +290,7 @@ on_udx_stream_close (udx_stream_t *stream, int status) {
   napi_delete_reference(n->env, n->on_close);
   napi_delete_reference(n->env, n->on_firewall);
   napi_delete_reference(n->env, n->realloc);
+  napi_delete_reference(n->env, n->ctx);
 }
 
 static int
@@ -361,8 +361,8 @@ on_udx_lookup (udx_lookup_t *lookup, int status, const struct sockaddr *addr, in
     })
   }
 
-  napi_delete_reference(n->env, n->ctx);
   napi_delete_reference(n->env, n->on_lookup);
+  napi_delete_reference(n->env, n->ctx);
 
   free(n->host);
 }
@@ -380,9 +380,9 @@ on_udx_interface_event_close (udx_interface_event_t *handle) {
 
   UDX_NAPI_CALLBACK(e, e->on_close, {NAPI_MAKE_CALLBACK(env, NULL, ctx, callback, 0, NULL, NULL)})
 
-  napi_delete_reference(env, e->ctx);
   napi_delete_reference(env, e->on_event);
   napi_delete_reference(env, e->on_close);
+  napi_delete_reference(env, e->ctx);
 }
 
 NAPI_METHOD(udx_napi_init) {
