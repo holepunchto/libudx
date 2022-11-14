@@ -367,6 +367,7 @@ test('connect to invalid host ip', function (t) {
 
   const a = u.createSocket()
   const s = u.createStream(1)
+  t.teardown(() => s.destroy())
 
   const invalidHost = '0.-1.0.0'
 
