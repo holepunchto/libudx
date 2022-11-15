@@ -467,6 +467,30 @@ test('try send without bind', async function (t) {
   a.trySend(b4a.from('hello'), b.address().port)
 })
 
+test('throw in message callback', async function (t) {
+  t.plan(1)
+
+  const u = new UDX()
+
+  const a = u.createSocket()
+  const b = u.createSocket()
+
+  a.on('message', function () {
+    throw new Error('boom')
+  })
+
+  a.bind()
+
+  b.send(b4a.from('hello'), a.address().port)
+
+  process.once('uncaughtException', async (err) => {
+    t.is(err.message, 'boom')
+
+    await a.close()
+    await b.close()
+  })
+})
+
 test('get address without bind', async function (t) {
   const u = new UDX()
   const a = u.createSocket()

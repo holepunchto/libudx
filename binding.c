@@ -29,37 +29,63 @@
   src \
     napi_close_handle_scope(env, scope);
 
-#define UDX_NAPI_MAKE_ALLOC_CALLBACK(self, env, nil, ctx, cb, n, argv, res) \
-  if (napi_make_callback(env, nil, ctx, cb, n, argv, &res) == napi_pending_exception) { \
+#define UDX_NAPI_MAKE_DATA_ALLOC_CALLBACK(self, env, nil, ctx, cb, n, argv, res) \
+  if (napi_make_callback(env, nil, ctx, cb, n, argv, res) == napi_pending_exception) { \
     napi_value fatal_exception; \
     napi_get_and_clear_last_exception(env, &fatal_exception); \
     napi_fatal_exception(env, fatal_exception); \
     { \
-      UDX_NAPI_CALLBACK(self, self->realloc, { \
-        NAPI_MAKE_CALLBACK(env, nil, ctx, callback, 0, NULL, &res); \
+      UDX_NAPI_CALLBACK(self, self->realloc_data, { \
+        NAPI_MAKE_CALLBACK(env, nil, ctx, callback, 0, NULL, res); \
         UDX_NAPI_SET_READ_BUFFER(self, res); \
+        self->read_buf_head = self->read_buf; \
       }) \
     } \
   } else { \
     UDX_NAPI_SET_READ_BUFFER(self, res); \
+    self->read_buf_head = self->read_buf; \
+  }
+
+#define UDX_NAPI_MAKE_MESSAGE_ALLOC_CALLBACK(self, env, nil, ctx, cb, n, argv, res) \
+  if (napi_make_callback(env, nil, ctx, cb, n, argv, res) == napi_pending_exception) { \
+    napi_value fatal_exception; \
+    napi_get_and_clear_last_exception(env, &fatal_exception); \
+    napi_fatal_exception(env, fatal_exception); \
+    { \
+      UDX_NAPI_CALLBACK(self, self->realloc_message, { \
+        NAPI_MAKE_CALLBACK(env, nil, ctx, callback, 0, NULL, res); \
+        UDX_NAPI_SET_READ_BUFFER(self->udx, res); \
+      }) \
+    } \
+  } else { \
+    UDX_NAPI_SET_READ_BUFFER(self->udx, res); \
   }
 
 #define UDX_NAPI_SET_READ_BUFFER(self, res) \
-  napi_get_buffer_info(env, res, (void **) &(self->read_buf), &(self->read_buf_free)); \
-  self->read_buf_head = self->read_buf;
+  napi_get_buffer_info(env, *res, (void **) &(self->read_buf), &(self->read_buf_free));
+
+typedef struct {
+  udx_t udx;
+
+  char *read_buf;
+  size_t read_buf_free;
+} udx_napi_t;
 
 typedef struct {
   udx_socket_t socket;
+  udx_napi_t *udx;
 
   napi_env env;
   napi_ref ctx;
   napi_ref on_send;
   napi_ref on_message;
   napi_ref on_close;
+  napi_ref realloc_message;
 } udx_napi_socket_t;
 
 typedef struct {
   udx_stream_t stream;
+  udx_napi_t *udx;
 
   int mode;
 
@@ -79,7 +105,8 @@ typedef struct {
   napi_ref on_message;
   napi_ref on_close;
   napi_ref on_firewall;
-  napi_ref realloc;
+  napi_ref realloc_data;
+  napi_ref realloc_message;
 } udx_napi_stream_t;
 
 typedef struct {
@@ -135,13 +162,19 @@ on_udx_message (udx_socket_t *self, ssize_t read_len, const uv_buf_t *buf, const
   int family = 0;
   parse_address((struct sockaddr *) from, ip, INET6_ADDRSTRLEN, &port, &family);
 
+  if (buf->len > n->udx->read_buf_free) return;
+
+  memcpy(n->udx->read_buf, buf->base, buf->len);
+
   UDX_NAPI_CALLBACK(n, n->on_message, {
     napi_value argv[4];
-    napi_create_buffer_copy(n->env, buf->len, buf->base, NULL, &(argv[0]));
+    napi_create_uint32(env, read_len, &(argv[0]));
     napi_create_uint32(env, port, &(argv[1]));
     napi_create_string_utf8(env, ip, NAPI_AUTO_LENGTH, &(argv[2]));
     napi_create_uint32(env, family, &(argv[3]));
-    NAPI_MAKE_CALLBACK(env, NULL, ctx, callback, 4, argv, NULL)
+
+    napi_value res;
+    UDX_NAPI_MAKE_MESSAGE_ALLOC_CALLBACK(n, env, NULL, ctx, callback, 4, argv, &res);
   })
 }
 
@@ -154,6 +187,7 @@ on_udx_close (udx_socket_t *self) {
   napi_delete_reference(env, n->on_send);
   napi_delete_reference(env, n->on_message);
   napi_delete_reference(env, n->on_close);
+  napi_delete_reference(env, n->realloc_message);
   napi_delete_reference(env, n->ctx);
 }
 
@@ -211,10 +245,11 @@ on_udx_stream_read (udx_stream_t *stream, ssize_t read_len, const uv_buf_t *buf)
   }
 
   UDX_NAPI_CALLBACK(n, n->on_data, {
-    napi_value ret;
     napi_value argv[1];
     napi_create_uint32(env, read, &(argv[0]));
-    UDX_NAPI_MAKE_ALLOC_CALLBACK(n, env, NULL, ctx, callback, 1, argv, ret)
+
+    napi_value res;
+    UDX_NAPI_MAKE_DATA_ALLOC_CALLBACK(n, env, NULL, ctx, callback, 1, argv, &res);
   })
 }
 
@@ -252,10 +287,16 @@ static void
 on_udx_stream_recv (udx_stream_t *stream, ssize_t read_len, const uv_buf_t *buf) {
   udx_napi_stream_t *n = (udx_napi_stream_t *) stream;
 
+  if (buf->len > n->udx->read_buf_free) return;
+
+  memcpy(n->udx->read_buf, buf->base, buf->len);
+
   UDX_NAPI_CALLBACK(n, n->on_message, {
     napi_value argv[1];
-    napi_create_buffer_copy(n->env, buf->len, buf->base, NULL, &(argv[0]));
-    NAPI_MAKE_CALLBACK(env, NULL, ctx, callback, 1, argv, NULL)
+    napi_create_uint32(env, read_len, &(argv[0]));
+
+    napi_value res;
+    UDX_NAPI_MAKE_MESSAGE_ALLOC_CALLBACK(n, env, NULL, ctx, callback, 1, argv, &res);
   })
 }
 
@@ -289,7 +330,8 @@ on_udx_stream_close (udx_stream_t *stream, int status) {
   napi_delete_reference(n->env, n->on_message);
   napi_delete_reference(n->env, n->on_close);
   napi_delete_reference(n->env, n->on_firewall);
-  napi_delete_reference(n->env, n->realloc);
+  napi_delete_reference(n->env, n->realloc_data);
+  napi_delete_reference(n->env, n->realloc_message);
   napi_delete_reference(n->env, n->ctx);
 }
 
@@ -386,31 +428,37 @@ on_udx_interface_event_close (udx_interface_event_t *handle) {
 }
 
 NAPI_METHOD(udx_napi_init) {
-  NAPI_ARGV(1)
-  NAPI_ARGV_BUFFER_CAST(udx_t *, self, 0)
+  NAPI_ARGV(2)
+  NAPI_ARGV_BUFFER_CAST(udx_napi_t *, self, 0)
+  NAPI_ARGV_BUFFER(read_buf, 1)
 
   uv_loop_t *loop;
   napi_get_uv_event_loop(env, &loop);
 
-  udx_init(loop, self);
+  udx_init(loop, &(self->udx));
+
+  self->read_buf = read_buf;
+  self->read_buf_free = read_buf_len;
 
   return NULL;
 }
 
 NAPI_METHOD(udx_napi_socket_init) {
-  NAPI_ARGV(6)
-  NAPI_ARGV_BUFFER_CAST(udx_t *, udx, 0)
+  NAPI_ARGV(7)
+  NAPI_ARGV_BUFFER_CAST(udx_napi_t *, udx, 0)
   NAPI_ARGV_BUFFER_CAST(udx_napi_socket_t *, self, 1)
 
   udx_socket_t *socket = (udx_socket_t *) self;
 
+  self->udx = udx;
   self->env = env;
   napi_create_reference(env, argv[2], 1, &(self->ctx));
   napi_create_reference(env, argv[3], 1, &(self->on_send));
   napi_create_reference(env, argv[4], 1, &(self->on_message));
   napi_create_reference(env, argv[5], 1, &(self->on_close));
+  napi_create_reference(env, argv[6], 1, &(self->realloc_message));
 
-  int err = udx_socket_init(udx, socket);
+  int err = udx_socket_init((udx_t *) udx, socket);
   if (err < 0) UDX_NAPI_THROW(err)
 
   return NULL;
@@ -566,37 +614,41 @@ NAPI_METHOD(udx_napi_socket_close) {
 }
 
 NAPI_METHOD(udx_napi_stream_init) {
-  NAPI_ARGV(14)
-  NAPI_ARGV_BUFFER_CAST(udx_t *, udx, 0)
-  NAPI_ARGV_BUFFER_CAST(udx_napi_stream_t *, stream, 1)
+  NAPI_ARGV(15)
+  NAPI_ARGV_BUFFER_CAST(udx_napi_t *, udx, 0)
+  NAPI_ARGV_BUFFER_CAST(udx_napi_stream_t *, self, 1)
   NAPI_ARGV_UINT32(id, 2)
   NAPI_ARGV_UINT32(framed, 3)
 
-  stream->mode = framed ? UDX_NAPI_FRAMED : UDX_NAPI_INTERACTIVE;
+  udx_stream_t *stream = (udx_stream_t *) self;
 
-  stream->frame_len = -1;
+  self->mode = framed ? UDX_NAPI_FRAMED : UDX_NAPI_INTERACTIVE;
 
-  stream->read_buf = NULL;
-  stream->read_buf_head = NULL;
-  stream->read_buf_free = 0;
+  self->frame_len = -1;
 
-  stream->env = env;
-  napi_create_reference(env, argv[4], 1, &(stream->ctx));
-  napi_create_reference(env, argv[5], 1, &(stream->on_data));
-  napi_create_reference(env, argv[6], 1, &(stream->on_end));
-  napi_create_reference(env, argv[7], 1, &(stream->on_drain));
-  napi_create_reference(env, argv[8], 1, &(stream->on_ack));
-  napi_create_reference(env, argv[9], 1, &(stream->on_send));
-  napi_create_reference(env, argv[10], 1, &(stream->on_message));
-  napi_create_reference(env, argv[11], 1, &(stream->on_close));
-  napi_create_reference(env, argv[12], 1, &(stream->on_firewall));
-  napi_create_reference(env, argv[13], 1, &(stream->realloc));
+  self->read_buf = NULL;
+  self->read_buf_head = NULL;
+  self->read_buf_free = 0;
 
-  int err = udx_stream_init(udx, (udx_stream_t *) stream, id, on_udx_stream_close);
+  self->udx = udx;
+  self->env = env;
+  napi_create_reference(env, argv[4], 1, &(self->ctx));
+  napi_create_reference(env, argv[5], 1, &(self->on_data));
+  napi_create_reference(env, argv[6], 1, &(self->on_end));
+  napi_create_reference(env, argv[7], 1, &(self->on_drain));
+  napi_create_reference(env, argv[8], 1, &(self->on_ack));
+  napi_create_reference(env, argv[9], 1, &(self->on_send));
+  napi_create_reference(env, argv[10], 1, &(self->on_message));
+  napi_create_reference(env, argv[11], 1, &(self->on_close));
+  napi_create_reference(env, argv[12], 1, &(self->on_firewall));
+  napi_create_reference(env, argv[13], 1, &(self->realloc_data));
+  napi_create_reference(env, argv[14], 1, &(self->realloc_message));
+
+  int err = udx_stream_init((udx_t *) udx, stream, id, on_udx_stream_close);
   if (err < 0) UDX_NAPI_THROW(err)
 
-  udx_stream_firewall((udx_stream_t *) stream, on_udx_stream_firewall);
-  udx_stream_write_resume((udx_stream_t *) stream, on_udx_stream_drain);
+  udx_stream_firewall(stream, on_udx_stream_firewall);
+  udx_stream_write_resume(stream, on_udx_stream_drain);
 
   return NULL;
 }
@@ -892,7 +944,7 @@ NAPI_INIT() {
   NAPI_EXPORT_OFFSETOF(udx_stream_t, pkts_waiting)
   NAPI_EXPORT_OFFSETOF(udx_stream_t, pkts_inflight)
 
-  NAPI_EXPORT_SIZEOF(udx_t)
+  NAPI_EXPORT_SIZEOF(udx_napi_t)
   NAPI_EXPORT_SIZEOF(udx_napi_socket_t)
   NAPI_EXPORT_SIZEOF(udx_napi_stream_t)
   NAPI_EXPORT_SIZEOF(udx_napi_lookup_t)
