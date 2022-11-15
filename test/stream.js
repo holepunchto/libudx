@@ -594,7 +594,7 @@ test('throw in data callback', async function (t) {
   })
 })
 
-test.skip('throw in message callback', async function (t) {
+test('throw in message callback', async function (t) {
   t.plan(1)
 
   const u = new UDX()

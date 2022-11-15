@@ -466,7 +466,7 @@ test('try send without bind', async function (t) {
   a.trySend(b4a.from('hello'), b.address().port)
 })
 
-test.skip('throw in message callback', async function (t) {
+test('throw in message callback', async function (t) {
   t.plan(1)
 
   const u = new UDX()
