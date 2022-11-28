@@ -778,3 +778,22 @@ test('write exceeding mtu triggers event', async function (t) {
 
   stream.write(b4a.alloc(stream.mtu * 2))
 })
+
+test('write to unconnected stream', async function (t) {
+  t.plan(1)
+
+  const udx = new UDX()
+
+  const socket = udx.createSocket()
+  socket.bind(0)
+
+  const stream = udx.createStream(1)
+  stream.write(b4a.alloc(0))
+
+  process.once('uncaughtException', function (error) {
+    t.is(error.code, 'ERR_ASSERTION')
+
+    stream.destroy()
+    socket.close()
+  })
+})
