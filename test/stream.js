@@ -788,7 +788,7 @@ test('write to unconnected stream', async function (t) {
   socket.bind(0)
 
   const stream = udx.createStream(1)
-  stream.write(Buffer.from('hello'))
+  stream.write(b4a.alloc(0))
 
   process.once('uncaughtException', function (error) {
     t.is(error.code, 'ERR_ASSERTION')
