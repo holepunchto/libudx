@@ -403,10 +403,10 @@ on_udx_lookup (udx_lookup_t *lookup, int status, const struct sockaddr *addr, in
     })
   }
 
+  free(n->host);
+
   napi_delete_reference(n->env, n->on_lookup);
   napi_delete_reference(n->env, n->ctx);
-
-  free(n->host);
 }
 
 static void
