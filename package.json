@@ -21,7 +21,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/mafintosh/libudx.git"
+    "url": "git+https://github.com/holepunchto/libudx.git"
   },
   "keywords": [
     "tcp",
@@ -33,9 +33,9 @@
   "license": "MIT",
   "gypfile": true,
   "bugs": {
-    "url": "https://github.com/mafintosh/libudx/issues"
+    "url": "https://github.com/holepunchto/libudx/issues"
   },
-  "homepage": "https://github.com/mafintosh/libudx#readme",
+  "homepage": "https://github.com/holepunchto/libudx#readme",
   "dependencies": {
     "b4a": "^1.5.0",
     "events": "^3.3.0",
