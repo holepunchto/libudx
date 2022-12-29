@@ -262,6 +262,18 @@ Send a message to another stream. Returns a promise.
 
 Send a message to another stream.
 
+#### `stream.on('connect', onconnect)`
+
+Emitted after the stream is connected to a socket.
+
+#### `stream.on('message', onmessage)`
+
+Emitted if the stream receives a message.
+
+#### `stream.on('mtu-exceeded', onmtuexceeded)`
+
+Emitted only once if you write data that exceeds the MTU.
+
 #### `const interfaces = udx.networkInterfaces()`
 
 Returns an array of network interfaces, for example:
