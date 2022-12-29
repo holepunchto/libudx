@@ -327,7 +327,7 @@ Available `options`:
 
 ## Compile and debugging
 
-Building from source guide: [`BUILD.md`](https://github.com/holepunchto/libudx/BUILD.md)
+Building from source guide: [`BUILD.md`](/BUILD.md)
 
 ## LICENSE
 MIT
