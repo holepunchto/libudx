@@ -1,81 +1,333 @@
 # libudx
 
-udx is reliable, multiplex, and congestion controlled streams over udp.
+udx is reliable, multiplexed, and congestion-controlled streams over udp.
 
-It's written in C99 and depends on libuv.
+```
+npm i udx-native
+```
 
-It is pre-alpha wip (there be dragons), but at a stage where it's safe for developers to poke at.
+It's a transport protocol, made only for peer-to-peer networking.
 
-The main purpose is to be a building block for P2P networking.
-It therefore doesn't come with any handshaking protocol, encryption, and things like that - just reliable, fast, streams.
+No handshakes. No encryption. No features. This is good for P2P.\
+Just fast streams and messages that are composable into powerful things.
+
+## Usage
+```js
+const UDX = require('udx-native')
+
+const u = new UDX()
+const a = u.createSocket()
+const b = u.createSocket()
+
+b.on('message', function (message) {
+  console.log('received', message.toString())
+  a.close()
+  b.close()
+})
+
+b.bind(0)
+a.send(Buffer.from('hello'), b.address().port)
+```
+
+```js
+const UDX = require('udx-native')
+
+const u = new UDX()
+
+const socket1 = u.createSocket()
+const socket2 = u.createSocket()
+
+socket1.bind()
+socket2.bind()
+
+const stream1 = u.createStream(1)
+const stream2 = u.createStream(2)
+
+stream1.connect(socket1, stream2.id, socket2.address().port, '127.0.0.1')
+stream2.connect(socket2, stream1.id, socket1.address().port, '127.0.0.1')
+
+stream1.write(Buffer.from('hello'))
+stream1.end()
+
+stream2.on('data', function (data) {
+  console.log(data)
+})
+
+stream2.on('end', function () {
+  stream2.end()
+})
+
+stream1.on('close', function () {
+  console.log('stream1 closed')
+  socket1.close()
+})
+
+stream2.on('close', function () {
+  console.log('stream2 closed')
+  socket2.close()
+})
+```
 
 ## API
 
-TODO
+### `const udx = new UDX()`
 
-## Node.js bindings
+Creates a new UDX instance.
 
+### `const socket = udx.createSocket()`
+
+Creates a new socket instance.
+
+#### `socket.udx`
+
+It's the UDX instance from where the socket was created.
+
+#### `socket.streams`
+
+It's a `Set` that tracks active streams (connected to the socket but not closed).
+
+#### `socket.userData`
+
+Optional custom userData. Default is `null`.
+
+#### `socket.bound`
+
+Indicates if it's bound to any port. It will be `true` after a successful `bind()`.
+
+#### `socket.closing`
+
+It will be `true` after `close()` is called.
+
+#### `socket.idle`
+
+Indicates that the socket doesn't have any connected stream.
+
+#### `socket.busy`
+
+Indicates that the socket have at least one connected stream.
+
+#### `socket.address()`
+
+Returns an object like `{ host, family, port }`. Only available after `bind()`.
+
+#### `socket.bind([port], [host])`
+
+The default port is `0`.\
+If no host specified: it binds to IPv6 `::`. If fails then IPv4 `0.0.0.0`.
+
+#### `await socket.close()`
+
+It unbinds the socket so it stops listening for messages.
+
+#### `socket.setTTL(ttl)`
+
+Sets the amount of times that a packet is allowed to be forwarded through each router or gateway before being discarded.
+
+#### `socket.getRecvBufferSize()`
+#### `socket.setRecvBufferSize()`
+
+#### `socket.getSendBufferSize()`
+#### `socket.setSendBufferSize()`
+
+#### `await socket.send(buffer, port, [host], [ttl])`
+
+Sends a message to port and host destination. Default host is `127.0.0.1`.
+
+#### `socket.trySend(buffer, port, [host], [ttl])`
+
+Same behaviour as `send()` but no promise.
+
+#### `socket.on('message', (msg, from) => {})`
+
+`msg` is a buffer that containts the message.\
+`from` is an object like `{ host, family, port }`.
+
+#### `socket.on('close', onclose)`
+
+Emitted if the socket was ever bound and it got closed.
+
+#### `socket.on('idle', onidle)`
+
+Emitted if the socket becomes idle (no active streams).
+
+#### `socket.on('busy', onbusy)`
+
+Emitted if the socket becomes busy (at least one active stream).
+
+#### `socket.on('listening', onlistening)`
+
+Emitted after a succesfull `bind()` call.
+
+### `const stream = udx.createStream(id, [options])`
+
+Creates a new stream instance that is a Duplex stream.
+
+Available `options`:
+```js
+{
+  firewall: (socket, port, host) => true,
+  framed: false,
+  seq: 0
+}
 ```
-npm install udx-native
+
+#### `stream.udx`
+
+It's the UDX instance from where the stream was created.
+
+#### `stream.socket`
+
+Refers to the socket that is connected to. Setted when you `connect()` the stream.
+
+#### `stream.id`
+
+Custom stream id.
+
+#### `stream.remoteId`
+
+Remote stream id. Setted when you `connect()` the stream.
+
+#### `stream.remoteId`
+
+Remote stream id. Setted when you `connect()` the stream.
+
+#### `stream.remoteHost`
+
+Remote host. Setted when you `connect()` the stream.
+
+#### `stream.remoteFamily`
+
+Remote family (`4` or `6`). Setted when you `connect()` the stream.
+
+#### `stream.remotePort`
+
+Remote port. Setted when you `connect()` the stream.
+
+#### `stream.userData`
+
+Optional custom userData. Default is `null`.
+
+#### `stream.connected`
+
+Indicates if the stream is connected to a socket. It becomes `false` if the stream is closed.
+
+#### `stream.mtu`
+
+Indicates the maximum size of each packet.
+
+#### `stream.rtt`
+#### `stream.cwnd`
+#### `stream.inflight`
+
+#### `stream.localHost`
+
+Indicates the connected socket host address. By default `null` if not connected.
+
+#### `stream.localFamily`
+
+Indicates the connected socket family address (`4` o `6`). By default `0` if not connected.
+
+#### `stream.localPort`
+
+Indicates the connected socket port. By default `0` if not connected.
+
+#### `stream.setInteractive(bool)`
+
+#### `stream.setMTU(mtu)`
+
+Sets the maximum size of each packet.
+
+#### `stream.connect(socket, remoteId, port, [host], [options])`
+
+Connects the stream using a socket to a: remote stream id, and remote socket port/host.
+
+If no host specified it uses `127.0.0.1` by default.
+
+Available `options`:
+```js
+{
+  ack
+}
 ```
 
-## Building
+#### `stream.relayTo(destination)`
 
-Two build setups are available: A GYP build and a CMake build.
+Relay stream to another stream.
 
-### GYP
+#### `await stream.send(buffer)`
 
-The GYP build is used for building a dynamic library for use in Node.js.
+Send a message to another stream. Returns a promise.
 
-```sh
-node-gyp configure
-node-gyp build
+#### `stream.trySend(buffer)`
+
+Send a message to another stream.
+
+#### `stream.on('connect', onconnect)`
+
+Emitted after the stream is connected to a socket.
+
+#### `stream.on('message', onmessage)`
+
+Emitted if the stream receives a message.
+
+#### `stream.on('mtu-exceeded', onmtuexceeded)`
+
+Emitted only once if you write data that exceeds the MTU.
+
+### `const interfaces = udx.networkInterfaces()`
+
+Returns an array of network interfaces, for example:
+```js
+[
+  { name: 'lo', host: '127.0.0.1', family: 4, internal: true },
+  { name: 'enp4s0', host: '192.168.0.20', family: 4, internal: false },
+  { name: 'lo', host: '::1', family: 6, internal: true },
+  { name: 'enp4s0', host: 'df08::c8df:bf61:95c1:352b', family: 6, internal: false }
+]
 ```
 
-The above commands are run as part of `npm install`.
+### `const watcher = udx.watchNetworkInterfaces([onchange])`
 
-### CMake
+Listens to changes in the network interfaces. The `watcher` object is iterable.
 
-The CMake build is used for building static and dynamic libraries for use outside of Node.js.
+#### `watcher.interfaces`
 
-```sh
-cmake -S . -B build
-cmake --build build
+Array of network interfaces.
+
+#### `watcher.watch()`
+
+Starts watching for changes. By default it already does it. This is only useful after you `unwatch()`.
+
+#### `watcher.unwatch()`
+
+Stops watching for changes.
+
+#### `await watcher.destroy()`
+
+Closes the watcher.
+
+#### `watcher.on('change', onchange)`
+
+Emitted after a network interface change.
+
+#### `watcher.on('close', onclose)`
+
+Emitted after the watcher is closed.
+
+### `const address = udx.lookup(host, [options])`
+
+It does a DNS lookup for the IP address. Returns `{ host, family }`.
+
+Available `options`:
+```js
+{
+  family: 0 // => 0, 4 or 6
+}
 ```
 
-## Debugging
+## Compile and debugging
 
-When debugging native code, make sure to configure a debug build:
-
-```sh
-# GYP
-node-gyp configure --debug
-
-# CMake
-cmake -S . -B build -D CMAKE_BUILD_TYPE=Debug
-```
-
-### Memory errors
-
-To diagnose and debug memory errors, such as leaks and use-after-free, the collection of sanitizers provided by LLVM are recommended. The sanitizers can be enabled by passing additional `CFLAGS` and/or `LDFLAGS` to the [CMake](#cmake) or [GYP](#gyp) build:
-
-```sh
-# GYP
-CFLAGS=<...> LDFLAGS=<...> node-gyp build
-
-# CMake
-CFLAGS=<...> LDFLAGS=<...> cmake -S . -B build
-```
-
-To read more about the various sanitizers and how to use them, see:
-
-- <https://clang.llvm.org/docs/AddressSanitizer.html>
-- <https://clang.llvm.org/docs/MemorySanitizer.html>
-- <https://clang.llvm.org/docs/UndefinedBehaviorSanitizer.html>
-- <https://clang.llvm.org/docs/LeakSanitizer.html>
-
-> :warning: LeakSanitizer is still experimental and currently requires a newer version of LLVM on macOS. If using Homebrew, `brew install llvm` and `CC=/usr/local/opt/llvm/bin/clang` should be sufficient.
+Building from source guide: [`BUILD.md`](/BUILD.md)
 
 ## LICENSE
-
 MIT
