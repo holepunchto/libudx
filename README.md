@@ -74,6 +74,18 @@ stream2.on('close', function () {
 
 Creates a new UDX instance.
 
+#### `const bool = UDX.isIPv4(host)`
+
+Returns `true` if host is an IPv4 address.
+
+#### `const bool = UDX.isIPv6(host)`
+
+Returns `true` if host is an IPv6 address.
+
+#### `const family = UDX.isIP(host)`
+
+Returns the address family (`4` or `6`). Returns `0` if invalid.
+
 ## Sockets
 
 #### `const socket = udx.createSocket()`
