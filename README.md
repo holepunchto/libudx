@@ -70,11 +70,13 @@ stream2.on('close', function () {
 
 ## API
 
-### `const udx = new UDX()`
+#### `const udx = new UDX()`
 
 Creates a new UDX instance.
 
-### `const socket = udx.createSocket()`
+## Sockets
+
+#### `const socket = udx.createSocket()`
 
 Creates a new socket instance.
 
@@ -158,7 +160,9 @@ Emitted if the socket becomes busy (at least one active stream).
 
 Emitted after a succesfull `bind()` call.
 
-### `const stream = udx.createStream(id, [options])`
+## Streams
+
+#### `const stream = udx.createStream(id, [options])`
 
 Creates a new stream instance that is a Duplex stream.
 
@@ -274,7 +278,9 @@ Emitted if the stream receives a message.
 
 Emitted only once if you write data that exceeds the MTU.
 
-### `const interfaces = udx.networkInterfaces()`
+## Network interfaces
+
+#### `const interfaces = udx.networkInterfaces()`
 
 Returns an array of network interfaces, for example:
 ```js
@@ -286,7 +292,7 @@ Returns an array of network interfaces, for example:
 ]
 ```
 
-### `const watcher = udx.watchNetworkInterfaces([onchange])`
+#### `const watcher = udx.watchNetworkInterfaces([onchange])`
 
 Listens to changes in the network interfaces. The `watcher` object is iterable.
 
@@ -314,7 +320,9 @@ Emitted after a network interface change.
 
 Emitted after the watcher is closed.
 
-### `const address = udx.lookup(host, [options])`
+## DNS
+
+#### `const address = await udx.lookup(host, [options])`
 
 It does a DNS lookup for the IP address. Returns `{ host, family }`.
 
