@@ -1,7 +1,6 @@
 const test = require('brittle')
 const b4a = require('b4a')
 const UDX = require('../')
-const UDXSocket = require('../lib/socket')
 
 test('can bind and close', async function (t) {
   const u = new UDX()
@@ -647,22 +646,4 @@ test('set send buffer size', async function (t) {
   t.ok(a.getSendBufferSize() >= NEW_BUFFER_SIZE)
 
   await a.close()
-})
-
-test('UDXSocket - isIPv4', function (t) {
-  t.is(UDXSocket.isIPv4('127.0.0.1'), true)
-  t.is(UDXSocket.isIPv4('::1'), false)
-  t.is(UDXSocket.isIPv4('0.-1.0.0'), false)
-})
-
-test('UDXSocket - isIPv6', function (t) {
-  t.is(UDXSocket.isIPv6('127.0.0.1'), false)
-  t.is(UDXSocket.isIPv6('::1'), true)
-  t.is(UDXSocket.isIPv6('0.-1.0.0'), false)
-})
-
-test('UDXSocket - isIP', function (t) {
-  t.is(UDXSocket.isIP('127.0.0.1'), 4)
-  t.is(UDXSocket.isIP('::1'), 6)
-  t.is(UDXSocket.isIP('0.-1.0.0'), 0)
 })

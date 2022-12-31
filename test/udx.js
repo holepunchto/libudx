@@ -65,3 +65,21 @@ test('network interfaces - watch, unwatch and destroy twice', async function (t)
     t.pass()
   })
 })
+
+test('UDX - isIPv4', function (t) {
+  t.is(UDX.isIPv4('127.0.0.1'), true)
+  t.is(UDX.isIPv4('::1'), false)
+  t.is(UDX.isIPv4('0.-1.0.0'), false)
+})
+
+test('UDX - isIPv6', function (t) {
+  t.is(UDX.isIPv6('127.0.0.1'), false)
+  t.is(UDX.isIPv6('::1'), true)
+  t.is(UDX.isIPv6('0.-1.0.0'), false)
+})
+
+test('UDX - isIP', function (t) {
+  t.is(UDX.isIP('127.0.0.1'), 4)
+  t.is(UDX.isIP('::1'), 6)
+  t.is(UDX.isIP('0.-1.0.0'), 0)
+})
