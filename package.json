@@ -9,7 +9,8 @@
     "src",
     "prebuilds",
     "binding.c",
-    "binding.gyp"
+    "binding.gyp",
+    "binding.js"
   ],
   "scripts": {
     "test": "standard && node test/all.js",
