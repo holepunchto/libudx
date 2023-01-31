@@ -529,7 +529,7 @@ test('bind while closing', function (t) {
   }
 })
 
-test('different socket bind to specific host but same port', async function (t) {
+test('different socket binds to specific host but same port', async function (t) {
   t.plan(1)
 
   const u = new UDX()
@@ -548,7 +548,7 @@ test('different socket bind to specific host but same port', async function (t) 
   await b.close()
 })
 
-test('different socket bind to default host but same port', async function (t) {
+test('different socket binds to default host but same port', async function (t) {
   t.plan(1)
 
   const u = new UDX()
