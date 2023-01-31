@@ -540,6 +540,7 @@ test('different socket binds to specific host but same port', async function (t)
 
   try {
     b.bind(15000, '0.0.0.0')
+    t.fail('should have failed to bind')
   } catch (error) {
     t.is(error.code, 'EADDRINUSE')
   }
@@ -559,6 +560,7 @@ test('different socket binds to default host but same port', async function (t) 
 
   try {
     b.bind(15000)
+    t.fail('should have failed to bind')
   } catch (error) {
     t.is(error.code, 'EADDRINUSE')
   }
