@@ -529,6 +529,44 @@ test('bind while closing', function (t) {
   }
 })
 
+test('different socket bind to specific host but same port', async function (t) {
+  t.plan(1)
+
+  const u = new UDX()
+  const a = u.createSocket()
+  const b = u.createSocket()
+
+  a.bind(15000)
+
+  try {
+    b.bind(15000, '0.0.0.0')
+  } catch (error) {
+    t.is(error.code, 'EADDRINUSE')
+  }
+
+  await a.close()
+  await b.close()
+})
+
+test('different socket bind to default host but same port', async function (t) {
+  t.plan(1)
+
+  const u = new UDX()
+  const a = u.createSocket()
+  const b = u.createSocket()
+
+  a.bind(15000)
+
+  try {
+    b.bind(15000)
+  } catch (error) {
+    t.is(error.code, 'EADDRINUSE')
+  }
+
+  await a.close()
+  await b.close()
+})
+
 test('close twice', async function (t) {
   t.plan(1)
 
