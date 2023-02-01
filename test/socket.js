@@ -536,14 +536,9 @@ test('different socket binds to specific host but same port', async function (t)
   const a = u.createSocket()
   const b = u.createSocket()
 
-  a.bind(15000)
+  a.bind()
 
-  try {
-    b.bind(15000, '0.0.0.0')
-    t.fail('should have failed to bind')
-  } catch (error) {
-    t.is(error.code, 'EADDRINUSE')
-  }
+  t.exception(() => b.bind(a.address().port, '0.0.0.0'))
 
   await a.close()
   await b.close()
@@ -556,14 +551,28 @@ test('different socket binds to default host but same port', async function (t) 
   const a = u.createSocket()
   const b = u.createSocket()
 
-  a.bind(15000)
+  a.bind()
 
-  try {
-    b.bind(15000)
-    t.fail('should have failed to bind')
-  } catch (error) {
-    t.is(error.code, 'EADDRINUSE')
-  }
+  t.exception(() => b.bind(a.address().port))
+
+  await a.close()
+  await b.close()
+})
+
+test('retry ipv4 bind after failing bind on used port', async function (t) {
+  t.plan(1)
+
+  const u = new UDX()
+  const a = u.createSocket()
+  const b = u.createSocket()
+
+  a.bind(0)
+
+  console.log(a.address())
+
+  t.exception(() => b.bind(a.address().port))
+
+  b.bind(0, '0.0.0.0')
 
   await a.close()
   await b.close()
