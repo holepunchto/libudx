@@ -559,18 +559,20 @@ test('different socket binds to default host but same port', async function (t) 
   await b.close()
 })
 
-test('retry ipv4 bind after failing bind on used port', async function (t) {
-  t.plan(1)
+test('retry ipv4 bind after failing ipv6 bind on used port', async function (t) {
+  t.plan(2)
 
   const u = new UDX()
   const a = u.createSocket()
   const b = u.createSocket()
 
-  a.bind(0)
+  a.bind(0, '::')
 
-  t.exception(() => b.bind(a.address().port))
+  t.exception(() => b.bind(a.address().port, '::'))
 
-  b.bind(0, '0.0.0.0')
+  t.exception(() => b.bind(0, '0.0.0.0'))
+
+  b.bind(0, '::')
 
   await a.close()
   await b.close()
