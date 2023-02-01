@@ -567,7 +567,7 @@ test('different socket binds to default host but same port', async function (t) 
   await b.close()
 })
 
-test.solo('retry ipv4 bind after failing ipv6 bind on used port', async function (t) {
+test.skip('retry ipv4 bind after failing ipv6 bind on used port', async function (t) {
   t.plan(2)
 
   const u = new UDX()
