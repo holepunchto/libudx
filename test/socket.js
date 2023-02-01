@@ -568,8 +568,6 @@ test('retry ipv4 bind after failing bind on used port', async function (t) {
 
   a.bind(0)
 
-  console.log(a.address())
-
   t.exception(() => b.bind(a.address().port))
 
   b.bind(0, '0.0.0.0')
