@@ -43,7 +43,7 @@ target_include_directories(
     $<TARGET_PROPERTY:uv,INTERFACE_INCLUDE_DIRECTORIES>
 )
 
-if (UNIX)
+if(UNIX)
   target_sources(
     udx
     PRIVATE
@@ -51,7 +51,7 @@ if (UNIX)
   )
 endif()
 
-if (WIN32)
+if(WIN32)
   target_sources(
     udx
     PRIVATE
@@ -73,7 +73,7 @@ target_link_libraries(
     uv
 )
 
-if (UNIX)
+if(UNIX)
   target_link_libraries(
     udx_shared
     PRIVATE
@@ -95,7 +95,7 @@ target_link_libraries(
     uv_a
 )
 
-if (UNIX)
+if(UNIX)
   target_link_libraries(
     udx_static
     PRIVATE
