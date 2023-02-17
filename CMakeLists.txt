@@ -1,11 +1,5 @@
 cmake_minimum_required(VERSION 3.22)
 
-set(CMAKE_RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin)
-
-if(WIN32)
-  set(CMAKE_WINDOWS_EXPORT_ALL_SYMBOLS ON)
-endif()
-
 project(udx C)
 
 if(NOT TARGET uv)
@@ -65,6 +59,7 @@ set_target_properties(
   udx_shared
   PROPERTIES
   OUTPUT_NAME udx
+  WINDOWS_EXPORT_ALL_SYMBOLS ON
 )
 
 target_link_libraries(
