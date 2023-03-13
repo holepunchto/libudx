@@ -1352,7 +1352,7 @@ udx_socket_set_ttl (udx_socket_t *handle, int ttl) {
 }
 
 int
-udx_socket_bind (udx_socket_t *handle, const struct sockaddr *addr) {
+udx_socket_bind (udx_socket_t *handle, const struct sockaddr *addr, unsigned int flags) {
   uv_udp_t *socket = &(handle->socket);
   uv_poll_t *poll = &(handle->io_poll);
   uv_os_fd_t fd;
@@ -1366,7 +1366,7 @@ udx_socket_bind (udx_socket_t *handle, const struct sockaddr *addr) {
   }
 
   // This might actually fail in practice, so
-  int err = uv_udp_bind(socket, addr, 0);
+  int err = uv_udp_bind(socket, addr, flags);
   if (err) return err;
 
   // Asserting all the errors here as it massively simplifies error handling
