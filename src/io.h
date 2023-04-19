@@ -6,6 +6,9 @@
 ssize_t
 udx__sendmsg (udx_socket_t *handle, const uv_buf_t bufs[], unsigned int bufs_len, struct sockaddr *addr, int addr_len);
 
+int
+udx__sendmmsg(udx_socket_t *handle, udx_packet_t *pkts[], unsigned int pkts_len);
+
 ssize_t
 udx__recvmsg (udx_socket_t *handle, uv_buf_t *buf, struct sockaddr *addr, int addr_len);
 

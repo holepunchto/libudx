@@ -14,6 +14,7 @@ list(APPEND tests
   stream-send-recv-ipv6
   stream-write-read
   stream-write-read-ipv6
+  stream-write-read-perf
 )
 
 foreach(test IN LISTS tests)

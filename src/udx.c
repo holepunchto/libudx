@@ -1195,46 +1195,68 @@ on_uv_poll (uv_poll_t *handle, int status, int events) {
     }
   }
 
-  while (events & UV_WRITABLE && socket->send_queue.len > 0) {
-    udx_packet_t *pkt = (udx_packet_t *) udx__fifo_shift(&(socket->send_queue));
-    if (pkt == NULL) continue;
+  /* start mmsg version */
+  /* alternative - send e.g. 20 at a time (see vendor/libuv/src/unix/udp.c) */
+  udx_fifo_t *sq = &(socket->send_queue);
 
-    bool adjust_ttl = pkt->ttl > 0 && socket->ttl != pkt->ttl;
+  if (events & UV_WRITABLE && sq->len > 0) {
+    unsigned int sqlen = sq->len;
+    //struct mmsghdr *h = calloc(sqlen, sizeof(struct mmsghdr));
+    udx_packet_t **batch = malloc(sqlen * sizeof(udx_packet_t *));
+    int pkts = 0;
 
-    if (adjust_ttl) uv_udp_set_ttl((uv_udp_t *) socket, pkt->ttl);
 
-    if (socket->family == 6 && pkt->dest.ss_family == AF_INET) {
-      addr_to_v6((struct sockaddr_in *) &(pkt->dest));
-      pkt->dest_len = sizeof(struct sockaddr_in6);
+    for (int i = 0; i < sqlen; i++) {
+      udx_packet_t *pkt = udx__fifo_shift(&(socket->send_queue));
+      // asssert (*pkt != NULL && "handle null");
+      if (pkt == NULL) {
+        continue;
+      }
+
+      if (socket->family == 6 && pkt->dest.ss_family == AF_INET) {
+        addr_to_v6((struct sockaddr_in *) &(pkt->dest));
+        pkt->dest_len = sizeof(struct sockaddr_in6);
+      }
+
+      batch[pkts] = pkt;
+      pkts++;
     }
 
-    size = udx__sendmsg(socket, pkt->bufs, pkt->bufs_len, (struct sockaddr *) &(pkt->dest), pkt->dest_len);
+    int npkts;
+    do
+      npkts = udx__sendmmsg(socket, batch, pkts);
+    while (npkts == -1 && errno == EINTR);
 
-    if (adjust_ttl) uv_udp_set_ttl((uv_udp_t *) socket, socket->ttl);
-
-    if (size == UV_EAGAIN) {
-      udx__fifo_undo(&(socket->send_queue));
-      break;
+    if (npkts < 0) {
+      npkts = 0;
     }
 
-    assert(pkt->status == UDX_PACKET_SENDING);
-    pkt->status = UDX_PACKET_INFLIGHT;
-    pkt->transmits++;
-    pkt->time_sent = uv_hrtime() / 1e6;
+    for (int i = npkts; i < pkts; i++) {
+      // return packets that weren't actually sent
+      udx__fifo_undo(sq);
+    }
+      
+    for (int i = 0; i < npkts; i++) {
+      udx_packet_t *pkt = batch[i];
 
-    int type = pkt->type;
+      assert(pkt->status == UDX_PACKET_SENDING);
+      pkt->status = UDX_PACKET_INFLIGHT;
+      pkt->transmits++;
+      pkt->time_sent = uv_hrtime() / 1e6;
 
-    if (type & UDX_PACKET_CALLBACK) {
-      trigger_send_callback(socket, pkt);
-      // TODO: watch for re-entry here!
+      int type = pkt->type;
+
+      if (type & UDX_PACKET_CALLBACK) {
+        trigger_send_callback(socket, pkt);
+        // TODO: watch for re-entry here!
+      }
+
+      if (type & UDX_PACKET_FREE_ON_SEND) {
+        free(pkt);
+      }
     }
 
-    if (type & UDX_PACKET_FREE_ON_SEND) {
-      free(pkt);
-    }
-
-    // queue another write, might be able to do this smarter...
-    if (socket->send_queue.len > 0) continue;
+    free(batch);
 
     // if the socket is under closure, we need to trigger shutdown now since no important writes are pending
     if (socket->status & UDX_SOCKET_CLOSING) {

@@ -45,6 +45,20 @@ if(UNIX)
   )
 endif()
 
+# there's also a style that appends to definitions list: list(APPEND udx_defines _GNU_SOURCE)
+# then uses target_compile_definitions(udx_static PRIVATE ${udx_defines})
+if(CMAKE_SYSTEM_NAME STREQUAL "Linux")
+ add_compile_definitions(_GNU_SOURCE)
+endif()
+
+if(CMAKE_SYSTEM_NAME STREQUAL "Android")
+ add_compile_definitions(_GNU_SOURCE)
+endif()
+
+if(CYGWIN OR MSYS)
+ add_compile_definitions(_GNU_SOURCE)
+endif()
+
 if(WIN32)
   target_sources(
     udx
@@ -89,6 +103,7 @@ target_link_libraries(
   PUBLIC
     uv_a
 )
+
 
 if(UNIX)
   target_link_libraries(
