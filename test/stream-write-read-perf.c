@@ -23,7 +23,7 @@ struct {
 struct {
     uint64_t bytes_read;
     uint64_t last_bytes_read;
-    
+
     uint64_t last_print_ms;
     uint64_t time_zero_ms;
 
@@ -46,13 +46,13 @@ on_read (udx_stream_t *handle, ssize_t read_len, const uv_buf_t *buf) {
     }
 }
 
-static void 
+static void
 on_b_sock_close() {
     printf("sending socket closing\n");
     uv_stop(&loop);
 }
 
-static void 
+static void
 on_b_stream_close() {
     printf("sending stream closing\n");
     int e = udx_socket_close(&bsock, on_b_sock_close);
@@ -114,7 +114,7 @@ main () {
 
     options.size_bytes = 2 * 1024 * 1024 * 1024L;
     // options.size_bytes = 2 * 1024L;
-    
+
     uint8_t *data = calloc(options.size_bytes, 1);
 
     //for (int64_t i = 0; i < options.size_bytes; i++) {
@@ -122,7 +122,7 @@ main () {
     //}
 
     assert(data != NULL && "malloc");
-    
+
     printf("writing data\n");
 
     uv_buf_t buf = uv_buf_init(data, options.size_bytes);
@@ -134,6 +134,6 @@ main () {
     uv_loop_close(&loop);
 
     // just for valgrind
-    free(data); 
+    free(data);
     return 0;
 }
