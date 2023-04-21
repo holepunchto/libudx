@@ -2,9 +2,9 @@
 #include <uv.h>
 #include <stdlib.h>     // for calloc
 #include <sys/socket.h> // for sendmmsg
+#include <assert.h>
 
 #include "io.h"
-
 
 
 ssize_t
@@ -37,6 +37,7 @@ int udx__sendmmsg(udx_socket_t *socket, udx_packet_t *pkts[], unsigned int pkts_
   // todo:
   for (int i = 0; i < pkts_len; i++) {
     udx_packet_t *pkt = pkts[i];
+    assert(pkt != NULL && "null packet in sendmmsg" );
 
     h[i].msg_hdr.msg_name = &pkt->dest;
     h[i].msg_hdr.msg_namelen = pkt->dest_len;
@@ -56,8 +57,8 @@ int udx__sendmmsg(udx_socket_t *socket, udx_packet_t *pkts[], unsigned int pkts_
   return npkts == -1 ? uv_translate_sys_error(errno) : npkts;
 
 #else /* no sendmmsg */
-  int npkts;
-  for (npkts = 0; npkts < pkts_len; npkts++) {
+  int npkts = 0;
+  for (; npkts < pkts_len; npkts++) {
     udx_packet_t *pkt = pkts[npkts];
     if (pkt == NULL) continue;
 
@@ -69,12 +70,8 @@ int udx__sendmmsg(udx_socket_t *socket, udx_packet_t *pkts[], unsigned int pkts_
 
     if (adjust_ttl) uv_udp_set_ttl((uv_udp_t *) socket, socket->ttl);
 
-    if (rc == UV_EAGAIN) {
-      return npkts; // caller undoes packets flushed 
-    }
-
-    if (rc == -1) {
-      return npkts;
+    if (rc < 0) {
+      return npkts > 0 ? npkts : rc; /* if it fails on the first call (npkts == 0) return rc to mimic sendmmsg */
     }
   }
 

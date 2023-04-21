@@ -1199,18 +1199,18 @@ on_uv_poll (uv_poll_t *handle, int status, int events) {
   /* alternative - send e.g. 20 at a time (see vendor/libuv/src/unix/udp.c) */
   udx_fifo_t *sq = &(socket->send_queue);
 
-  if (events & UV_WRITABLE && sq->len > 0) {
+  while (events & UV_WRITABLE && sq->len > 0) {
     unsigned int sqlen = sq->len;
     //struct mmsghdr *h = calloc(sqlen, sizeof(struct mmsghdr));
     udx_packet_t **batch = malloc(sqlen * sizeof(udx_packet_t *));
     int pkts = 0;
 
-
     for (int i = 0; i < sqlen; i++) {
       udx_packet_t *pkt = udx__fifo_shift(&(socket->send_queue));
       // asssert (*pkt != NULL && "handle null");
+      /* todo: how to trigger this condition? */
       if (pkt == NULL) {
-        continue;
+        break;
       }
 
       if (socket->family == 6 && pkt->dest.ss_family == AF_INET) {
@@ -1221,28 +1221,29 @@ on_uv_poll (uv_poll_t *handle, int status, int events) {
       batch[pkts] = pkt;
       pkts++;
     }
+    uint64_t time_sent = uv_hrtime() / 1e6;
 
-    int npkts;
+    int rc, npkts;
     do
-      npkts = udx__sendmmsg(socket, batch, pkts);
-    while (npkts == -1 && errno == EINTR);
+      rc = udx__sendmmsg(socket, batch, pkts);
+    while (rc == -1 && errno == EINTR);
 
-    if (npkts < 0) {
-      npkts = 0;
+    npkts = rc > 0 ? rc : 0;
+
+    if (rc == UV_EAGAIN || npkts < pkts) {
+      for (int i = npkts; i < pkts; i++) {
+        // return packets that weren't actually sent, if UV_EAGAIN (nothing sent) or not all were sent
+        udx__fifo_undo(sq);
+      }
     }
 
-    for (int i = npkts; i < pkts; i++) {
-      // return packets that weren't actually sent
-      udx__fifo_undo(sq);
-    }
-      
     for (int i = 0; i < npkts; i++) {
       udx_packet_t *pkt = batch[i];
 
       assert(pkt->status == UDX_PACKET_SENDING);
       pkt->status = UDX_PACKET_INFLIGHT;
       pkt->transmits++;
-      pkt->time_sent = uv_hrtime() / 1e6;
+      pkt->time_sent = time_sent;
 
       int type = pkt->type;
 
@@ -1257,6 +1258,10 @@ on_uv_poll (uv_poll_t *handle, int status, int events) {
     }
 
     free(batch);
+
+    if (rc == UV_EAGAIN) {
+        break;
+    }
 
     // if the socket is under closure, we need to trigger shutdown now since no important writes are pending
     if (socket->status & UDX_SOCKET_CLOSING) {
