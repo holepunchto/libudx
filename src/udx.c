@@ -1224,9 +1224,7 @@ on_uv_poll (uv_poll_t *handle, int status, int events) {
     uint64_t time_sent = uv_hrtime() / 1e6;
 
     int rc, npkts;
-    do
-      rc = udx__sendmmsg(socket, batch, pkts);
-    while (rc == -1 && errno == EINTR);
+    rc = udx__sendmmsg(socket, batch, pkts);
 
     npkts = rc > 0 ? rc : 0;
 
