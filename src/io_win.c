@@ -1,7 +1,8 @@
-#include <uv.h>
 #include "io.h"
+#include <uv.h>
 
-int udx__sendmmsg(udx_socket_t *socket, udx_packet_t *pkts[], unsigned int pkts_len) {
+int
+udx__sendmmsg (udx_socket_t *socket, udx_packet_t *pkts[], unsigned int pkts_len) {
   int npkts = 0;
 
   for (; npkts < pkts_len; npkts++) {

@@ -1201,7 +1201,6 @@ on_uv_poll (uv_poll_t *handle, int status, int events) {
 
   while (events & UV_WRITABLE && sq->len > 0) {
     unsigned int sqlen = sq->len;
-    //struct mmsghdr *h = calloc(sqlen, sizeof(struct mmsghdr));
     udx_packet_t **batch = malloc(sqlen * sizeof(udx_packet_t *));
     int pkts = 0;
 
@@ -1223,10 +1222,8 @@ on_uv_poll (uv_poll_t *handle, int status, int events) {
     }
     uint64_t time_sent = uv_hrtime() / 1e6;
 
-    int rc, npkts;
-    rc = udx__sendmmsg(socket, batch, pkts);
-
-    npkts = rc > 0 ? rc : 0;
+    int rc = udx__sendmmsg(socket, batch, pkts);
+    int npkts = rc > 0 ? rc : 0;
 
     if (rc == UV_EAGAIN || npkts < pkts) {
       for (int i = npkts; i < pkts; i++) {
@@ -1258,7 +1255,7 @@ on_uv_poll (uv_poll_t *handle, int status, int events) {
     free(batch);
 
     if (rc == UV_EAGAIN) {
-        break;
+      break;
     }
 
     // if the socket is under closure, we need to trigger shutdown now since no important writes are pending

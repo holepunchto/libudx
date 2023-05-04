@@ -1,11 +1,11 @@
-#include <string.h>
-#include <uv.h>
-#include <stdlib.h>     // for calloc
-#include <sys/socket.h> // for sendmmsg
+#define _GNU_SOURCE
 #include <assert.h>
+#include <stdlib.h> // for calloc
+#include <string.h>
+#include <sys/socket.h> // for sendmmsg
+#include <uv.h>
 
 #include "io.h"
-
 
 ssize_t
 udx__sendmsg (udx_socket_t *handle, const uv_buf_t bufs[], unsigned int bufs_len, struct sockaddr *addr, int addr_len) {
@@ -27,7 +27,8 @@ udx__sendmsg (udx_socket_t *handle, const uv_buf_t bufs[], unsigned int bufs_len
   return size == -1 ? uv_translate_sys_error(errno) : size;
 }
 
-int udx__sendmmsg(udx_socket_t *socket, udx_packet_t *pkts[], unsigned int pkts_len) {
+int
+udx__sendmmsg (udx_socket_t *socket, udx_packet_t *pkts[], unsigned int pkts_len) {
 #if defined(__linux__) || defined(__FreeBSD__)
 
   // todo: consider batches of 20 at a time, avoiding calloc?
@@ -37,7 +38,7 @@ int udx__sendmmsg(udx_socket_t *socket, udx_packet_t *pkts[], unsigned int pkts_
   // todo:
   for (int i = 0; i < pkts_len; i++) {
     udx_packet_t *pkt = pkts[i];
-    assert(pkt != NULL && "null packet in sendmmsg" );
+    assert(pkt != NULL && "null packet in sendmmsg");
 
     h[i].msg_hdr.msg_name = &pkt->dest;
     h[i].msg_hdr.msg_namelen = pkt->dest_len;
@@ -52,7 +53,7 @@ int udx__sendmmsg(udx_socket_t *socket, udx_packet_t *pkts[], unsigned int pkts_
     // debug_printf("sendmmsg sent %d/%u\n", size, pkts_len);
   } while (npkts == -1 && errno == EINTR);
 
-  free (h);
+  free(h);
 
   return npkts == -1 ? uv_translate_sys_error(errno) : npkts;
 
