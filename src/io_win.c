@@ -1,8 +1,9 @@
+#include <assert.h>
+#include <uv.h>
+
 #include "fifo.h"
 #include "io.h"
 #include "udx_internal.h"
-#include <assert.h>
-#include <uv.h>
 
 ssize_t
 udx__sendmsg (udx_socket_t *handle, const uv_buf_t bufs[], unsigned int bufs_len, struct sockaddr *addr, int addr_len) {
