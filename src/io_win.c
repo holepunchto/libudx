@@ -1,5 +1,6 @@
 #include "io.h"
 #include <uv.h>
+#include <assert.h>
 #include "udx_internal.h"
 
 ssize_t
