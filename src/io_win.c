@@ -2,8 +2,8 @@
 #include <uv.h>
 
 #include "fifo.h"
+#include "internal.h"
 #include "io.h"
-#include "udx_internal.h"
 
 ssize_t
 udx__sendmsg (udx_socket_t *handle, const uv_buf_t bufs[], unsigned int bufs_len, struct sockaddr *addr, int addr_len) {
@@ -83,7 +83,7 @@ udx__on_write_ready (udx_socket_t *socket) {
     int type = pkt->type;
 
     if (type & UDX_PACKET_CALLBACK) {
-      trigger_send_callback(socket, pkt);
+      udx__trigger_send_callback(socket, pkt);
       // TODO: watch for re-entry here!
     }
 
@@ -96,7 +96,7 @@ udx__on_write_ready (udx_socket_t *socket) {
 
     // if the socket is under closure, we need to trigger shutdown now since no important writes are pending
     if (socket->status & UDX_SOCKET_CLOSING) {
-      close_handles(socket);
+      udx__close_handles(socket);
       return;
     }
   }

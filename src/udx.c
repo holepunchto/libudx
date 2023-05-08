@@ -7,7 +7,7 @@
 #include <uv.h>
 
 #include "../include/udx.h"
-#include "udx_internal.h"
+#include "internal.h"
 
 #include "cirbuf.h"
 #include "debug.h"
@@ -114,26 +114,6 @@ addr_to_v4 (struct sockaddr_in6 *addr) {
   memcpy(addr, &in, sizeof(in));
 }
 
-inline void
-addr_to_v6 (struct sockaddr_in *addr) {
-  struct sockaddr_in6 in;
-  memset(&in, 0, sizeof(in));
-
-  in.sin6_family = AF_INET6;
-  in.sin6_port = addr->sin_port;
-#ifdef SIN6_LEN
-  in.sin6_len = sizeof(struct sockaddr_in6);
-#endif
-
-  in.sin6_addr.s6_addr[10] = 0xff;
-  in.sin6_addr.s6_addr[11] = 0xff;
-
-  // Copy the IPv4 address to the last 4 bytes of the IPv6 address.
-  memcpy(&(in.sin6_addr.s6_addr[12]), &(addr->sin_addr), 4);
-
-  memcpy(addr, &in, sizeof(in));
-}
-
 static void
 on_uv_poll (uv_poll_t *handle, int status, int events);
 
@@ -217,7 +197,7 @@ on_udx_timer_close (uv_handle_t *handle) {
 }
 
 void
-close_handles (udx_socket_t *handle) {
+udx__close_handles (udx_socket_t *handle) {
   if (handle->status & UDX_SOCKET_CLOSING_HANDLES) return;
   handle->status |= UDX_SOCKET_CLOSING_HANDLES;
 
@@ -455,7 +435,7 @@ clear_outgoing_packets (udx_stream_t *stream) {
       }
     }
 
-    if (pkt->type & (UDX_PACKET_STREAM_STATE | UDX_PACKET_STREAM_DESTROY)) {
+    if (pkt->type & UDX_PACKET_FREE_ON_SEND) {
       free(pkt);
     }
   }
@@ -1130,7 +1110,7 @@ remove_next (udx_fifo_t *f) {
 }
 
 void
-trigger_send_callback (udx_socket_t *socket, udx_packet_t *pkt) {
+udx__trigger_send_callback (udx_socket_t *socket, udx_packet_t *pkt) {
   if (pkt->type == UDX_PACKET_SEND) {
     udx_socket_send_t *req = pkt->ctx;
 
@@ -1448,7 +1428,7 @@ udx_socket_close (udx_socket_t *handle, udx_socket_close_cb cb) {
   }
 
   if (handle->send_queue.len == 0) {
-    close_handles(handle);
+    udx__close_handles(handle);
   }
 
   return 0;
