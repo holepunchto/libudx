@@ -6,7 +6,7 @@
 #define UDX_PACKET_CALLBACK     (UDX_PACKET_STREAM_SEND | UDX_PACKET_STREAM_DESTROY | UDX_PACKET_SEND)
 #define UDX_PACKET_FREE_ON_SEND (UDX_PACKET_STREAM_STATE | UDX_PACKET_STREAM_DESTROY)
 
-inline void
+static inline void
 addr_to_v6 (struct sockaddr_in *addr) {
   struct sockaddr_in6 in;
   memset(&in, 0, sizeof(in));
