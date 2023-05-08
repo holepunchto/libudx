@@ -5,7 +5,10 @@
 #include <sys/socket.h> // for sendmmsg
 #include <uv.h>
 
+#include "../include/udx.h"
+#include "fifo.h"
 #include "io.h"
+#include "udx_internal.h"
 
 ssize_t
 udx__sendmsg (udx_socket_t *handle, const uv_buf_t bufs[], unsigned int bufs_len, struct sockaddr *addr, int addr_len) {
@@ -27,59 +30,6 @@ udx__sendmsg (udx_socket_t *handle, const uv_buf_t bufs[], unsigned int bufs_len
   return size == -1 ? uv_translate_sys_error(errno) : size;
 }
 
-int
-udx__sendmmsg (udx_socket_t *socket, udx_packet_t *pkts[], unsigned int pkts_len) {
-#if defined(__linux__) || defined(__FreeBSD__)
-
-  // todo: consider batches of 20 at a time, avoiding calloc?
-
-  struct mmsghdr *h = calloc(pkts_len, sizeof(struct mmsghdr));
-
-  // todo:
-  for (int i = 0; i < pkts_len; i++) {
-    udx_packet_t *pkt = pkts[i];
-    assert(pkt != NULL && "null packet in sendmmsg");
-
-    h[i].msg_hdr.msg_name = &pkt->dest;
-    h[i].msg_hdr.msg_namelen = pkt->dest_len;
-
-    h[i].msg_hdr.msg_iov = (struct iovec *) pkt->bufs;
-    h[i].msg_hdr.msg_iovlen = pkt->bufs_len;
-  }
-  int npkts;
-
-  do {
-    npkts = sendmmsg(socket->io_poll.io_watcher.fd, h, pkts_len, 0);
-    // debug_printf("sendmmsg sent %d/%u\n", size, pkts_len);
-  } while (npkts == -1 && errno == EINTR);
-
-  free(h);
-
-  return npkts == -1 ? uv_translate_sys_error(errno) : npkts;
-
-#else /* no sendmmsg */
-  int npkts = 0;
-  for (; npkts < pkts_len; npkts++) {
-    udx_packet_t *pkt = pkts[npkts];
-    if (pkt == NULL) continue;
-
-    bool adjust_ttl = pkt->ttl > 0 && socket->ttl != pkt->ttl;
-
-    if (adjust_ttl) uv_udp_set_ttl((uv_udp_t *) socket, pkt->ttl);
-
-    int rc = udx__sendmsg(socket, pkt->bufs, pkt->bufs_len, (struct sockaddr *) &(pkt->dest), pkt->dest_len);
-
-    if (adjust_ttl) uv_udp_set_ttl((uv_udp_t *) socket, socket->ttl);
-
-    if (rc < 0) {
-      return npkts > 0 ? npkts : rc; /* if it fails on the first call (npkts == 0) return rc to mimic sendmmsg */
-    }
-  }
-
-  return npkts;
-#endif
-}
-
 ssize_t
 udx__recvmsg (udx_socket_t *handle, uv_buf_t *buf, struct sockaddr *addr, int addr_len) {
   ssize_t size;
@@ -98,4 +48,139 @@ udx__recvmsg (udx_socket_t *handle, uv_buf_t *buf, struct sockaddr *addr, int ad
   } while (size == -1 && errno == EINTR);
 
   return size == -1 ? uv_translate_sys_error(errno) : size;
+}
+
+void
+udx__on_write_ready (udx_socket_t *socket) {
+#if defined(__linux__) || defined(__FreeBSD__)
+  while (socket->send_queue.len > 0) {
+    unsigned int sqlen = socket->send_queue.len;
+    udx_packet_t **batch = malloc(sqlen * sizeof(udx_packet_t *));
+    struct mmsghdr *h = calloc(sqlen, sizeof(struct mmsghdr));
+    int pkts = 0;
+
+    for (int i = 0; i < sqlen; i++) {
+      udx_packet_t *pkt = udx__fifo_shift(&(socket->send_queue));
+      /* todo: how to trigger this condition? */
+      if (pkt == NULL) {
+        break;
+      }
+
+      if (socket->family == 6 && pkt->dest.ss_family == AF_INET) {
+        addr_to_v6((struct sockaddr_in *) &(pkt->dest));
+        pkt->dest_len = sizeof(struct sockaddr_in6);
+      }
+
+      batch[pkts] = pkt;
+      h[pkts].msg_hdr.msg_name = &pkt->dest;
+      h[pkts].msg_hdr.msg_namelen = pkt->dest_len;
+
+      h[pkts].msg_hdr.msg_iov = (struct iovec *) pkt->bufs;
+      h[pkts].msg_hdr.msg_iovlen = pkt->bufs_len;
+
+      pkts++;
+    }
+    uint64_t time_sent = uv_hrtime() / 1e6;
+
+    int rc;
+
+    do {
+      rc = sendmmsg(socket->io_poll.io_watcher.fd, h, pkts, 0);
+    } while (rc == -1 && errno == EINTR);
+
+    rc = rc == -1 ? uv_translate_sys_error(errno) : rc;
+
+    free(h);
+
+    int npkts = rc > 0 ? rc : 0;
+
+    /* return unsent packets to the fifo */
+    for (int i = npkts; i < pkts; i++) {
+      udx__fifo_undo(&(socket->send_queue));
+    }
+
+    /* update packet status for sent packets */
+    for (int i = 0; i < npkts; i++) {
+      udx_packet_t *pkt = batch[i];
+
+      assert(pkt->status == UDX_PACKET_SENDING);
+      pkt->status = UDX_PACKET_INFLIGHT;
+      pkt->transmits++;
+      pkt->time_sent = time_sent;
+
+      int type = pkt->type;
+
+      if (type & (UDX_PACKET_STREAM_SEND | UDX_PACKET_STREAM_DESTROY | UDX_PACKET_SEND)) {
+        trigger_send_callback(socket, pkt);
+        // TODO: watch for re-entry here!
+      }
+
+      if (type & UDX_PACKET_FREE_ON_SEND) {
+        free(pkt);
+      }
+    }
+
+    free(batch);
+
+    if (rc == UV_EAGAIN) {
+      break;
+    }
+
+    if (socket->send_queue.len > 0) continue;
+
+    // if the socket is under closure, we need to trigger shutdown now since no important writes are pending
+    if (socket->status & UDX_SOCKET_CLOSING) {
+      close_handles(socket);
+      return;
+    }
+  }
+#else /* no sendmmsg */
+  while (socket->send_queue.len > 0) {
+    udx_packet_t *pkt = (udx_packet_t *) udx__fifo_shift(&(socket->send_queue));
+    if (pkt == NULL) continue;
+
+    bool adjust_ttl = pkt->ttl > 0 && socket->ttl != pkt->ttl;
+
+    if (adjust_ttl) uv_udp_set_ttl((uv_udp_t *) socket, pkt->ttl);
+
+    if (socket->family == 6 && pkt->dest.ss_family == AF_INET) {
+      addr_to_v6((struct sockaddr_in *) &(pkt->dest));
+      pkt->dest_len = sizeof(struct sockaddr_in6);
+    }
+
+    size = udx__sendmsg(socket, pkt->bufs, pkt->bufs_len, (struct sockaddr *) &(pkt->dest), pkt->dest_len);
+
+    if (adjust_ttl) uv_udp_set_ttl((uv_udp_t *) socket, socket->ttl);
+
+    if (size == UV_EAGAIN) {
+      udx__fifo_undo(&(socket->send_queue));
+      break;
+    }
+
+    assert(pkt->status == UDX_PACKET_SENDING);
+    pkt->status = UDX_PACKET_INFLIGHT;
+    pkt->transmits++;
+    pkt->time_sent = uv_hrtime() / 1e6;
+
+    int type = pkt->type;
+
+    if (type & UDX_PACKET_CALLBACK) {
+      trigger_send_callback(socket, pkt);
+      // TODO: watch for re-entry here!
+    }
+
+    if (type & UDX_PACKET_FREE_ON_SEND) {
+      free(pkt);
+    }
+
+    // queue another write, might be able to do this smarter...
+    if (socket->send_queue.len > 0) continue;
+
+    // if the socket is under closure, we need to trigger shutdown now since no important writes are pending
+    if (socket->status & UDX_SOCKET_CLOSING) {
+      close_handles(socket);
+      return;
+    }
+  }
+#endif
 }

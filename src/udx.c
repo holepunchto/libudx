@@ -7,6 +7,7 @@
 #include <uv.h>
 
 #include "../include/udx.h"
+#include "udx_internal.h"
 
 #include "cirbuf.h"
 #include "debug.h"
@@ -26,9 +27,6 @@
 
 #define UDX_STREAM_SHOULD_END_REMOTE (UDX_STREAM_ENDED_REMOTE | UDX_STREAM_DEAD | UDX_STREAM_ENDING_REMOTE)
 #define UDX_STREAM_END_REMOTE        UDX_STREAM_ENDING_REMOTE
-
-#define UDX_PACKET_CALLBACK     (UDX_PACKET_STREAM_SEND | UDX_PACKET_STREAM_DESTROY | UDX_PACKET_SEND)
-#define UDX_PACKET_FREE_ON_SEND (UDX_PACKET_STREAM_STATE | UDX_PACKET_STREAM_DESTROY)
 
 #define UDX_HEADER_DATA_OR_END (UDX_HEADER_DATA | UDX_HEADER_END)
 
@@ -116,7 +114,7 @@ addr_to_v4 (struct sockaddr_in6 *addr) {
   memcpy(addr, &in, sizeof(in));
 }
 
-static inline void
+inline void
 addr_to_v6 (struct sockaddr_in *addr) {
   struct sockaddr_in6 in;
   memset(&in, 0, sizeof(in));
@@ -165,7 +163,7 @@ ref_dec (udx_t *udx) {
   udx__cirbuf_destroy(&(udx->streams_by_id));
 }
 
-static void
+void
 trigger_socket_close (udx_socket_t *socket) {
   if (--socket->pending_closes) return;
 
@@ -218,7 +216,7 @@ on_udx_timer_close (uv_handle_t *handle) {
   trigger_socket_close(socket);
 }
 
-static void
+void
 close_handles (udx_socket_t *handle) {
   if (handle->status & UDX_SOCKET_CLOSING_HANDLES) return;
   handle->status |= UDX_SOCKET_CLOSING_HANDLES;
@@ -457,7 +455,7 @@ clear_outgoing_packets (udx_stream_t *stream) {
       }
     }
 
-    if (pkt->type & UDX_PACKET_FREE_ON_SEND) {
+    if (pkt->type & (UDX_PACKET_STREAM_STATE | UDX_PACKET_STREAM_DESTROY)) {
       free(pkt);
     }
   }
@@ -1131,7 +1129,7 @@ remove_next (udx_fifo_t *f) {
     ;
 }
 
-static void
+void
 trigger_send_callback (udx_socket_t *socket, udx_packet_t *pkt) {
   if (pkt->type == UDX_PACKET_SEND) {
     udx_socket_send_t *req = pkt->ctx;
@@ -1195,74 +1193,8 @@ on_uv_poll (uv_poll_t *handle, int status, int events) {
     }
   }
 
-  /* start mmsg version */
-  /* alternative - send e.g. 20 at a time (see vendor/libuv/src/unix/udp.c) */
-  udx_fifo_t *sq = &(socket->send_queue);
-
-  while (events & UV_WRITABLE && sq->len > 0) {
-    unsigned int sqlen = sq->len;
-    udx_packet_t **batch = malloc(sqlen * sizeof(udx_packet_t *));
-    int pkts = 0;
-
-    for (int i = 0; i < sqlen; i++) {
-      udx_packet_t *pkt = udx__fifo_shift(&(socket->send_queue));
-      // asssert (*pkt != NULL && "handle null");
-      /* todo: how to trigger this condition? */
-      if (pkt == NULL) {
-        break;
-      }
-
-      if (socket->family == 6 && pkt->dest.ss_family == AF_INET) {
-        addr_to_v6((struct sockaddr_in *) &(pkt->dest));
-        pkt->dest_len = sizeof(struct sockaddr_in6);
-      }
-
-      batch[pkts] = pkt;
-      pkts++;
-    }
-    uint64_t time_sent = uv_hrtime() / 1e6;
-
-    int rc = udx__sendmmsg(socket, batch, pkts);
-    int npkts = rc > 0 ? rc : 0;
-
-    if (rc == UV_EAGAIN || npkts < pkts) {
-      for (int i = npkts; i < pkts; i++) {
-        // return packets that weren't actually sent, if UV_EAGAIN (nothing sent) or not all were sent
-        udx__fifo_undo(sq);
-      }
-    }
-
-    for (int i = 0; i < npkts; i++) {
-      udx_packet_t *pkt = batch[i];
-
-      assert(pkt->status == UDX_PACKET_SENDING);
-      pkt->status = UDX_PACKET_INFLIGHT;
-      pkt->transmits++;
-      pkt->time_sent = time_sent;
-
-      int type = pkt->type;
-
-      if (type & UDX_PACKET_CALLBACK) {
-        trigger_send_callback(socket, pkt);
-        // TODO: watch for re-entry here!
-      }
-
-      if (type & UDX_PACKET_FREE_ON_SEND) {
-        free(pkt);
-      }
-    }
-
-    free(batch);
-
-    if (rc == UV_EAGAIN) {
-      break;
-    }
-
-    // if the socket is under closure, we need to trigger shutdown now since no important writes are pending
-    if (socket->status & UDX_SOCKET_CLOSING) {
-      close_handles(socket);
-      return;
-    }
+  if (events & UV_WRITABLE) {
+    udx__on_write_ready(socket);
   }
 
   // update the poll if the socket is still active.

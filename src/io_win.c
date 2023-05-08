@@ -1,29 +1,6 @@
 #include "io.h"
 #include <uv.h>
 
-int
-udx__sendmmsg (udx_socket_t *socket, udx_packet_t *pkts[], unsigned int pkts_len) {
-  int npkts = 0;
-
-  for (; npkts < pkts_len; npkts++) {
-    udx_packet_t *pkt = pkts[npkts];
-    if (pkt == NULL) continue;
-
-    bool adjust_ttl = pkt->ttl > 0 && socket->ttl != pkt->ttl;
-
-    if (adjust_ttl) uv_udp_set_ttl((uv_udp_t *) socket, pkt->ttl);
-
-    int rc = udx__sendmsg(socket, pkt->bufs, pkt->bufs_len, (struct sockaddr *) &(pkt->dest), pkt->dest_len);
-
-    if (adjust_ttl) uv_udp_set_ttl((uv_udp_t *) socket, socket->ttl);
-
-    if (rc < 0) {
-      return npkts > 0 ? npkts : rc; /* if it fails on the first call (npkts == 0) return rc to mimic sendmmsg */
-    }
-  }
-
-  return npkts;
-}
 ssize_t
 udx__sendmsg (udx_socket_t *handle, const uv_buf_t bufs[], unsigned int bufs_len, struct sockaddr *addr, int addr_len) {
   DWORD bytes, flags = 0;
@@ -68,4 +45,56 @@ udx__recvmsg (udx_socket_t *handle, uv_buf_t *buf, struct sockaddr *addr, int ad
   }
 
   return bytes;
+}
+
+void
+udx__on_write_ready (udx_socket_t *socket) {
+
+  while (socket->send_queue.len > 0) {
+    udx_packet_t *pkt = (udx_packet_t *) udx__fifo_shift(&(socket->send_queue));
+    if (pkt == NULL) continue;
+
+    bool adjust_ttl = pkt->ttl > 0 && socket->ttl != pkt->ttl;
+
+    if (adjust_ttl) uv_udp_set_ttl((uv_udp_t *) socket, pkt->ttl);
+
+    if (socket->family == 6 && pkt->dest.ss_family == AF_INET) {
+      addr_to_v6((struct sockaddr_in *) &(pkt->dest));
+      pkt->dest_len = sizeof(struct sockaddr_in6);
+    }
+
+    size = udx__sendmsg(socket, pkt->bufs, pkt->bufs_len, (struct sockaddr *) &(pkt->dest), pkt->dest_len);
+
+    if (adjust_ttl) uv_udp_set_ttl((uv_udp_t *) socket, socket->ttl);
+
+    if (size == UV_EAGAIN) {
+      udx__fifo_undo(&(socket->send_queue));
+      break;
+    }
+
+    assert(pkt->status == UDX_PACKET_SENDING);
+    pkt->status = UDX_PACKET_INFLIGHT;
+    pkt->transmits++;
+    pkt->time_sent = uv_hrtime() / 1e6;
+
+    int type = pkt->type;
+
+    if (type & UDX_PACKET_CALLBACK) {
+      trigger_send_callback(socket, pkt);
+      // TODO: watch for re-entry here!
+    }
+
+    if (type & UDX_PACKET_FREE_ON_SEND) {
+      free(pkt);
+    }
+
+    // queue another write, might be able to do this smarter...
+    if (socket->send_queue.len > 0) continue;
+
+    // if the socket is under closure, we need to trigger shutdown now since no important writes are pending
+    if (socket->status & UDX_SOCKET_CLOSING) {
+      close_handles(socket);
+      return;
+    }
+  }
 }
