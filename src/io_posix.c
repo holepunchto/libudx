@@ -1,4 +1,9 @@
 #define _GNU_SOURCE
+
+#if defined(__linux__) || defined(__FreeBSD__)
+  #define UDX_PLATFORM_HAS_SENDMMSG
+#endif
+
 #include <assert.h>
 #include <stdlib.h> // for calloc
 #include <string.h>
@@ -52,7 +57,7 @@ udx__recvmsg (udx_socket_t *handle, uv_buf_t *buf, struct sockaddr *addr, int ad
 
 void
 udx__on_write_ready (udx_socket_t *socket) {
-#if defined(__linux__) || defined(__FreeBSD__)
+#ifdef UDX_PLATFORM_HAS_SENDMMSG
   while (socket->send_queue.len > 0) {
     unsigned int sqlen = socket->send_queue.len;
     udx_packet_t **batch = malloc(sqlen * sizeof(udx_packet_t *));
