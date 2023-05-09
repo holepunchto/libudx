@@ -55,20 +55,22 @@ udx__recvmsg (udx_socket_t *handle, uv_buf_t *buf, struct sockaddr *addr, int ad
   return size == -1 ? uv_translate_sys_error(errno) : size;
 }
 
+#define UDX_SENDMMSG_BATCH_SIZE 20
+
 void
 udx__on_write_ready (udx_socket_t *socket) {
 #ifdef UDX_PLATFORM_HAS_SENDMMSG
   while (socket->send_queue.len > 0) {
-    unsigned int sqlen = socket->send_queue.len;
-    udx_packet_t **batch = malloc(sqlen * sizeof(udx_packet_t *));
-    struct mmsghdr *h = calloc(sqlen, sizeof(struct mmsghdr));
+    udx_packet_t   *batch[UDX_SENDMMSG_BATCH_SIZE];
+    struct mmsghdr  h[UDX_SENDMMSG_BATCH_SIZE];
+
     int pkts = 0;
 
-    for (int i = 0; i < sqlen; i++) {
+    for (int i = 0; i < UDX_SENDMMSG_BATCH_SIZE && socket->send_queue.len > 0; i++) {
       udx_packet_t *pkt = udx__fifo_shift(&(socket->send_queue));
-      /* todo: how to trigger this condition? */
+      /* pkt is null when descheduled after being acked */
       if (pkt == NULL) {
-        break;
+        continue;
       }
 
       if (socket->family == 6 && pkt->dest.ss_family == AF_INET) {
@@ -77,11 +79,13 @@ udx__on_write_ready (udx_socket_t *socket) {
       }
 
       batch[pkts] = pkt;
-      h[pkts].msg_hdr.msg_name = &pkt->dest;
-      h[pkts].msg_hdr.msg_namelen = pkt->dest_len;
+      struct mmsghdr *p = &h[pkts];
+      memset(p, 0, sizeof(*p));
+      p->msg_hdr.msg_name = &pkt->dest;
+      p->msg_hdr.msg_namelen = pkt->dest_len;
 
-      h[pkts].msg_hdr.msg_iov = (struct iovec *) pkt->bufs;
-      h[pkts].msg_hdr.msg_iovlen = pkt->bufs_len;
+      p->msg_hdr.msg_iov = (struct iovec *) pkt->bufs;
+      p->msg_hdr.msg_iovlen = pkt->bufs_len;
 
       pkts++;
     }
@@ -95,13 +99,11 @@ udx__on_write_ready (udx_socket_t *socket) {
 
     rc = rc == -1 ? uv_translate_sys_error(errno) : rc;
 
-    free(h);
-
     int npkts = rc > 0 ? rc : 0;
 
     /* return unsent packets to the fifo */
     for (int i = npkts; i < pkts; i++) {
-      udx__fifo_undo(&(socket->send_queue));
+      udx__fifo_undo(&socket->send_queue);
     }
 
     /* update packet status for sent packets */
@@ -124,8 +126,6 @@ udx__on_write_ready (udx_socket_t *socket) {
         free(pkt);
       }
     }
-
-    free(batch);
 
     if (rc == UV_EAGAIN) {
       break;
