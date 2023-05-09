@@ -5,9 +5,9 @@
 #endif
 
 #include <assert.h>
-#include <stdlib.h> // for calloc
+#include <stdlib.h>
 #include <string.h>
-#include <sys/socket.h> // for sendmmsg
+#include <sys/socket.h>
 #include <uv.h>
 
 #include "../include/udx.h"
