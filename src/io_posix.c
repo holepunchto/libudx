@@ -66,7 +66,7 @@ udx__on_write_ready (udx_socket_t *socket) {
 
     int pkts = 0;
 
-    for (int i = 0; i < UDX_SENDMMSG_BATCH_SIZE && socket->send_queue.len > 0; i++) {
+    while (pkts < UDX_SENDMMSG_BATCH_SIZE && socket->send_queue.len > 0) { 
       udx_packet_t *pkt = udx__fifo_shift(&(socket->send_queue));
       /* pkt is null when descheduled after being acked */
       if (pkt == NULL) {
