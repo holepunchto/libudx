@@ -1,7 +1,7 @@
 #define _GNU_SOURCE
 
 #if defined(__linux__) || defined(__FreeBSD__)
-  #define UDX_PLATFORM_HAS_SENDMMSG
+#define UDX_PLATFORM_HAS_SENDMMSG
 #endif
 
 #include <assert.h>
@@ -61,12 +61,12 @@ void
 udx__on_write_ready (udx_socket_t *socket) {
 #ifdef UDX_PLATFORM_HAS_SENDMMSG
   while (socket->send_queue.len > 0) {
-    udx_packet_t   *batch[UDX_SENDMMSG_BATCH_SIZE];
-    struct mmsghdr  h[UDX_SENDMMSG_BATCH_SIZE];
+    udx_packet_t *batch[UDX_SENDMMSG_BATCH_SIZE];
+    struct mmsghdr h[UDX_SENDMMSG_BATCH_SIZE];
 
     int pkts = 0;
 
-    while (pkts < UDX_SENDMMSG_BATCH_SIZE && socket->send_queue.len > 0) { 
+    while (pkts < UDX_SENDMMSG_BATCH_SIZE && socket->send_queue.len > 0) {
       udx_packet_t *pkt = udx__fifo_shift(&(socket->send_queue));
       /* pkt is null when descheduled after being acked */
       if (pkt == NULL) {
