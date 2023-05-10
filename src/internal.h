@@ -1,5 +1,5 @@
-#ifndef __udx__internal_h__
-#define __udx__internal_h__
+#ifndef UDX_INTERNAL_H
+#define UDX_INTERNAL_H
 
 #include "../include/udx.h"
 
@@ -26,7 +26,9 @@ addr_to_v6 (struct sockaddr_in *addr) {
   memcpy(addr, &in, sizeof(in));
 }
 
-void udx__trigger_send_callback(udx_socket_t *socket, udx_packet_t *packet);
-void udx__close_handles(udx_socket_t *socket);
+void
+udx__trigger_send_callback (udx_socket_t *socket, udx_packet_t *packet);
+void
+udx__close_handles (udx_socket_t *socket);
 
-#endif
+#endif // UDX_INTERNAL_H

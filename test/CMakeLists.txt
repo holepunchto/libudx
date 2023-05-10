@@ -21,7 +21,6 @@ list(APPEND skipped_tests
   stream-write-read-perf
 )
 
-
 foreach(test IN LISTS tests)
   add_executable(${test} ${test}.c)
 
