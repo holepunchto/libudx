@@ -143,7 +143,7 @@ ref_dec (udx_t *udx) {
   udx__cirbuf_destroy(&(udx->streams_by_id));
 }
 
-void
+static void
 trigger_socket_close (udx_socket_t *socket) {
   if (--socket->pending_closes) return;
 
