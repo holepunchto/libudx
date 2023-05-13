@@ -70,7 +70,16 @@ udx__on_write_ready (udx_socket_t *socket) {
       udx_packet_t *pkt = udx__fifo_shift(&(socket->send_queue));
       /* pkt is null when descheduled after being acked */
       if (pkt == NULL) {
-        continue;
+        if (pkts == 0) {
+          continue;
+        } else {
+          // return null to queue and send partial batch
+          // eliminates edge case where sendmmsg does
+          // a partial send and we must determine
+          // how many times to call udx__fifo_undo
+          udx__fifo_undo(&socket->send_queue);
+          break;
+        }
       }
 
       if (socket->family == 6 && pkt->dest.ss_family == AF_INET) {
@@ -99,15 +108,16 @@ udx__on_write_ready (udx_socket_t *socket) {
 
     rc = rc == -1 ? uv_translate_sys_error(errno) : rc;
 
-    int npkts = rc > 0 ? rc : 0;
+    int nsent = rc > 0 ? rc : 0;
+    int unsent = pkts - nsent;
 
     /* return unsent packets to the fifo */
-    for (int i = npkts; i < pkts; i++) {
+    while (unsent--) {
       udx__fifo_undo(&socket->send_queue);
     }
 
     /* update packet status for sent packets */
-    for (int i = 0; i < npkts; i++) {
+    for (int i = 0; i < nsent; i++) {
       udx_packet_t *pkt = batch[i];
 
       assert(pkt->status == UDX_PACKET_SENDING);
