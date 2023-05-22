@@ -72,24 +72,24 @@ typedef struct {
   void **values;
 } udx_fifo_t;
 
-typedef struct udx udx_t;
-typedef struct udx_socket udx_socket_t;
-typedef struct udx_stream udx_stream_t;
-typedef struct udx_packet udx_packet_t;
+typedef struct udx_s udx_t;
+typedef struct udx_socket_s udx_socket_t;
+typedef struct udx_stream_s udx_stream_t;
+typedef struct udx_packet_s udx_packet_t;
 
-typedef struct udx_socket_send udx_socket_send_t;
+typedef struct udx_socket_send_s udx_socket_send_t;
 
-typedef struct udx_stream_write udx_stream_write_t;
-typedef struct udx_stream_send udx_stream_send_t;
+typedef struct udx_stream_write_s udx_stream_write_t;
+typedef struct udx_stream_send_s udx_stream_send_t;
 
 typedef enum {
   UDX_LOOKUP_FAMILY_IPV4 = 1,
   UDX_LOOKUP_FAMILY_IPV6 = 2,
 } udx_lookup_flags;
 
-typedef struct udx_lookup udx_lookup_t;
+typedef struct udx_lookup_s udx_lookup_t;
 
-typedef struct udx_interface_event udx_interface_event_t;
+typedef struct udx_interface_event_s udx_interface_event_t;
 
 typedef void (*udx_socket_send_cb)(udx_socket_send_t *req, int status);
 typedef void (*udx_socket_recv_cb)(udx_socket_t *handle, ssize_t read_len, const uv_buf_t *buf, const struct sockaddr *from);
@@ -108,7 +108,7 @@ typedef void (*udx_lookup_cb)(udx_lookup_t *handle, int status, const struct soc
 typedef void (*udx_interface_event_cb)(udx_interface_event_t *handle, int status);
 typedef void (*udx_interface_event_close_cb)(udx_interface_event_t *handle);
 
-struct udx {
+struct udx_s {
   uv_timer_t timer;
   uv_loop_t *loop;
 
@@ -123,7 +123,7 @@ struct udx {
   udx_cirbuf_t streams_by_id;
 };
 
-struct udx_socket {
+struct udx_socket_s {
   uv_udp_t socket;
   uv_poll_t io_poll;
   udx_fifo_t send_queue;
@@ -144,7 +144,7 @@ struct udx_socket {
   udx_socket_close_cb on_close;
 };
 
-typedef struct udx_cong {
+typedef struct udx_cong_s {
   uint32_t K;
   uint32_t ack_cnt;
   uint32_t origin_point;
@@ -157,7 +157,7 @@ typedef struct udx_cong {
   uint32_t tcp_cwnd;
 } udx_cong_t;
 
-struct udx_stream {
+struct udx_stream_s {
   uint32_t local_id; // must be first entry, so its compat with the cirbuf
   uint32_t remote_id;
 
@@ -232,7 +232,7 @@ struct udx_stream {
   udx_fifo_t unordered;
 };
 
-struct udx_packet {
+struct udx_packet_s {
   uint32_t seq; // must be the first entry, so its compat with the cirbuf
 
   int status;
@@ -257,7 +257,7 @@ struct udx_packet {
   uv_buf_t bufs[2];
 };
 
-struct udx_socket_send {
+struct udx_socket_send_s {
   udx_packet_t pkt;
   udx_socket_t *handle;
 
@@ -266,7 +266,7 @@ struct udx_socket_send {
   void *data;
 };
 
-struct udx_stream_write {
+struct udx_stream_write_s {
   uint32_t packets;
   udx_stream_t *handle;
 
@@ -275,7 +275,7 @@ struct udx_stream_write {
   void *data;
 };
 
-struct udx_stream_send {
+struct udx_stream_send_s {
   udx_packet_t pkt;
   udx_stream_t *handle;
 
@@ -284,7 +284,7 @@ struct udx_stream_send {
   void *data;
 };
 
-struct udx_lookup {
+struct udx_lookup_s {
   uv_getaddrinfo_t req;
   struct addrinfo hints;
 
@@ -293,7 +293,7 @@ struct udx_lookup {
   void *data;
 };
 
-struct udx_interface_event {
+struct udx_interface_event_s {
   uv_timer_t timer;
   uv_loop_t *loop;
 

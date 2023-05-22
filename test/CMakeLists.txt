@@ -14,6 +14,11 @@ list(APPEND tests
   stream-send-recv-ipv6
   stream-write-read
   stream-write-read-ipv6
+  stream-write-read-perf
+)
+
+list(APPEND skipped_tests
+  stream-write-read-perf
 )
 
 foreach(test IN LISTS tests)
@@ -36,4 +41,12 @@ foreach(test IN LISTS tests)
     PROPERTIES
     TIMEOUT 30000
   )
+
+  if(${test} IN_LIST skipped_tests)
+    set_tests_properties(
+      ${test}
+      PROPERTIES
+      DISABLED True
+    )
+  endif()
 endforeach()
