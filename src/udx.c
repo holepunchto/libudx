@@ -1174,7 +1174,7 @@ on_uv_poll (uv_poll_t *handle, int status, int events) {
   }
 
   if (events & UV_WRITABLE) {
-    udx__on_write_ready(socket);
+    udx__on_writable(socket);
   }
 
   // update the poll if the socket is still active.

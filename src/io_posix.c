@@ -58,7 +58,7 @@ udx__recvmsg (udx_socket_t *handle, uv_buf_t *buf, struct sockaddr *addr, int ad
 #define UDX_SENDMMSG_BATCH_SIZE 20
 
 void
-udx__on_write_ready (udx_socket_t *socket) {
+udx__on_writable (udx_socket_t *socket) {
 #ifdef UDX_PLATFORM_HAS_SENDMMSG
   while (socket->send_queue.len > 0) {
     udx_packet_t *batch[UDX_SENDMMSG_BATCH_SIZE];
@@ -72,14 +72,13 @@ udx__on_write_ready (udx_socket_t *socket) {
       if (pkt == NULL) {
         if (pkts == 0) {
           continue;
-        } else {
-          // return null to queue and send partial batch
-          // eliminates edge case where sendmmsg does
-          // a partial send and we must determine
-          // how many times to call udx__fifo_undo
-          udx__fifo_undo(&socket->send_queue);
-          break;
         }
+        // return null to queue and send partial batch
+        // eliminates edge case where sendmmsg does
+        // a partial send and we must determine
+        // how many times to call udx__fifo_undo
+        udx__fifo_undo(&socket->send_queue);
+        break;
       }
 
       if (socket->family == 6 && pkt->dest.ss_family == AF_INET) {

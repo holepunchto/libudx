@@ -52,7 +52,7 @@ udx__recvmsg (udx_socket_t *handle, uv_buf_t *buf, struct sockaddr *addr, int ad
 }
 
 void
-udx__on_write_ready (udx_socket_t *socket) {
+udx__on_writable (udx_socket_t *socket) {
   while (socket->send_queue.len > 0) {
     udx_packet_t *pkt = (udx_packet_t *) udx__fifo_shift(&(socket->send_queue));
     if (pkt == NULL) continue;
