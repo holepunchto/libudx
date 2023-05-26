@@ -7,6 +7,7 @@
 #include <uv.h>
 
 #include "../include/udx.h"
+#include "internal.h"
 
 #include "cirbuf.h"
 #include "debug.h"
@@ -26,9 +27,6 @@
 
 #define UDX_STREAM_SHOULD_END_REMOTE (UDX_STREAM_ENDED_REMOTE | UDX_STREAM_DEAD | UDX_STREAM_ENDING_REMOTE)
 #define UDX_STREAM_END_REMOTE        UDX_STREAM_ENDING_REMOTE
-
-#define UDX_PACKET_CALLBACK     (UDX_PACKET_STREAM_SEND | UDX_PACKET_STREAM_DESTROY | UDX_PACKET_SEND)
-#define UDX_PACKET_FREE_ON_SEND (UDX_PACKET_STREAM_STATE | UDX_PACKET_STREAM_DESTROY)
 
 #define UDX_HEADER_DATA_OR_END (UDX_HEADER_DATA | UDX_HEADER_END)
 
@@ -116,26 +114,6 @@ addr_to_v4 (struct sockaddr_in6 *addr) {
   memcpy(addr, &in, sizeof(in));
 }
 
-static inline void
-addr_to_v6 (struct sockaddr_in *addr) {
-  struct sockaddr_in6 in;
-  memset(&in, 0, sizeof(in));
-
-  in.sin6_family = AF_INET6;
-  in.sin6_port = addr->sin_port;
-#ifdef SIN6_LEN
-  in.sin6_len = sizeof(struct sockaddr_in6);
-#endif
-
-  in.sin6_addr.s6_addr[10] = 0xff;
-  in.sin6_addr.s6_addr[11] = 0xff;
-
-  // Copy the IPv4 address to the last 4 bytes of the IPv6 address.
-  memcpy(&(in.sin6_addr.s6_addr[12]), &(addr->sin_addr), 4);
-
-  memcpy(addr, &in, sizeof(in));
-}
-
 static void
 on_uv_poll (uv_poll_t *handle, int status, int events);
 
@@ -218,8 +196,8 @@ on_udx_timer_close (uv_handle_t *handle) {
   trigger_socket_close(socket);
 }
 
-static void
-close_handles (udx_socket_t *handle) {
+void
+udx__close_handles (udx_socket_t *handle) {
   if (handle->status & UDX_SOCKET_CLOSING_HANDLES) return;
   handle->status |= UDX_SOCKET_CLOSING_HANDLES;
 
@@ -1131,8 +1109,8 @@ remove_next (udx_fifo_t *f) {
     ;
 }
 
-static void
-trigger_send_callback (udx_socket_t *socket, udx_packet_t *pkt) {
+void
+udx__trigger_send_callback (udx_socket_t *socket, udx_packet_t *pkt) {
   if (pkt->type == UDX_PACKET_SEND) {
     udx_socket_send_t *req = pkt->ctx;
 
@@ -1195,52 +1173,8 @@ on_uv_poll (uv_poll_t *handle, int status, int events) {
     }
   }
 
-  while (events & UV_WRITABLE && socket->send_queue.len > 0) {
-    udx_packet_t *pkt = (udx_packet_t *) udx__fifo_shift(&(socket->send_queue));
-    if (pkt == NULL) continue;
-
-    bool adjust_ttl = pkt->ttl > 0 && socket->ttl != pkt->ttl;
-
-    if (adjust_ttl) uv_udp_set_ttl((uv_udp_t *) socket, pkt->ttl);
-
-    if (socket->family == 6 && pkt->dest.ss_family == AF_INET) {
-      addr_to_v6((struct sockaddr_in *) &(pkt->dest));
-      pkt->dest_len = sizeof(struct sockaddr_in6);
-    }
-
-    size = udx__sendmsg(socket, pkt->bufs, pkt->bufs_len, (struct sockaddr *) &(pkt->dest), pkt->dest_len);
-
-    if (adjust_ttl) uv_udp_set_ttl((uv_udp_t *) socket, socket->ttl);
-
-    if (size == UV_EAGAIN) {
-      udx__fifo_undo(&(socket->send_queue));
-      break;
-    }
-
-    assert(pkt->status == UDX_PACKET_SENDING);
-    pkt->status = UDX_PACKET_INFLIGHT;
-    pkt->transmits++;
-    pkt->time_sent = uv_hrtime() / 1e6;
-
-    int type = pkt->type;
-
-    if (type & UDX_PACKET_CALLBACK) {
-      trigger_send_callback(socket, pkt);
-      // TODO: watch for re-entry here!
-    }
-
-    if (type & UDX_PACKET_FREE_ON_SEND) {
-      free(pkt);
-    }
-
-    // queue another write, might be able to do this smarter...
-    if (socket->send_queue.len > 0) continue;
-
-    // if the socket is under closure, we need to trigger shutdown now since no important writes are pending
-    if (socket->status & UDX_SOCKET_CLOSING) {
-      close_handles(socket);
-      return;
-    }
+  if (events & UV_WRITABLE) {
+    udx__on_writable(socket);
   }
 
   // update the poll if the socket is still active.
@@ -1494,7 +1428,7 @@ udx_socket_close (udx_socket_t *handle, udx_socket_close_cb cb) {
   }
 
   if (handle->send_queue.len == 0) {
-    close_handles(handle);
+    udx__close_handles(handle);
   }
 
   return 0;

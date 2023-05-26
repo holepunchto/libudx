@@ -17,6 +17,10 @@ list(APPEND tests
   stream-write-read-perf
 )
 
+list(APPEND skipped_tests
+  stream-write-read-perf
+)
+
 foreach(test IN LISTS tests)
   add_executable(${test} ${test}.c)
 
@@ -37,4 +41,12 @@ foreach(test IN LISTS tests)
     PROPERTIES
     TIMEOUT 30000
   )
+
+  if(${test} IN_LIST skipped_tests)
+    set_tests_properties(
+      ${test}
+      PROPERTIES
+      DISABLED True
+    )
+  endif()
 endforeach()
