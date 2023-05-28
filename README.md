@@ -38,4 +38,4 @@ To read more about the various sanitizers and how to use them, see:
 
 ## License
 
-MIT
+Apache-2.0
