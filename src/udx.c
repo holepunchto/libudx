@@ -1679,8 +1679,14 @@ udx_stream_connect (udx_stream_t *handle, udx_socket_t *socket, uint32_t remote_
 
   if (remote_addr->sa_family == AF_INET) {
     handle->remote_addr_len = sizeof(struct sockaddr_in);
+    if (((struct sockaddr_in *) remote_addr)->sin_port == 0) {
+      return UV_EINVAL;
+    }
   } else if (remote_addr->sa_family == AF_INET6) {
     handle->remote_addr_len = sizeof(struct sockaddr_in6);
+    if (((struct sockaddr_in6 *) remote_addr)->sin6_port == 0) {
+      return UV_EINVAL;
+    }
   } else {
     return UV_EINVAL;
   }
