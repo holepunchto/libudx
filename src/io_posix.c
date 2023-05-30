@@ -108,6 +108,9 @@ udx__on_writable (udx_socket_t *socket) {
     rc = rc == -1 ? uv_translate_sys_error(errno) : rc;
 
     int nsent = rc > 0 ? rc : 0;
+
+    assert(rc >= 0 || rc == UV_EAGAIN || rc == UV_ENOBUFS);
+
     int unsent = pkts - nsent;
 
     /* return unsent packets to the fifo */
@@ -136,7 +139,7 @@ udx__on_writable (udx_socket_t *socket) {
       }
     }
 
-    if (rc == UV_EAGAIN) {
+    if (rc == UV_EAGAIN || rc == UV_ENOBUFS) {
       break;
     }
 
