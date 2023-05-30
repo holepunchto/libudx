@@ -87,12 +87,12 @@ main () {
 
   struct sockaddr_in baddr;
   uv_ip4_addr("127.0.0.1", 8082, &baddr);
-  e = udx_socket_bind(&bsock, (struct sockaddr *) &baddr);
+  e = udx_socket_bind(&bsock, (struct sockaddr *) &baddr, 0);
   assert(e == 0);
 
   struct sockaddr_in aaddr;
   uv_ip4_addr("127.0.0.1", 8081, &aaddr);
-  e = udx_socket_bind(&asock, (struct sockaddr *) &aaddr);
+  e = udx_socket_bind(&asock, (struct sockaddr *) &aaddr, 0);
   assert(e == 0);
 
   e = udx_stream_init(&udx, &astream, 1, on_a_stream_close);
@@ -114,7 +114,7 @@ main () {
 
   options.size_bytes = 2 * 1024 * 1024 * 1024L;
 
-  uint8_t *data = calloc(options.size_bytes, 1);
+  char *data = calloc(options.size_bytes, 1);
 
   assert(data != NULL && "malloc");
 
