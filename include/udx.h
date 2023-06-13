@@ -72,8 +72,6 @@ typedef struct {
   void **values;
 } udx_fifo_t;
 
-typedef struct udx_chain_s udx_chain_t;
-
 typedef struct udx_s udx_t;
 typedef struct udx_socket_s udx_socket_t;
 typedef struct udx_stream_s udx_stream_t;
@@ -84,12 +82,12 @@ typedef struct udx_socket_send_s udx_socket_send_t;
 typedef struct udx_stream_write_s udx_stream_write_t;
 typedef struct udx_stream_send_s udx_stream_send_t;
 
-struct udx_chain_s {
-  udx_stream_write_t *req;
+/* todo: should this be merged into the stream_write_t object? */
+typedef struct {
   uv_buf_t buf;
-  udx_chain_t *next;
+  udx_stream_write_t *write;
   unsigned is_write_end : 1;
-};
+} udx_write_buffer_t;
 
 typedef enum {
   UDX_LOOKUP_FAMILY_IPV4 = 1,
@@ -235,9 +233,7 @@ struct udx_stream_s {
   // congestion state
   udx_cong_t cong;
 
-  udx_chain_t *whead; // write packets from here
-  udx_chain_t *wtail; // add buffers here
-
+  udx_fifo_t write_buffer_queue;
   udx_cirbuf_t outgoing;
   udx_cirbuf_t incoming;
 
