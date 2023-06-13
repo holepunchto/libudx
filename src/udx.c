@@ -644,6 +644,10 @@ fill_window (udx_stream_t *stream) {
     if (buf->len < len) len = buf->len;
     if (stream->mtu < len) len = stream->mtu;
 
+    if (stream->mtu > len && buf->len > len && stream->pkts_inflight > 0) {
+      break;
+    }
+
     udx_packet_t *pkt = malloc(sizeof(udx_packet_t));
 
     uv_buf_t buf_partial = uv_buf_init(buf->base, len);
