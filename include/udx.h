@@ -82,11 +82,10 @@ typedef struct udx_socket_send_s udx_socket_send_t;
 typedef struct udx_stream_write_s udx_stream_write_t;
 typedef struct udx_stream_send_s udx_stream_send_t;
 
-/* todo: should this be merged into the stream_write_t object? */
 typedef struct {
   uv_buf_t buf;
   udx_stream_write_t *write;
-  unsigned is_write_end : 1;
+  bool is_write_end;
 } udx_write_buffer_t;
 
 typedef enum {
@@ -275,7 +274,7 @@ struct udx_socket_send_s {
 };
 
 struct udx_stream_write_s {
-  int64_t bytes;
+  size_t bytes;
   udx_stream_t *handle;
 
   udx_stream_ack_cb on_ack;

@@ -934,8 +934,6 @@ ack_packet (udx_stream_t *stream, uint32_t seq, int sack) {
 
   free(pkt);
 
-  assert(w->bytes >= 0);
-
   if (w->bytes > 0) return 1;
 
   if (w->on_ack != NULL) {
