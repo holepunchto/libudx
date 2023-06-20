@@ -942,9 +942,12 @@ rack_detect_loss (udx_stream_t *stream) {
           debug_printf("mtu: rack to on last probe, seq=%d count=%d/%d\n", seq, stream->mtu_probe_count, UDX_MTU_MAX_PROBES);
           if (stream->mtu_probe_count >= UDX_MTU_MAX_PROBES) {
             stream->mtu_state = UDX_MTU_STATE_SEARCH_COMPLETE;
+            debug_printf("mtu: established, mtu=%d", stream->mtu);
             if (stream->mtu < UDX_MTU_MAX) {
+              debug_printf(", %d<%d. scheduling mtu_raise_timer", stream->mtu, UDX_MTU_MAX);
               uv_timer_start(&stream->mtu_raise_timer, mtu_raise_timeout, UDX_MTU_RAISE_TIMEOUT_MS, 0);
             }
+            debug_printf("\n");
           } else {
             stream->mtu_probe_wanted = 1;
           }
@@ -1042,7 +1045,6 @@ ack_packet (udx_stream_t *stream, uint32_t seq, int sack) {
       // send_mtu_probe_packet(stream);
       stream->mtu_probe_wanted = 1;
     }
-    // todo: simplify to just lookup the packet
   }
 
   if (stream->mtu_state == UDX_MTU_STATE_BASE || stream->mtu_state == UDX_MTU_STATE_ERROR) {
@@ -1977,13 +1979,15 @@ udx_stream_check_timeouts (udx_stream_t *handle) {
       handle->retransmits_waiting++;
     }
 
-    // todo: test this
+    // todo: handle possibility of downward MTU change
+    // this would require re-sending in-flight packets that were too big to send. two ways:
+    // 1. use raw socket to re-send the UDP packet fragmented into smaller parts
+    // 2. change protocol to track sequence numbers as bytes
 
-    handle->mtu = UDX_MTU_BASE;
-    // handle->mtu_state = UDX_MTU_STATE_DISABLED;
-    handle->mtu_state = UDX_MTU_STATE_ERROR;
-    handle->mtu_probe_count = 0;
-    handle->mtu_probe_size = UDX_MTU_BASE;
+    // handle->mtu = UDX_MTU_BASE;
+    // handle->mtu_state = UDX_MTU_STATE_ERROR;
+    // handle->mtu_probe_count = 0;
+    // handle->mtu_probe_size = UDX_MTU_BASE;
 
     debug_printf("timeout! pkt loss detected - inflight=%zu ssthresh=%u cwnd=%u acked=%u seq=%u rtt=%u\n", handle->inflight, handle->ssthresh, handle->cwnd, handle->remote_acked, handle->seq_flushed, handle->srtt);
   }
