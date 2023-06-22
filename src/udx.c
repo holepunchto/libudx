@@ -620,78 +620,6 @@ mtu_raise_timeout (uv_timer_t *timer) {
   debug_printf("mtu: raise_timeout expired, restarting search with mtu=%d\n", stream->mtu_probe_size);
 }
 
-/*
-static void
-mtu_probe_timeout (uv_timer_t *timer);
-
-static int
-send_mtu_probe_packet (udx_stream_t *stream) {
-
-  assert(stream->mtu_state == UDX_MTU_STATE_SEARCH);
-  assert(stream->mtu_probe_count < UDX_MTU_MAX_PROBES);
-
-  // might as well make our probe data static
-  // align so that we can use integer alias on all platform
-  static char __attribute__((aligned(4))) probe_data[2000] = "                    probeprobeprobe...";
-
-  int probe_size = stream->mtu_probe_size + 32;
-
-  if (probe_size > UDX_MTU_MAX) {
-    probe_size = UDX_MTU_MAX;
-  }
-
-  stream->mtu_probe_size = probe_size;
-
-  uv_buf_t buf = uv_buf_init(probe_data, probe_size);
-
-  uint8_t *b = probe_data;
-
-  *b++ = UDX_MAGIC_BYTE;
-  *b++ = UDX_VERSION;
-  *b++ = UDX_HEADER_MTUPROBE;
-  *b++ = 0;
-
-  uint32_t i = (uint32t * b);
-
-  *i++ = udx__swap_uint32_if_be(stream->remote_id);
-  *i++ = 0;
-  *i++ = 0; // could use seq / ack for confirmation that it is our packet
-  *i++ = 0;
-
-  stream->mtu_probe_timer.data = stream;
-  uv_timer_start(&stream->mtu_probe_timer, mtu_probe_timeout, UDX_MTU_PROBE_TIMEOUT_MS, 0);
-
-  // this is cutting in line. maybe create a packet and fifo_shift instead?
-  int rc = udx__sendmsg(&stream->socket, &buf, 1, stream->remote_addr, stream->remote_addr_len);
-
-  if (rc >= 0) {
-    stream->mtu_probe_count++;
-    debug_printf("mtu: send_mtu_probe_packet: probe queued, count=%d\n", stream->mtu_probe_count);
-  } else {
-    debug_printf("mtu: send_mtu_probe_packet: failed rc=%d\n", rc);
-  }
-
-  return rc;
-}
-*/
-
-/*
-static void
-mtu_probe_timeout (uv_timer_t *timer) {
-  udx_stream_t *stream = (udx_stream_t *) timer->data;
-
-  debug_printf("mtu: mtu probe timeout, count=%d/%d\n", stream->mtu_probe_count, UDX_MTU_MAX_PROBES);
-
-  if (stream->mtu_probe_count >= UDX_MTU_MAX_PROBES) {
-    debug_printf("starting mtu raise timer\n");
-    stream->mtu_state = UDX_MTU_STATE_SEARCH_COMPLETE;
-    uv_timer_start(&stream->mtu_raise_timer, mtu_raise_timeout, UDX_MTU_RAISE_TIMEOUT_MS, 0);
-  } else {
-    stream->mtu_probe_wanted = 1;
-  }
-}
-*/
-
 static int
 flush_waiting_packets (udx_stream_t *stream) {
   const uint32_t was_waiting = stream->pkts_waiting;
@@ -1262,26 +1190,6 @@ process_packet (udx_socket_t *socket, char *buf, ssize_t buf_len, struct sockadd
   udx_stream_t *stream = (udx_stream_t *) udx__cirbuf_get(socket->streams_by_id, local_id);
 
   if (stream == NULL || stream->status & UDX_STREAM_DEAD) return 0;
-  /*
-  if (type == UDX_HEADER_MTUPROBE) {
-    // dummy out of band message
-    unsigned char header[20];
-    unsigned char *b = header;
-    *b++ = UDX_MAGIC_BYTE;
-    *b++ = UDX_VERSION;
-    *b++ = UDX_HEADER_MTUPROBE;
-    *b++ = 0;
-    uint32_t *i = (uint32_t *) b;
-    *i++ = local_id;
-    *i++ = 0;
-    *i++ = 0;
-    *i = seq;
-    uv_buf_t buf = uv_buf_init(header, 20);
-
-    udx__sendmsg(stream->socket, &buf, 1, addr, addr->ss_family == AF_INET ? sizeof(sockaddr_in) : sizeof(sockaddr_in6));
-    return 1;
-  }
-  */
 
   // We expect this to be a stream packet from now on
   if (!(stream->status & UDX_STREAM_CONNECTED) && stream->on_firewall != NULL) {

@@ -57,17 +57,17 @@ extern "C" {
 #define UDX_PACKET_INFLIGHT 3
 
 #define UDX_PACKET_STREAM_RELAY   0b0
-#define UDX_PACKET_STREAM_STATE   0b000001
-#define UDX_PACKET_STREAM_WRITE   0b000010
-#define UDX_PACKET_STREAM_SEND    0b000100
-#define UDX_PACKET_STREAM_DESTROY 0b001000
-#define UDX_PACKET_SEND           0b010000
+#define UDX_PACKET_STREAM_STATE   0b00001
+#define UDX_PACKET_STREAM_WRITE   0b00010
+#define UDX_PACKET_STREAM_SEND    0b00100
+#define UDX_PACKET_STREAM_DESTROY 0b01000
+#define UDX_PACKET_SEND           0b10000
 
-#define UDX_HEADER_DATA    0b000001
-#define UDX_HEADER_END     0b000010
-#define UDX_HEADER_SACK    0b000100
-#define UDX_HEADER_MESSAGE 0b001000
-#define UDX_HEADER_DESTROY 0b010000
+#define UDX_HEADER_DATA    0b00001
+#define UDX_HEADER_END     0b00010
+#define UDX_HEADER_SACK    0b00100
+#define UDX_HEADER_MESSAGE 0b01000
+#define UDX_HEADER_DESTROY 0b10000
 
 typedef struct {
   uint32_t seq;
@@ -213,9 +213,7 @@ struct udx_stream_s {
   int mtu_probe_wanted;
   int mtu_probe_count;
   int mtu_probe_size; // size of the outstanding probe
-  // uint32_t mtu_probe_seq; // the probe seqno
   uint32_t mtu_probe_seq[UDX_MTU_MAX_PROBES];
-  // uv_timer_t mtu_probe_timer; // if using independent probe packets, use rack timeout for in-band mtu discovery
   uv_timer_t mtu_raise_timer; // set on entering SEARCH_COMPLETE, on expiration returns to SEARCHING
   uint16_t mtu;
 
