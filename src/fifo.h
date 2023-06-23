@@ -15,7 +15,7 @@ void *
 udx__fifo_shift (udx_fifo_t *f);
 
 void *
-udx__fifo_first (udx_fifo_t *f);
+udx__fifo_peek (udx_fifo_t *f);
 
 void
 udx__fifo_undo (udx_fifo_t *f);

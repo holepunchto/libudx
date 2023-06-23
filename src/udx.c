@@ -609,7 +609,6 @@ flush_waiting_packets (udx_stream_t *stream) {
 static inline uint32_t
 get_window_bytes (udx_stream_t *stream) {
   // todo: receive window, then return lesser of cwnd, rwnd
-  // todo:
   if (stream->inflight >= stream->cwnd * UDX_MSS) {
     return 0;
   }
@@ -631,7 +630,7 @@ fill_window (udx_stream_t *stream) {
   }
 
   while (get_window_bytes(stream) > 0 && stream->write_buffer_queue.len > 0) {
-    udx_write_buffer_t *wbuf = udx__fifo_first(&stream->write_buffer_queue);
+    udx_write_buffer_t *wbuf = udx__fifo_peek(&stream->write_buffer_queue);
     assert(wbuf != NULL);
     uv_buf_t *buf = &wbuf->buf;
     assert(buf != NULL);
@@ -640,7 +639,7 @@ fill_window (udx_stream_t *stream) {
 
     int header_flag = wbuf->is_write_end ? UDX_HEADER_END : UDX_HEADER_DATA;
 
-    int len = get_window_bytes(stream);
+    uint32_t len = get_window_bytes(stream);
     if (buf->len < len) len = buf->len;
     if (stream->mtu < len) len = stream->mtu;
 
@@ -684,8 +683,6 @@ fill_window (udx_stream_t *stream) {
       return rc;
     }
   }
-
-  // debug_print_outgoing(stream);
 
   return 0;
 }
@@ -805,7 +802,6 @@ rack_detect_loss (udx_stream_t *stream) {
 
   if (resending) {
     if (stream->recovery == 0) {
-      // debug_print_outgoing(stream);
       // easy win is to clear packets that are in the queue - they def wont help if sent.
       unqueue_first_transmits(stream);
 
