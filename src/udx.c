@@ -418,18 +418,17 @@ clear_outgoing_packets (udx_stream_t *stream) {
     free(pkt);
   }
 
-  while (stream->write_buffer_queue.len > 0) {
-    udx_write_buffer_t *wbuf = udx__fifo_shift(&stream->write_buffer_queue);
-    assert(wbuf != NULL);
-    udx_stream_write_t *w = wbuf->write;
+  while (stream->write_queue.len > 0) {
+    debug_printf("write_queue_len=%d, clearing write\n", stream->write_queue.len);
+    udx_stream_write_t *w = udx__fifo_shift(&stream->write_queue);
+    assert(w != NULL);
 
-    w->bytes -= wbuf->buf.len;
+    w->bytes -= w->buf.len;
+    assert(w->bytes == 0);
 
-    if (w->bytes == 0 && w->on_ack != NULL) {
+    if (w->on_ack) {
       w->on_ack(w, UV_ECANCELED, 0);
     }
-
-    free(wbuf);
   }
 
   // also clear pending unordered packets, and the destroy packet if waiting
@@ -629,15 +628,12 @@ fill_window (udx_stream_t *stream) {
     }
   }
 
-  while (get_window_bytes(stream) > 0 && stream->write_buffer_queue.len > 0) {
-    udx_write_buffer_t *wbuf = udx__fifo_peek(&stream->write_buffer_queue);
-    assert(wbuf != NULL);
-    uv_buf_t *buf = &wbuf->buf;
-    assert(buf != NULL);
+  while (get_window_bytes(stream) > 0 && stream->write_queue.len > 0) {
+    udx_stream_write_t *w = udx__fifo_peek(&stream->write_queue);
+    assert(w != NULL);
+    uv_buf_t *buf = &w->buf;
 
-    udx_stream_write_t *w = wbuf->write;
-
-    int header_flag = wbuf->is_write_end ? UDX_HEADER_END : UDX_HEADER_DATA;
+    int header_flag = w->is_write_end ? UDX_HEADER_END : UDX_HEADER_DATA;
 
     uint32_t len = get_window_bytes(stream);
     if (buf->len < len) len = buf->len;
@@ -672,8 +668,7 @@ fill_window (udx_stream_t *stream) {
     pkt->fifo_gc = udx__fifo_push(&stream->socket->send_queue, pkt);
 
     if (buf->len == 0) {
-      udx__fifo_shift(&stream->write_buffer_queue);
-      free(wbuf);
+      udx__fifo_shift(&stream->write_queue);
     }
 
     int rc = update_poll(stream->socket);
@@ -731,7 +726,7 @@ close_maybe (udx_stream_t *stream, int err) {
   udx__cirbuf_destroy(&stream->incoming);
   udx__cirbuf_destroy(&stream->outgoing);
   udx__fifo_destroy(&stream->unordered);
-  udx__fifo_destroy(&stream->write_buffer_queue);
+  udx__fifo_destroy(&stream->write_queue);
 
   if (stream->on_close != NULL) {
     stream->on_close(stream, err);
@@ -941,7 +936,7 @@ ack_packet (udx_stream_t *stream, uint32_t seq, int sack) {
   // TODO: the end condition needs work here to be more "stateless"
   // ie if the remote has acked all our writes, then instead of waiting for retransmits, we should
   // clear those and mark as local ended NOW.
-  if ((stream->status & UDX_STREAM_SHOULD_END) == UDX_STREAM_END && stream->pkts_waiting == 0 && stream->pkts_inflight == 0 && stream->write_buffer_queue.len == 0) {
+  if ((stream->status & UDX_STREAM_SHOULD_END) == UDX_STREAM_END && stream->pkts_waiting == 0 && stream->pkts_inflight == 0 && stream->write_queue.len == 0) {
     stream->status |= UDX_STREAM_ENDED;
     return 2;
   }
@@ -1598,7 +1593,7 @@ udx_stream_init (udx_t *udx, udx_stream_t *handle, uint32_t local_id, udx_stream
   udx__cirbuf_init(&(handle->incoming), 16);
   udx__fifo_init(&(handle->unordered), 1);
 
-  udx__fifo_init(&handle->write_buffer_queue, 1);
+  udx__fifo_init(&handle->write_queue, 1);
 
   handle->set_id = udx->streams_len++;
 
@@ -1711,7 +1706,7 @@ udx_stream_check_timeouts (udx_stream_t *handle) {
     return 0;
   }
 
-  if (handle->remote_acked == handle->seq && handle->write_buffer_queue.len == 0) {
+  if (handle->remote_acked == handle->seq && handle->write_queue.len == 0) {
     check_deferred_ack(handle);
     return 0;
   }
@@ -1855,15 +1850,11 @@ udx_stream_write (udx_stream_write_t *req, udx_stream_t *stream, const uv_buf_t 
     stream->rto_timeout = get_milliseconds() + stream->rto;
   }
 
-  uv_buf_t buf = bufs[0];
   req->bytes = bufs[0].len;
+  req->buf = bufs[0];
+  req->is_write_end = 0;
 
-  udx_write_buffer_t *wbuf = malloc(sizeof(udx_write_buffer_t));
-  wbuf->buf = buf;
-  wbuf->is_write_end = 0;
-  wbuf->write = req;
-
-  udx__fifo_push(&stream->write_buffer_queue, wbuf);
+  udx__fifo_push(&stream->write_queue, req);
 
   return fill_window(stream);
 }
@@ -1877,15 +1868,11 @@ udx_stream_write_end (udx_stream_write_t *req, udx_stream_t *stream, const uv_bu
   req->handle = stream;
   req->on_ack = ack_cb;
 
-  uv_buf_t buf = bufs[0];
   req->bytes = bufs[0].len;
+  req->buf = bufs[0];
+  req->is_write_end = 1;
 
-  udx_write_buffer_t *wbuf = malloc(sizeof(udx_write_buffer_t));
-  wbuf->buf = buf;
-  wbuf->is_write_end = 1;
-  wbuf->write = req;
-
-  udx__fifo_push(&stream->write_buffer_queue, wbuf);
+  udx__fifo_push(&stream->write_queue, req);
 
   return fill_window(stream);
 }
