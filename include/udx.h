@@ -226,6 +226,7 @@ struct udx_stream_s {
   // congestion state
   udx_cong_t cong;
 
+  udx_fifo_t write_queue; // udx_stream_write_t
   udx_cirbuf_t outgoing;
   udx_cirbuf_t incoming;
 
@@ -267,9 +268,11 @@ struct udx_socket_send_s {
 };
 
 struct udx_stream_write_s {
-  uint32_t packets;
-  udx_stream_t *handle;
+  size_t bytes; // buf.len + size of payloads in flight
+  uv_buf_t buf;
+  bool is_write_end;
 
+  udx_stream_t *handle;
   udx_stream_ack_cb on_ack;
 
   void *data;

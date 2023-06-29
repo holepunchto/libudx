@@ -32,6 +32,13 @@ udx__fifo_shift (udx_fifo_t *f) {
   return *b;
 }
 
+void *
+udx__fifo_peek (udx_fifo_t *f) {
+  if (f->len == 0) return NULL;
+
+  return f->values[f->btm];
+}
+
 void
 udx__fifo_undo (udx_fifo_t *f) {
   f->btm = (f->btm - 1) & f->mask;
