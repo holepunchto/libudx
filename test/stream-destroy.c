@@ -32,14 +32,14 @@ main () {
 
   struct sockaddr_in addr;
   uv_ip4_addr("127.0.0.1", 8081, &addr);
-  e = udx_socket_bind(&sock, (struct sockaddr *) &addr);
+  e = udx_socket_bind(&sock, (struct sockaddr *) &addr, 0);
   assert(e == 0);
 
   udx_stream_t stream;
-  e = udx_stream_init(&udx, &stream, 1);
+  e = udx_stream_init(&udx, &stream, 1, on_close);
   assert(e == 0);
 
-  e = udx_stream_connect(&stream, &sock, 2, (struct sockaddr *) &addr, on_close);
+  e = udx_stream_connect(&stream, &sock, 2, (struct sockaddr *) &addr);
   assert(e == 0);
 
   e = udx_stream_destroy(&stream);

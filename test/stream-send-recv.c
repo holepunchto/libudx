@@ -54,24 +54,24 @@ main () {
 
   struct sockaddr_in baddr;
   uv_ip4_addr("127.0.0.1", 8082, &baddr);
-  e = udx_socket_bind(&bsock, (struct sockaddr *) &baddr);
+  e = udx_socket_bind(&bsock, (struct sockaddr *) &baddr, 0);
   assert(e == 0);
 
   struct sockaddr_in aaddr;
   uv_ip4_addr("127.0.0.1", 8081, &aaddr);
-  e = udx_socket_bind(&asock, (struct sockaddr *) &aaddr);
+  e = udx_socket_bind(&asock, (struct sockaddr *) &aaddr, 0);
   assert(e == 0);
 
-  e = udx_stream_init(&udx, &astream, 1);
+  e = udx_stream_init(&udx, &astream, 1, NULL);
   assert(e == 0);
 
-  e = udx_stream_init(&udx, &bstream, 2);
+  e = udx_stream_init(&udx, &bstream, 2, NULL);
   assert(e == 0);
 
-  e = udx_stream_connect(&astream, &asock, 2, (struct sockaddr *) &baddr, NULL);
+  e = udx_stream_connect(&astream, &asock, 2, (struct sockaddr *) &baddr);
   assert(e == 0);
 
-  e = udx_stream_connect(&bstream, &bsock, 1, (struct sockaddr *) &aaddr, NULL);
+  e = udx_stream_connect(&bstream, &bsock, 1, (struct sockaddr *) &aaddr);
   assert(e == 0);
 
   e = udx_stream_recv_start(&astream, on_recv);

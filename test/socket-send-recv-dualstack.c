@@ -54,15 +54,18 @@ main () {
   e = udx_socket_bind(&bsock, (struct sockaddr *) &baddr, 0);
   assert(e == 0);
 
-  struct sockaddr_in aaddr;
-  uv_ip4_addr("127.0.0.1", 8081, &aaddr);
+  struct sockaddr_in6 aaddr;
+  uv_ip6_addr("::", 8081, &aaddr);
   e = udx_socket_bind(&asock, (struct sockaddr *) &aaddr, 0);
   assert(e == 0);
 
   udx_socket_recv_start(&asock, on_recv);
 
+  struct sockaddr_in aaddr4;
+  uv_ip4_addr("127.0.0.1", 8081, &aaddr4);
+
   uv_buf_t buf = uv_buf_init("hello", 5);
-  udx_socket_send(&req, &bsock, &buf, 1, (struct sockaddr *) &aaddr, on_send);
+  udx_socket_send(&req, &bsock, &buf, 1, (struct sockaddr *) &aaddr4, on_send);
 
   uv_run(&loop, UV_RUN_DEFAULT);
 

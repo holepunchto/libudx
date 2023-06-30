@@ -2,10 +2,10 @@ name: Build Status (CMake)
 on:
   push:
     branches:
-      - master
+      - main
   pull_request:
     branches:
-      - master
+      - main
 jobs:
   build:
     strategy:
@@ -18,4 +18,5 @@ jobs:
         submodules: true
     - run: cmake -S . -B build
     - run: cmake --build build
-    - run: ctest --verbose --test-dir build/test
+    - run: ctest --verbose --build-config Debug
+      working-directory: build/test

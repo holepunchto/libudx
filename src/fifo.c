@@ -32,6 +32,19 @@ udx__fifo_shift (udx_fifo_t *f) {
   return *b;
 }
 
+void *
+udx__fifo_peek (udx_fifo_t *f) {
+  if (f->len == 0) return NULL;
+
+  return f->values[f->btm];
+}
+
+void
+udx__fifo_undo (udx_fifo_t *f) {
+  f->btm = (f->btm - 1) & f->mask;
+  f->len++;
+}
+
 void
 udx__fifo_grow (udx_fifo_t *f) {
   uint32_t mask = 2 * f->mask + 1;
@@ -59,7 +72,7 @@ udx__fifo_push (udx_fifo_t *f, void *data) {
 void
 udx__fifo_remove (udx_fifo_t *f, void *data, uint32_t pos_hint) {
   // check if the pos_hint is correct
-  if (pos_hint < f->max_len && f->values[pos_hint] == data) {
+  if (pos_hint >= f->btm && pos_hint < (f->btm + f->len) && f->values[pos_hint] == data) {
     f->values[pos_hint] = NULL;
     return;
   }

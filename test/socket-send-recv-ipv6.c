@@ -49,13 +49,13 @@ main () {
   e = udx_socket_init(&udx, &bsock);
   assert(e == 0);
 
-  struct sockaddr_in baddr;
-  uv_ip4_addr("127.0.0.1", 8082, &baddr);
+  struct sockaddr_in6 baddr;
+  uv_ip6_addr("::1", 8082, &baddr);
   e = udx_socket_bind(&bsock, (struct sockaddr *) &baddr, 0);
   assert(e == 0);
 
-  struct sockaddr_in aaddr;
-  uv_ip4_addr("127.0.0.1", 8081, &aaddr);
+  struct sockaddr_in6 aaddr;
+  uv_ip6_addr("::1", 8081, &aaddr);
   e = udx_socket_bind(&asock, (struct sockaddr *) &aaddr, 0);
   assert(e == 0);
 
