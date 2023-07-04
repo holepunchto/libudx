@@ -97,12 +97,6 @@ typedef struct udx_socket_send_s udx_socket_send_t;
 typedef struct udx_stream_write_s udx_stream_write_t;
 typedef struct udx_stream_send_s udx_stream_send_t;
 
-typedef struct {
-  uv_buf_t buf;
-  udx_stream_write_t *write;
-  bool is_write_end;
-} udx_write_buffer_t;
-
 typedef enum {
   UDX_LOOKUP_FAMILY_IPV4 = 1,
   UDX_LOOKUP_FAMILY_IPV6 = 2,
@@ -254,7 +248,7 @@ struct udx_stream_s {
   // congestion state
   udx_cong_t cong;
 
-  udx_fifo_t write_buffer_queue;
+  udx_fifo_t write_queue; // udx_stream_write_t
   udx_cirbuf_t outgoing;
   udx_cirbuf_t incoming;
 
@@ -296,9 +290,11 @@ struct udx_socket_send_s {
 };
 
 struct udx_stream_write_s {
-  size_t bytes;
-  udx_stream_t *handle;
+  size_t bytes; // buf.len + size of payloads in flight
+  uv_buf_t buf;
+  bool is_write_end;
 
+  udx_stream_t *handle;
   udx_stream_ack_cb on_ack;
 
   void *data;
