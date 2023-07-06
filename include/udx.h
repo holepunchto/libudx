@@ -21,7 +21,6 @@ extern "C" {
 #define UDX_MTU_MAX_PROBES       3
 #define UDX_MTU_MAX              1500
 #define UDX_MTU_STEP             32
-#define UDX_MTU_PROBE_TIMEOUT_MS 15000  // fifteen seconds
 #define UDX_MTU_RAISE_TIMEOUT_MS 600000 // ten minutes
 
 #define UDX_MTU_STATE_DISABLED        1
