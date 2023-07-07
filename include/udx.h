@@ -10,8 +10,6 @@ extern "C" {
 #include <stdint.h>
 #include <uv.h>
 
-// TODO: research the packets sizes a bit more
-#define UDX_MSS              1460 // just used for congestion to avoid too many variables...
 #define UDX_HEADER_SIZE      20
 #define UDX_IPV4_HEADER_SIZE (20 + 8 + UDX_HEADER_SIZE)
 #define UDX_IPV6_HEADER_SIZE (40 + 8 + UDX_HEADER_SIZE)

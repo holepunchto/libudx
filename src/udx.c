@@ -580,9 +580,14 @@ send_state_packet (udx_stream_t *stream) {
   return update_poll(stream->socket);
 }
 
+static inline int
+max_payload (udx_stream_t *stream) {
+  return stream->mtu - (stream->remote_addr.ss_family == AF_INET ? UDX_IPV4_HEADER_SIZE : UDX_IPV6_HEADER_SIZE);
+}
+
 static int
 send_data_packet (udx_stream_t *stream, udx_packet_t *pkt) {
-  if (stream->inflight + pkt->size > stream->cwnd * UDX_MSS) {
+  if (stream->inflight + pkt->size > stream->cwnd * max_payload(stream)) {
     return 0;
   }
 
@@ -649,14 +654,10 @@ flush_waiting_packets (udx_stream_t *stream) {
 static inline uint32_t
 get_window_bytes (udx_stream_t *stream) {
   // todo: receive window, then return lesser of cwnd, rwnd
-  if (stream->inflight >= stream->cwnd * UDX_MSS) {
+  if (stream->inflight >= stream->cwnd * max_payload(stream)) {
     return 0;
   }
-  return stream->cwnd * UDX_MSS - stream->inflight;
-}
-static inline int
-max_payload (udx_stream_t *stream) {
-  return stream->mtu - (stream->remote_addr.ss_family == AF_INET ? UDX_IPV4_HEADER_SIZE : UDX_IPV6_HEADER_SIZE);
+  return stream->cwnd * max_payload(stream) - stream->inflight;
 }
 
 static int
@@ -1201,7 +1202,7 @@ process_packet (udx_socket_t *socket, char *buf, ssize_t buf_len, struct sockadd
   buf_len -= UDX_HEADER_SIZE;
 
   size_t header_len = (data_offset > 0 && data_offset < buf_len) ? data_offset : buf_len;
-  bool is_limited = stream->inflight + 2 * UDX_MSS < stream->cwnd * UDX_MSS;
+  bool is_limited = stream->inflight + 2 * max_payload(stream) < stream->cwnd * max_payload(stream);
 
   bool sacked = (type & UDX_HEADER_SACK) ? process_sacks(stream, buf, header_len) > 0 : false;
 
