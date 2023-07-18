@@ -5,6 +5,11 @@
 #include "internal.h"
 #include "io.h"
 
+int
+udx__get_link_mtu (const struct sockaddr *remote) {
+  return -1; // todo
+}
+
 ssize_t
 udx__sendmsg (udx_socket_t *handle, const uv_buf_t bufs[], unsigned int bufs_len, struct sockaddr *addr, int addr_len) {
   DWORD bytes, flags = 0;

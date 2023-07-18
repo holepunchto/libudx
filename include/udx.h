@@ -204,6 +204,7 @@ struct udx_stream_s {
   int mtu_probe_wanted;
   int mtu_probe_count;
   int mtu_probe_size; // size of the outstanding probe
+  int mtu_max;        // min(UDX_MTU_MAX, get_link_mtu(remote_addr))
   uint32_t mtu_probe_seq[UDX_MTU_MAX_PROBES];
   uv_timer_t mtu_raise_timer; // set on entering SEARCH_COMPLETE, on expiration returns to SEARCHING
   uint16_t mtu;

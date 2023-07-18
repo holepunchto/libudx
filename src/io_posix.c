@@ -15,6 +15,34 @@
 #include "internal.h"
 #include "io.h"
 
+int
+udx__get_link_mtu (const struct sockaddr *addr) {
+  assert(addr->sa_family == AF_INET || addr->sa_family == AF_INET6);
+
+  int s = socket(addr->sa_family, SOCK_DGRAM, 0);
+  if (s == -1) {
+    return -1;
+  }
+
+  int rc = connect(s, addr, addr->sa_family == AF_INET ? sizeof(struct sockaddr_in) : sizeof(struct sockaddr_in6));
+
+  if (rc == -1) {
+    return -1;
+  }
+
+  int mtu;
+  int mtu_opt_size = sizeof mtu;
+
+  rc = getsockopt(s, IPPROTO_IP, IP_MTU, &mtu, &mtu_opt_size);
+  if (rc == -1) {
+    close(s);
+    return -1;
+  }
+
+  close(s);
+  return mtu;
+}
+
 ssize_t
 udx__sendmsg (udx_socket_t *handle, const uv_buf_t bufs[], unsigned int bufs_len, struct sockaddr *addr, int addr_len) {
   ssize_t size;

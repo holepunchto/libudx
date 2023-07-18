@@ -867,8 +867,8 @@ rack_detect_loss (udx_stream_t *stream) {
           if (stream->mtu_probe_count >= UDX_MTU_MAX_PROBES) {
             stream->mtu_state = UDX_MTU_STATE_SEARCH_COMPLETE;
             debug_printf("mtu: established, mtu=%d", stream->mtu);
-            if (stream->mtu < UDX_MTU_MAX) {
-              debug_printf(", %d<%d. scheduling mtu_raise_timer", stream->mtu, UDX_MTU_MAX);
+            if (stream->mtu < stream->mtu_max) {
+              debug_printf(", %d<%d. scheduling mtu_raise_timer", stream->mtu, stream->mtu_max);
               uv_timer_start(&stream->mtu_raise_timer, mtu_raise_timeout, UDX_MTU_RAISE_TIMEOUT_MS, 0);
             }
             debug_printf("\n");
@@ -957,14 +957,14 @@ ack_packet (udx_stream_t *stream, uint32_t seq, int sack) {
     stream->mtu = stream->mtu_probe_size;
     // uv_timer_stop(&stream->mtu_probe_timer);
 
-    if (stream->mtu_probe_size == UDX_MTU_MAX) {
+    if (stream->mtu_probe_size == stream->mtu_max) {
       stream->mtu_state = UDX_MTU_STATE_SEARCH_COMPLETE;
       uv_timer_start(&stream->mtu_raise_timer, mtu_raise_timeout, UDX_MTU_RAISE_TIMEOUT_MS, 0);
 
     } else {
       stream->mtu_probe_size += UDX_MTU_STEP;
-      if (stream->mtu_probe_size >= UDX_MTU_MAX) {
-        stream->mtu_probe_size = UDX_MTU_MAX;
+      if (stream->mtu_probe_size >= stream->mtu_max) {
+        stream->mtu_probe_size = stream->mtu_max;
       }
       // send_mtu_probe_packet(stream);
       stream->mtu_probe_wanted = 1;
@@ -1671,6 +1671,7 @@ udx_stream_init (udx_t *udx, udx_stream_t *handle, uint32_t local_id, udx_stream
   handle->mtu_state = UDX_MTU_STATE_BASE;
   handle->mtu_probe_count = 0;
   handle->mtu_probe_size = UDX_MTU_BASE; // starts with first ack, counts as a confirmation of base
+  handle->mtu_max = UDX_MTU_MAX;         // revised in connect()
 
   // uv_timer_init(udx->loop, &handle->mtu_probe_timer);
   uv_timer_init(udx->loop, &handle->mtu_raise_timer);
@@ -1884,9 +1885,8 @@ udx_stream_check_timeouts (udx_stream_t *handle) {
     }
 
     // todo: handle possibility of downward MTU change
-    // this would require re-sending in-flight packets that were too big to send. two ways:
-    // 1. use raw socket to re-send the UDP packet fragmented into smaller parts
-    // 2. change protocol to track sequence numbers as bytes
+    // this would require re-sending in-flight packets that were too big to send.
+    // resizing is easier if sequence numbers are based on bytes
 
     // handle->mtu = UDX_MTU_BASE;
     // handle->mtu_state = UDX_MTU_STATE_ERROR;
@@ -1933,6 +1933,14 @@ udx_stream_connect (udx_stream_t *handle, udx_socket_t *socket, uint32_t remote_
     addr_to_v6((struct sockaddr_in *) &(handle->remote_addr));
     handle->remote_addr_len = sizeof(struct sockaddr_in6);
   }
+
+  int mtu = udx__get_link_mtu(remote_addr);
+
+  if (mtu == -1 || mtu > UDX_MTU_MAX) {
+    mtu = UDX_MTU_MAX;
+  }
+
+  handle->mtu_max = mtu;
 
   return update_poll(handle->socket);
 }
