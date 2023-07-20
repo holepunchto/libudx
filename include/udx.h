@@ -355,7 +355,7 @@ int
 udx_socket_set_ttl (udx_socket_t *handle, int ttl);
 
 int
-udx_socket_bind (udx_socket_t *handle, const struct sockaddr *addr);
+udx_socket_bind (udx_socket_t *handle, const struct sockaddr *addr, unsigned int flags);
 
 int
 udx_socket_getsockname (udx_socket_t *handle, struct sockaddr *name, int *name_len);

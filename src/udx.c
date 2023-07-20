@@ -409,7 +409,6 @@ clear_outgoing_packets (udx_stream_t *stream) {
 
     udx_stream_write_t *w = (udx_stream_write_t *) pkt->ctx;
 
-    // assert(pkt->bufs_len == 2);
     w->bytes -= pkt->bufs[pkt->bufs_len - 1].len;
 
     if (w->bytes == 0 && w->on_ack != NULL) {
@@ -654,10 +653,12 @@ flush_waiting_packets (udx_stream_t *stream) {
 static inline uint32_t
 get_window_bytes (udx_stream_t *stream) {
   // todo: receive window, then return lesser of cwnd, rwnd
+
   if (stream->inflight >= stream->cwnd * max_payload(stream)) {
     return 0;
   }
   return stream->cwnd * max_payload(stream) - stream->inflight;
+
 }
 
 static int
@@ -688,6 +689,7 @@ fill_window (udx_stream_t *stream) {
     if (buf->len < len) len = buf->len;
     if (mss < len) len = mss;
     if (mss > len && buf->len > len && stream->pkts_inflight > 0) {
+
       break;
     }
 
@@ -710,6 +712,7 @@ fill_window (udx_stream_t *stream) {
 
     stream->pkts_inflight++;
     stream->inflight += pkt->size;
+
     if (stream->mtu_probe_wanted && mtu_probeify_packet(pkt, stream->mtu_probe_size)) {
       stream->mtu_probe_seq[stream->mtu_probe_count] = pkt->seq;
       stream->mtu_probe_count++;
@@ -1042,8 +1045,9 @@ ack_packet (udx_stream_t *stream, uint32_t seq, int sack) {
   }
 
   udx_stream_write_t *w = (udx_stream_write_t *) pkt->ctx;
-  // assert(pkt->bufs_len == 2);
+
   w->bytes -= pkt->bufs[pkt->bufs_len - 1].len;
+
 
   free(pkt);
 
@@ -1501,7 +1505,7 @@ udx_socket_set_ttl (udx_socket_t *handle, int ttl) {
 }
 
 int
-udx_socket_bind (udx_socket_t *handle, const struct sockaddr *addr) {
+udx_socket_bind (udx_socket_t *handle, const struct sockaddr *addr, unsigned int flags) {
   uv_udp_t *socket = &(handle->socket);
   uv_poll_t *poll = &(handle->io_poll);
   uv_os_fd_t fd;
@@ -1515,7 +1519,7 @@ udx_socket_bind (udx_socket_t *handle, const struct sockaddr *addr) {
   }
 
   // This might actually fail in practice, so
-  int err = uv_udp_bind(socket, addr, 0);
+  int err = uv_udp_bind(socket, addr, flags);
   if (err) return err;
 
   // Asserting all the errors here as it massively simplifies error handling
