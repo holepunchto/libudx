@@ -15,6 +15,15 @@
 #include "internal.h"
 #include "io.h"
 
+#if defined(__APPLE__)
+
+int
+udx__get_link_mtu (const struct sockaddr *addr) {
+  return -1;
+}
+
+#else
+
 int
 udx__get_link_mtu (const struct sockaddr *addr) {
   assert(addr->sa_family == AF_INET || addr->sa_family == AF_INET6);
@@ -42,6 +51,7 @@ udx__get_link_mtu (const struct sockaddr *addr) {
   close(s);
   return mtu;
 }
+#endif
 
 ssize_t
 udx__sendmsg (udx_socket_t *handle, const uv_buf_t bufs[], unsigned int bufs_len, struct sockaddr *addr, int addr_len) {
