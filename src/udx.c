@@ -500,13 +500,12 @@ mtu_probeify_packet (udx_packet_t *pkt, int wanted_size) {
     return 0;
   }
   debug_printf("mtu: probeify seq=%d size=%u wanted=%d padding=%d\n", pkt->seq, pkt->size + header_size, wanted_size, padding_size);
-  static char probe_data[256] = "probeprobeprobe......";
+  static char probe_data[256] = "";
   pkt->bufs[2] = pkt->bufs[1];
   pkt->bufs[1].len = padding_size;
   pkt->bufs[1].base = probe_data;
   pkt->header[3] = padding_size;
   pkt->bufs_len = 3;
-  // pkt->size += padding_size;
   return 1;
 }
 
@@ -658,7 +657,6 @@ get_window_bytes (udx_stream_t *stream) {
     return 0;
   }
   return stream->cwnd * max_payload(stream) - stream->inflight;
-
 }
 
 static int
@@ -716,7 +714,7 @@ fill_window (udx_stream_t *stream) {
     if (stream->mtu_probe_wanted && mtu_probeify_packet(pkt, stream->mtu_probe_size)) {
       stream->mtu_probe_seq[stream->mtu_probe_count] = pkt->seq;
       stream->mtu_probe_count++;
-      stream->mtu_probe_wanted = 0;
+      stream->mtu_probe_wanted = false;
     }
 
     assert(seq_compare(stream->seq_flushed, pkt->seq) <= 0);
@@ -789,7 +787,6 @@ close_maybe (udx_stream_t *stream, int err) {
     stream->on_close(stream, err);
   }
 
-  // uv_timer_stop(&stream->mtu_probe_timer);
   uv_timer_stop(&stream->mtu_raise_timer);
 
   ref_dec(udx);
@@ -817,14 +814,14 @@ rack_update_reo_wnd (udx_stream_t *stream) {
   return r < stream->srtt ? r : stream->srtt;
 }
 
-static inline int
+static inline bool
 seq_was_probe (udx_stream_t *s, uint32_t seq) {
   for (int i = 0; i < s->mtu_probe_count; i++) {
     if (s->mtu_probe_seq[i] == seq) {
-      return 1;
+      return true;
     }
   }
-  return 0;
+  return false;
 }
 
 static void
@@ -876,7 +873,7 @@ rack_detect_loss (udx_stream_t *stream) {
             }
             debug_printf("\n");
           } else {
-            stream->mtu_probe_wanted = 1;
+            stream->mtu_probe_wanted = true;
           }
         }
       }
@@ -958,7 +955,6 @@ ack_packet (udx_stream_t *stream, uint32_t seq, int sack) {
 
     stream->mtu_probe_count = 0;
     stream->mtu = stream->mtu_probe_size;
-    // uv_timer_stop(&stream->mtu_probe_timer);
 
     if (stream->mtu_probe_size == stream->mtu_max) {
       stream->mtu_state = UDX_MTU_STATE_SEARCH_COMPLETE;
@@ -969,16 +965,13 @@ ack_packet (udx_stream_t *stream, uint32_t seq, int sack) {
       if (stream->mtu_probe_size >= stream->mtu_max) {
         stream->mtu_probe_size = stream->mtu_max;
       }
-      // send_mtu_probe_packet(stream);
-      stream->mtu_probe_wanted = 1;
+      stream->mtu_probe_wanted = true;
     }
   }
 
   if (stream->mtu_state == UDX_MTU_STATE_BASE || stream->mtu_state == UDX_MTU_STATE_ERROR) {
-    // if a packet is acked we can start probing upwards
     stream->mtu_state = UDX_MTU_STATE_SEARCH;
-    // send_mtu_probe_packet(stream); // we can send first probe immediately
-    stream->mtu_probe_wanted = 1;
+    stream->mtu_probe_wanted = true;
   }
 
   if (sack) {
@@ -1047,7 +1040,6 @@ ack_packet (udx_stream_t *stream, uint32_t seq, int sack) {
   udx_stream_write_t *w = (udx_stream_write_t *) pkt->ctx;
 
   w->bytes -= pkt->bufs[pkt->bufs_len - 1].len;
-
 
   free(pkt);
 
@@ -1671,13 +1663,11 @@ udx_stream_init (udx_t *udx, udx_stream_t *handle, uint32_t local_id, udx_stream
   handle->retransmitting = 0;
 
   handle->mtu = UDX_MTU_BASE;
-  // handle->mtu_state = UDX_MTU_STATE_DISABLED;
   handle->mtu_state = UDX_MTU_STATE_BASE;
   handle->mtu_probe_count = 0;
   handle->mtu_probe_size = UDX_MTU_BASE; // starts with first ack, counts as a confirmation of base
   handle->mtu_max = UDX_MTU_MAX;         // revised in connect()
 
-  // uv_timer_init(udx->loop, &handle->mtu_probe_timer);
   uv_timer_init(udx->loop, &handle->mtu_raise_timer);
 
   handle->seq = 0;
@@ -1745,19 +1735,11 @@ udx_stream_init (udx_t *udx, udx_stream_t *handle, uint32_t local_id, udx_stream
   return 0;
 }
 
-/*
 int
 udx_stream_get_mtu (udx_stream_t *handle, uint16_t *mtu) {
   *mtu = handle->mtu;
   return 0;
 }
-
-int
-udx_stream_set_mtu (udx_stream_t *handle, uint16_t mtu) {
-  handle->mtu = mtu;
-  return 0;
-}
-*/
 
 int
 udx_stream_get_seq (udx_stream_t *handle, uint32_t *seq) {

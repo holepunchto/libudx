@@ -21,11 +21,10 @@ extern "C" {
 #define UDX_MTU_STEP             32
 #define UDX_MTU_RAISE_TIMEOUT_MS 600000 // ten minutes
 
-#define UDX_MTU_STATE_DISABLED        1
-#define UDX_MTU_STATE_BASE            2
-#define UDX_MTU_STATE_SEARCH          3
-#define UDX_MTU_STATE_ERROR           4
-#define UDX_MTU_STATE_SEARCH_COMPLETE 5
+#define UDX_MTU_STATE_BASE            1
+#define UDX_MTU_STATE_SEARCH          2
+#define UDX_MTU_STATE_ERROR           3
+#define UDX_MTU_STATE_SEARCH_COMPLETE 4
 
 #define UDX_CLOCK_GRANULARITY_MS 20
 
@@ -201,7 +200,7 @@ struct udx_stream_s {
 
   // mtu. RFC8899 5.1.1 and 5.1.3
   int mtu_state; // MTU_STATE_*
-  int mtu_probe_wanted;
+  bool mtu_probe_wanted;
   int mtu_probe_count;
   int mtu_probe_size; // size of the outstanding probe
   int mtu_max;        // min(UDX_MTU_MAX, get_link_mtu(remote_addr))
@@ -382,14 +381,8 @@ udx_check_timeouts (udx_t *handle);
 int
 udx_stream_init (udx_t *udx, udx_stream_t *handle, uint32_t local_id, udx_stream_close_cb close_cb);
 
-// todo: remove these?
-/*
 int
 udx_stream_get_mtu (udx_stream_t *handle, uint16_t *mtu);
-
-int
-udx_stream_set_mtu (udx_stream_t *handle, uint16_t mtu);
-*/
 
 int
 udx_stream_get_seq (udx_stream_t *handle, uint32_t *seq);

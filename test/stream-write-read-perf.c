@@ -35,6 +35,7 @@ void
 on_ack (udx_stream_write_t *r, int status, int unordered) {
   printf("write acked, status=%d %s\n", status, status == UV_ECANCELED ? "(UV_ECANCELED)" : "");
   udx_stream_destroy(r->handle);
+  udx_stream_destroy(&astream);
 }
 
 void
@@ -43,9 +44,7 @@ on_read (udx_stream_t *handle, ssize_t read_len, const uv_buf_t *buf) {
   stats.last_read_ms = uv_hrtime() / 1000000;
 
   if (stats.bytes_read == options.size_bytes) {
-    // udx_stream_destroy(handle);
     printf("read all bytes\n");
-    // __builtin_trap();
   }
 }
 
@@ -114,8 +113,7 @@ main () {
 
   printf("generating data ...\n");
 
-  // options.size_bytes = 2 * 1024 * 1024 * 1024L;
-  options.size_bytes = 2 * 1024 * 1024L;
+  options.size_bytes = 2 * 1024 * 1024 * 1024L;
 
   char *data = calloc(options.size_bytes, 1);
 
