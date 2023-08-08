@@ -41,8 +41,11 @@ udx__get_link_mtu (const struct sockaddr *addr) {
 
   int mtu;
   int mtu_opt_size = sizeof mtu;
-
-  rc = getsockopt(s, IPPROTO_IP, IP_MTU, &mtu, &mtu_opt_size);
+  if (addr->sa_family == AF_INET) {
+    rc = getsockopt(s, IPPROTO_IP, IP_MTU, &mtu, &mtu_opt_size);
+  } else {
+    rc = getsockopt(s, IPPROTO_IPV6, IPV6_MTU, &mtu, &mtu_opt_size);
+  }
   if (rc == -1) {
     close(s);
     return -1;
