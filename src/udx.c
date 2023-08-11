@@ -409,7 +409,7 @@ clear_outgoing_packets (udx_stream_t *stream) {
 
     udx_stream_write_t *w = (udx_stream_write_t *) pkt->ctx;
 
-    w->bytes -= pkt->bufs[1].len;
+    w->bytes -= pkt->bufs[pkt->bufs_len - 1].len;
 
     if (w->bytes == 0 && w->on_ack != NULL) {
       w->on_ack(w, UV_ECANCELED, 0);
@@ -488,6 +488,34 @@ init_stream_packet (udx_packet_t *pkt, int type, udx_stream_t *stream, const uv_
   pkt->bufs[1] = *buf;
 }
 
+// returns 1 on success, zero if packet can't be promoted to a probe packet
+static int
+mtu_probeify_packet (udx_packet_t *pkt, int wanted_size) {
+  assert(pkt->bufs_len == 2);
+  assert(pkt->header[3] == 0);
+  assert(wanted_size > pkt->size);
+  int header_size = (pkt->dest.ss_family == AF_INET ? UDX_IPV4_HEADER_SIZE : UDX_IPV6_HEADER_SIZE) - 20;
+  int padding_size = wanted_size - (pkt->size + (pkt->dest.ss_family == AF_INET ? UDX_IPV4_HEADER_SIZE : UDX_IPV6_HEADER_SIZE) - 20);
+  if (padding_size > 255) {
+    return 0;
+  }
+  debug_printf("mtu: probeify seq=%d size=%u wanted=%d padding=%d\n", pkt->seq, pkt->size + header_size, wanted_size, padding_size);
+  static char probe_data[256] = "";
+  pkt->bufs[2] = pkt->bufs[1];
+  pkt->bufs[1].len = padding_size;
+  pkt->bufs[1].base = probe_data;
+  pkt->header[3] = padding_size;
+  pkt->bufs_len = 3;
+  return 1;
+}
+
+static void
+mtu_unprobeify_packet (udx_packet_t *pkt) {
+  assert(pkt->bufs_len == 3);
+  pkt->bufs[1] = pkt->bufs[2];
+  pkt->bufs_len = 2;
+}
+
 static int
 send_state_packet (udx_stream_t *stream) {
   if ((stream->status & UDX_STREAM_CONNECTED) == 0) return 0;
@@ -550,9 +578,14 @@ send_state_packet (udx_stream_t *stream) {
   return update_poll(stream->socket);
 }
 
+static inline int
+max_payload (udx_stream_t *stream) {
+  return stream->mtu - (stream->remote_addr.ss_family == AF_INET ? UDX_IPV4_HEADER_SIZE : UDX_IPV6_HEADER_SIZE);
+}
+
 static int
 send_data_packet (udx_stream_t *stream, udx_packet_t *pkt) {
-  if (stream->inflight + pkt->size > stream->cwnd * UDX_MSS) {
+  if (stream->inflight + pkt->size > stream->cwnd * max_payload(stream)) {
     return 0;
   }
 
@@ -576,6 +609,17 @@ send_data_packet (udx_stream_t *stream, udx_packet_t *pkt) {
 
   int err = update_poll(stream->socket);
   return err < 0 ? err : 1;
+}
+
+static void
+mtu_raise_timeout (uv_timer_t *timer) {
+  udx_stream_t *stream = (udx_stream_t *) timer->data;
+  assert(stream->mtu_state == UDX_MTU_STATE_SEARCH_COMPLETE);
+
+  stream->mtu_state = UDX_MTU_STATE_SEARCH;
+  stream->mtu_probe_count = 0;
+
+  debug_printf("mtu: raise_timeout expired, restarting search with mtu=%d\n", stream->mtu_probe_size);
 }
 
 static int
@@ -608,10 +652,11 @@ flush_waiting_packets (udx_stream_t *stream) {
 static inline uint32_t
 get_window_bytes (udx_stream_t *stream) {
   // todo: receive window, then return lesser of cwnd, rwnd
-  if (stream->inflight >= stream->cwnd * UDX_MSS) {
+
+  if (stream->inflight >= stream->cwnd * max_payload(stream)) {
     return 0;
   }
-  return stream->cwnd * UDX_MSS - stream->inflight;
+  return stream->cwnd * max_payload(stream) - stream->inflight;
 }
 
 static int
@@ -635,11 +680,14 @@ fill_window (udx_stream_t *stream) {
 
     int header_flag = w->is_write_end ? UDX_HEADER_END : UDX_HEADER_DATA;
 
-    uint32_t len = get_window_bytes(stream);
-    if (buf->len < len) len = buf->len;
-    if (stream->mtu < len) len = stream->mtu;
+    int mss = max_payload(stream);
 
-    if (stream->mtu > len && buf->len > len && stream->pkts_inflight > 0) {
+    uint32_t len = get_window_bytes(stream);
+
+    if (buf->len < len) len = buf->len;
+    if (mss < len) len = mss;
+    if (mss > len && buf->len > len && stream->pkts_inflight > 0) {
+
       break;
     }
 
@@ -662,6 +710,13 @@ fill_window (udx_stream_t *stream) {
 
     stream->pkts_inflight++;
     stream->inflight += pkt->size;
+
+    if (stream->mtu_probe_wanted && mtu_probeify_packet(pkt, stream->mtu_probe_size)) {
+      stream->mtu_probe_seq[stream->mtu_probe_count] = pkt->seq;
+      stream->mtu_probe_count++;
+      stream->mtu_probe_wanted = false;
+    }
+
     assert(seq_compare(stream->seq_flushed, pkt->seq) <= 0);
     stream->seq_flushed = pkt->seq + 1;
 
@@ -732,6 +787,8 @@ close_maybe (udx_stream_t *stream, int err) {
     stream->on_close(stream, err);
   }
 
+  uv_timer_stop(&stream->mtu_raise_timer);
+
   ref_dec(udx);
 
   return 1;
@@ -757,6 +814,16 @@ rack_update_reo_wnd (udx_stream_t *stream) {
   return r < stream->srtt ? r : stream->srtt;
 }
 
+static inline bool
+seq_was_probe (udx_stream_t *s, uint32_t seq) {
+  for (int i = 0; i < s->mtu_probe_count; i++) {
+    if (s->mtu_probe_seq[i] == seq) {
+      return true;
+    }
+  }
+  return false;
+}
+
 static void
 rack_detect_loss (udx_stream_t *stream) {
   uint64_t timeout = 0;
@@ -764,6 +831,7 @@ rack_detect_loss (udx_stream_t *stream) {
   uint64_t now = 0;
 
   int resending = 0;
+  int mtu_probes_lost = 0;
 
   for (uint32_t seq = stream->remote_acked; seq != stream->seq_flushed; seq++) {
     udx_packet_t *pkt = (udx_packet_t *) udx__cirbuf_get(&(stream->outgoing), seq);
@@ -789,20 +857,45 @@ rack_detect_loss (udx_stream_t *stream) {
       stream->pkts_inflight--;
       stream->retransmits_waiting++;
 
+      debug_printf("rack to on seq=%d\n", seq);
+
+      if (seq_was_probe(stream, seq)) {
+        mtu_probes_lost++;
+        if (seq == stream->mtu_probe_seq[stream->mtu_probe_count - 1] && stream->mtu_state == UDX_MTU_STATE_SEARCH) {
+          mtu_unprobeify_packet(pkt);
+          debug_printf("mtu: rack to on last probe, seq=%d count=%d/%d\n", seq, stream->mtu_probe_count, UDX_MTU_MAX_PROBES);
+          if (stream->mtu_probe_count >= UDX_MTU_MAX_PROBES) {
+            stream->mtu_state = UDX_MTU_STATE_SEARCH_COMPLETE;
+            debug_printf("mtu: established, mtu=%d", stream->mtu);
+            if (stream->mtu < stream->mtu_max) {
+              debug_printf(", %d<%d. scheduling mtu_raise_timer", stream->mtu, stream->mtu_max);
+              uv_timer_start(&stream->mtu_raise_timer, mtu_raise_timeout, UDX_MTU_RAISE_TIMEOUT_MS, 0);
+            }
+            debug_printf("\n");
+          } else {
+            stream->mtu_probe_wanted = true;
+          }
+        }
+      }
+
+      // todo: state check unnecessary?
       resending++;
     } else if ((uint64_t) remaining > timeout) {
       timeout = remaining;
     }
   }
 
-  if (resending) {
-    if (stream->recovery == 0) {
+  if (resending > mtu_probes_lost) {
+    debug_printf("resending=%d mtu_probe_lost=%d\n", resending, mtu_probes_lost);
+    if (stream->recovery == 0 /* && resending > mtu_probe_lost */) {
+      // debug_print_outgoing(stream);
       // easy win is to clear packets that are in the queue - they def wont help if sent.
       unqueue_first_transmits(stream);
 
-      // recover until the full window is packa
+      // recover until the full window is acked
       stream->recovery = seq_diff(stream->seq_flushed, stream->remote_acked);
 
+      // only reduce congestion window if more than just the mtu probe was lost
       reduce_cwnd(stream, false);
 
       debug_printf("fast recovery: started, recovery=%u inflight=%zu cwnd=%u acked=%u, seq=%u srtt=%u\n", stream->recovery, stream->inflight, stream->cwnd, stream->remote_acked, stream->seq_flushed, stream->srtt);
@@ -855,6 +948,30 @@ ack_packet (udx_stream_t *stream, uint32_t seq, int sack) {
   if (pkt == NULL) {
     if (!sack) stream->sacks--; // packet not here, was sacked before
     return 0;
+  }
+
+  if (stream->mtu_state == UDX_MTU_STATE_SEARCH && stream->mtu_probe_count > 0 && seq == stream->mtu_probe_seq[stream->mtu_probe_count - 1]) {
+    debug_printf("mtu: probe acked seq=%d mtu=%d->%d\n", seq, stream->mtu, stream->mtu_probe_size);
+
+    stream->mtu_probe_count = 0;
+    stream->mtu = stream->mtu_probe_size;
+
+    if (stream->mtu_probe_size == stream->mtu_max) {
+      stream->mtu_state = UDX_MTU_STATE_SEARCH_COMPLETE;
+      uv_timer_start(&stream->mtu_raise_timer, mtu_raise_timeout, UDX_MTU_RAISE_TIMEOUT_MS, 0);
+
+    } else {
+      stream->mtu_probe_size += UDX_MTU_STEP;
+      if (stream->mtu_probe_size >= stream->mtu_max) {
+        stream->mtu_probe_size = stream->mtu_max;
+      }
+      stream->mtu_probe_wanted = true;
+    }
+  }
+
+  if (stream->mtu_state == UDX_MTU_STATE_BASE || stream->mtu_state == UDX_MTU_STATE_ERROR) {
+    stream->mtu_state = UDX_MTU_STATE_SEARCH;
+    stream->mtu_probe_wanted = true;
   }
 
   if (sack) {
@@ -921,7 +1038,8 @@ ack_packet (udx_stream_t *stream, uint32_t seq, int sack) {
   }
 
   udx_stream_write_t *w = (udx_stream_write_t *) pkt->ctx;
-  w->bytes -= pkt->bufs[1].len;
+
+  w->bytes -= pkt->bufs[pkt->bufs_len - 1].len;
 
   free(pkt);
 
@@ -1080,7 +1198,7 @@ process_packet (udx_socket_t *socket, char *buf, ssize_t buf_len, struct sockadd
   buf_len -= UDX_HEADER_SIZE;
 
   size_t header_len = (data_offset > 0 && data_offset < buf_len) ? data_offset : buf_len;
-  bool is_limited = stream->inflight + 2 * UDX_MSS < stream->cwnd * UDX_MSS;
+  bool is_limited = stream->inflight + 2 * max_payload(stream) < stream->cwnd * max_payload(stream);
 
   bool sacked = (type & UDX_HEADER_SACK) ? process_sacks(stream, buf, header_len) > 0 : false;
 
@@ -1544,7 +1662,13 @@ udx_stream_init (udx_t *udx, udx_stream_t *handle, uint32_t local_id, udx_stream
   handle->reordering_seen = false;
   handle->retransmitting = 0;
 
-  handle->mtu = UDX_DEFAULT_MTU;
+  handle->mtu = UDX_MTU_BASE;
+  handle->mtu_state = UDX_MTU_STATE_BASE;
+  handle->mtu_probe_count = 0;
+  handle->mtu_probe_size = UDX_MTU_BASE; // starts with first ack, counts as a confirmation of base
+  handle->mtu_max = UDX_MTU_MAX;         // revised in connect()
+
+  uv_timer_init(udx->loop, &handle->mtu_raise_timer);
 
   handle->seq = 0;
   handle->ack = 0;
@@ -1614,12 +1738,6 @@ udx_stream_init (udx_t *udx, udx_stream_t *handle, uint32_t local_id, udx_stream
 int
 udx_stream_get_mtu (udx_stream_t *handle, uint16_t *mtu) {
   *mtu = handle->mtu;
-  return 0;
-}
-
-int
-udx_stream_set_mtu (udx_stream_t *handle, uint16_t mtu) {
-  handle->mtu = mtu;
   return 0;
 }
 
@@ -1752,6 +1870,15 @@ udx_stream_check_timeouts (udx_stream_t *handle) {
       handle->retransmits_waiting++;
     }
 
+    // todo: handle possibility of downward MTU change
+    // this would require re-sending in-flight packets that were too big to send.
+    // resizing is easier if sequence numbers are based on bytes
+
+    // handle->mtu = UDX_MTU_BASE;
+    // handle->mtu_state = UDX_MTU_STATE_ERROR;
+    // handle->mtu_probe_count = 0;
+    // handle->mtu_probe_size = UDX_MTU_BASE;
+
     debug_printf("timeout! pkt loss detected - inflight=%zu ssthresh=%u cwnd=%u acked=%u seq=%u rtt=%u\n", handle->inflight, handle->ssthresh, handle->cwnd, handle->remote_acked, handle->seq_flushed, handle->srtt);
   }
 
@@ -1792,6 +1919,14 @@ udx_stream_connect (udx_stream_t *handle, udx_socket_t *socket, uint32_t remote_
     addr_to_v6((struct sockaddr_in *) &(handle->remote_addr));
     handle->remote_addr_len = sizeof(struct sockaddr_in6);
   }
+
+  int mtu = udx__get_link_mtu(remote_addr);
+
+  if (mtu == -1 || mtu > UDX_MTU_MAX) {
+    mtu = UDX_MTU_MAX;
+  }
+
+  handle->mtu_max = mtu;
 
   return update_poll(handle->socket);
 }
