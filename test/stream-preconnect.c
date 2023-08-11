@@ -59,11 +59,11 @@ main () {
   assert(e == 0);
 
   uv_ip4_addr("127.0.0.1", 8081, &aaddr);
-  e = udx_socket_bind(&asock, (struct sockaddr *) &aaddr);
+  e = udx_socket_bind(&asock, (struct sockaddr *) &aaddr, 0);
   assert(e == 0);
 
   uv_ip4_addr("127.0.0.1", 8082, &baddr);
-  e = udx_socket_bind(&bsock, (struct sockaddr *) &baddr);
+  e = udx_socket_bind(&bsock, (struct sockaddr *) &baddr, 0);
   assert(e == 0);
 
   e = udx_stream_init(&udx, &astream, 1, NULL);

@@ -409,13 +409,26 @@ clear_outgoing_packets (udx_stream_t *stream) {
 
     udx_stream_write_t *w = (udx_stream_write_t *) pkt->ctx;
 
-    if (--(w->packets) == 0) {
-      if (w->on_ack != NULL) {
-        w->on_ack(w, UV_ECANCELED, 0);
-      }
+    w->bytes -= pkt->bufs[pkt->bufs_len - 1].len;
+
+    if (w->bytes == 0 && w->on_ack != NULL) {
+      w->on_ack(w, UV_ECANCELED, 0);
     }
 
     free(pkt);
+  }
+
+  while (stream->write_queue.len > 0) {
+    debug_printf("write_queue_len=%d, clearing write\n", stream->write_queue.len);
+    udx_stream_write_t *w = udx__fifo_shift(&stream->write_queue);
+    assert(w != NULL);
+
+    w->bytes -= w->buf.len;
+    assert(w->bytes == 0);
+
+    if (w->on_ack) {
+      w->on_ack(w, UV_ECANCELED, 0);
+    }
   }
 
   // also clear pending unordered packets, and the destroy packet if waiting
@@ -473,6 +486,34 @@ init_stream_packet (udx_packet_t *pkt, int type, udx_stream_t *stream, const uv_
 
   pkt->bufs[0] = uv_buf_init((char *) &(pkt->header), UDX_HEADER_SIZE);
   pkt->bufs[1] = *buf;
+}
+
+// returns 1 on success, zero if packet can't be promoted to a probe packet
+static int
+mtu_probeify_packet (udx_packet_t *pkt, int wanted_size) {
+  assert(pkt->bufs_len == 2);
+  assert(pkt->header[3] == 0);
+  assert(wanted_size > pkt->size);
+  int header_size = (pkt->dest.ss_family == AF_INET ? UDX_IPV4_HEADER_SIZE : UDX_IPV6_HEADER_SIZE) - 20;
+  int padding_size = wanted_size - (pkt->size + (pkt->dest.ss_family == AF_INET ? UDX_IPV4_HEADER_SIZE : UDX_IPV6_HEADER_SIZE) - 20);
+  if (padding_size > 255) {
+    return 0;
+  }
+  debug_printf("mtu: probeify seq=%d size=%u wanted=%d padding=%d\n", pkt->seq, pkt->size + header_size, wanted_size, padding_size);
+  static char probe_data[256] = "";
+  pkt->bufs[2] = pkt->bufs[1];
+  pkt->bufs[1].len = padding_size;
+  pkt->bufs[1].base = probe_data;
+  pkt->header[3] = padding_size;
+  pkt->bufs_len = 3;
+  return 1;
+}
+
+static void
+mtu_unprobeify_packet (udx_packet_t *pkt) {
+  assert(pkt->bufs_len == 3);
+  pkt->bufs[1] = pkt->bufs[2];
+  pkt->bufs_len = 2;
 }
 
 static int
@@ -537,9 +578,14 @@ send_state_packet (udx_stream_t *stream) {
   return update_poll(stream->socket);
 }
 
+static inline int
+max_payload (udx_stream_t *stream) {
+  return stream->mtu - (stream->remote_addr.ss_family == AF_INET ? UDX_IPV4_HEADER_SIZE : UDX_IPV6_HEADER_SIZE);
+}
+
 static int
 send_data_packet (udx_stream_t *stream, udx_packet_t *pkt) {
-  if (stream->inflight + pkt->size > stream->cwnd * UDX_MSS) {
+  if (stream->inflight + pkt->size > stream->cwnd * max_payload(stream)) {
     return 0;
   }
 
@@ -565,6 +611,17 @@ send_data_packet (udx_stream_t *stream, udx_packet_t *pkt) {
   return err < 0 ? err : 1;
 }
 
+static void
+mtu_raise_timeout (uv_timer_t *timer) {
+  udx_stream_t *stream = (udx_stream_t *) timer->data;
+  assert(stream->mtu_state == UDX_MTU_STATE_SEARCH_COMPLETE);
+
+  stream->mtu_state = UDX_MTU_STATE_SEARCH;
+  stream->mtu_probe_count = 0;
+
+  debug_printf("mtu: raise_timeout expired, restarting search with mtu=%d\n", stream->mtu_probe_size);
+}
+
 static int
 flush_waiting_packets (udx_stream_t *stream) {
   const uint32_t was_waiting = stream->pkts_waiting;
@@ -584,10 +641,99 @@ flush_waiting_packets (udx_stream_t *stream) {
   // TODO: retransmits are counted in pkts_waiting, but we (prob) should not count them
   // towards to drain loop - investigate that.
   if (was_waiting > 0 && stream->pkts_waiting == 0 && stream->on_drain != NULL) {
+    // todo: move this callback into the fill window call?
     stream->on_drain(stream);
   }
 
   if (sent < 0) return sent;
+  return 0;
+}
+
+static inline uint32_t
+get_window_bytes (udx_stream_t *stream) {
+  // todo: receive window, then return lesser of cwnd, rwnd
+
+  if (stream->inflight >= stream->cwnd * max_payload(stream)) {
+    return 0;
+  }
+  return stream->cwnd * max_payload(stream) - stream->inflight;
+}
+
+static int
+fill_window (udx_stream_t *stream) {
+
+  if (stream->pkts_waiting > 0) {
+    int rc = flush_waiting_packets(stream);
+    if (rc < 0) {
+      return rc;
+    }
+    // if packets are still waiting, no need to drain buffers
+    if (stream->pkts_waiting > 0) {
+      return 0;
+    }
+  }
+
+  while (get_window_bytes(stream) > 0 && stream->write_queue.len > 0) {
+    udx_stream_write_t *w = udx__fifo_peek(&stream->write_queue);
+    assert(w != NULL);
+    uv_buf_t *buf = &w->buf;
+
+    int header_flag = w->is_write_end ? UDX_HEADER_END : UDX_HEADER_DATA;
+
+    int mss = max_payload(stream);
+
+    uint32_t len = get_window_bytes(stream);
+
+    if (buf->len < len) len = buf->len;
+    if (mss < len) len = mss;
+    if (mss > len && buf->len > len && stream->pkts_inflight > 0) {
+
+      break;
+    }
+
+    udx_packet_t *pkt = malloc(sizeof(udx_packet_t));
+
+    uv_buf_t buf_partial = uv_buf_init(buf->base, len);
+    buf->base += len;
+    buf->len -= len;
+
+    init_stream_packet(pkt, header_flag, stream, &buf_partial);
+
+    pkt->status = UDX_PACKET_SENDING;
+    pkt->type = UDX_PACKET_STREAM_WRITE;
+    pkt->ttl = 0;
+    pkt->ctx = w;
+
+    stream->seq++;
+
+    udx__cirbuf_set(&stream->outgoing, (udx_cirbuf_val_t *) pkt);
+
+    stream->pkts_inflight++;
+    stream->inflight += pkt->size;
+
+    if (stream->mtu_probe_wanted && mtu_probeify_packet(pkt, stream->mtu_probe_size)) {
+      stream->mtu_probe_seq[stream->mtu_probe_count] = pkt->seq;
+      stream->mtu_probe_count++;
+      stream->mtu_probe_wanted = false;
+    }
+
+    assert(seq_compare(stream->seq_flushed, pkt->seq) <= 0);
+    stream->seq_flushed = pkt->seq + 1;
+
+    pkt->fifo_gc = udx__fifo_push(&stream->socket->send_queue, pkt);
+
+    if (buf->len == 0) {
+      udx__fifo_shift(&stream->write_queue);
+    }
+
+    int rc = update_poll(stream->socket);
+    // maybe just assert? can only return EEXIST in a narrow circumstance?
+
+    if (rc < 0) {
+      return rc;
+    }
+  }
+
   return 0;
 }
 
@@ -631,14 +777,17 @@ close_maybe (udx_stream_t *stream, int err) {
     if (stream) stream->relay_to = NULL;
   }
 
-  udx__cirbuf_destroy(&(stream->relaying_streams));
-  udx__cirbuf_destroy(&(stream->incoming));
-  udx__cirbuf_destroy(&(stream->outgoing));
-  udx__fifo_destroy(&(stream->unordered));
+  udx__cirbuf_destroy(&stream->relaying_streams);
+  udx__cirbuf_destroy(&stream->incoming);
+  udx__cirbuf_destroy(&stream->outgoing);
+  udx__fifo_destroy(&stream->unordered);
+  udx__fifo_destroy(&stream->write_queue);
 
   if (stream->on_close != NULL) {
     stream->on_close(stream, err);
   }
+
+  uv_timer_stop(&stream->mtu_raise_timer);
 
   ref_dec(udx);
 
@@ -665,6 +814,16 @@ rack_update_reo_wnd (udx_stream_t *stream) {
   return r < stream->srtt ? r : stream->srtt;
 }
 
+static inline bool
+seq_was_probe (udx_stream_t *s, uint32_t seq) {
+  for (int i = 0; i < s->mtu_probe_count; i++) {
+    if (s->mtu_probe_seq[i] == seq) {
+      return true;
+    }
+  }
+  return false;
+}
+
 static void
 rack_detect_loss (udx_stream_t *stream) {
   uint64_t timeout = 0;
@@ -672,6 +831,7 @@ rack_detect_loss (udx_stream_t *stream) {
   uint64_t now = 0;
 
   int resending = 0;
+  int mtu_probes_lost = 0;
 
   for (uint32_t seq = stream->remote_acked; seq != stream->seq_flushed; seq++) {
     udx_packet_t *pkt = (udx_packet_t *) udx__cirbuf_get(&(stream->outgoing), seq);
@@ -697,26 +857,51 @@ rack_detect_loss (udx_stream_t *stream) {
       stream->pkts_inflight--;
       stream->retransmits_waiting++;
 
+      debug_printf("rack to on seq=%d\n", seq);
+
+      if (seq_was_probe(stream, seq)) {
+        mtu_probes_lost++;
+        if (seq == stream->mtu_probe_seq[stream->mtu_probe_count - 1] && stream->mtu_state == UDX_MTU_STATE_SEARCH) {
+          mtu_unprobeify_packet(pkt);
+          debug_printf("mtu: rack to on last probe, seq=%d count=%d/%d\n", seq, stream->mtu_probe_count, UDX_MTU_MAX_PROBES);
+          if (stream->mtu_probe_count >= UDX_MTU_MAX_PROBES) {
+            stream->mtu_state = UDX_MTU_STATE_SEARCH_COMPLETE;
+            debug_printf("mtu: established, mtu=%d", stream->mtu);
+            if (stream->mtu < stream->mtu_max) {
+              debug_printf(", %d<%d. scheduling mtu_raise_timer", stream->mtu, stream->mtu_max);
+              uv_timer_start(&stream->mtu_raise_timer, mtu_raise_timeout, UDX_MTU_RAISE_TIMEOUT_MS, 0);
+            }
+            debug_printf("\n");
+          } else {
+            stream->mtu_probe_wanted = true;
+          }
+        }
+      }
+
+      // todo: state check unnecessary?
       resending++;
     } else if ((uint64_t) remaining > timeout) {
       timeout = remaining;
     }
   }
 
-  if (resending) {
-    if (stream->recovery == 0) {
+  if (resending > mtu_probes_lost) {
+    debug_printf("resending=%d mtu_probe_lost=%d\n", resending, mtu_probes_lost);
+    if (stream->recovery == 0 /* && resending > mtu_probe_lost */) {
+      // debug_print_outgoing(stream);
       // easy win is to clear packets that are in the queue - they def wont help if sent.
       unqueue_first_transmits(stream);
 
-      // recover until the full window is packa
+      // recover until the full window is acked
       stream->recovery = seq_diff(stream->seq_flushed, stream->remote_acked);
 
+      // only reduce congestion window if more than just the mtu probe was lost
       reduce_cwnd(stream, false);
 
       debug_printf("fast recovery: started, recovery=%u inflight=%zu cwnd=%u acked=%u, seq=%u srtt=%u\n", stream->recovery, stream->inflight, stream->cwnd, stream->remote_acked, stream->seq_flushed, stream->srtt);
     }
 
-    flush_waiting_packets(stream);
+    fill_window(stream);
   }
 
   stream->rack_timeout = timeout;
@@ -763,6 +948,30 @@ ack_packet (udx_stream_t *stream, uint32_t seq, int sack) {
   if (pkt == NULL) {
     if (!sack) stream->sacks--; // packet not here, was sacked before
     return 0;
+  }
+
+  if (stream->mtu_state == UDX_MTU_STATE_SEARCH && stream->mtu_probe_count > 0 && seq == stream->mtu_probe_seq[stream->mtu_probe_count - 1]) {
+    debug_printf("mtu: probe acked seq=%d mtu=%d->%d\n", seq, stream->mtu, stream->mtu_probe_size);
+
+    stream->mtu_probe_count = 0;
+    stream->mtu = stream->mtu_probe_size;
+
+    if (stream->mtu_probe_size == stream->mtu_max) {
+      stream->mtu_state = UDX_MTU_STATE_SEARCH_COMPLETE;
+      uv_timer_start(&stream->mtu_raise_timer, mtu_raise_timeout, UDX_MTU_RAISE_TIMEOUT_MS, 0);
+
+    } else {
+      stream->mtu_probe_size += UDX_MTU_STEP;
+      if (stream->mtu_probe_size >= stream->mtu_max) {
+        stream->mtu_probe_size = stream->mtu_max;
+      }
+      stream->mtu_probe_wanted = true;
+    }
+  }
+
+  if (stream->mtu_state == UDX_MTU_STATE_BASE || stream->mtu_state == UDX_MTU_STATE_ERROR) {
+    stream->mtu_state = UDX_MTU_STATE_SEARCH;
+    stream->mtu_probe_wanted = true;
   }
 
   if (sack) {
@@ -830,9 +1039,11 @@ ack_packet (udx_stream_t *stream, uint32_t seq, int sack) {
 
   udx_stream_write_t *w = (udx_stream_write_t *) pkt->ctx;
 
+  w->bytes -= pkt->bufs[pkt->bufs_len - 1].len;
+
   free(pkt);
 
-  if (--(w->packets) != 0) return 1;
+  if (w->bytes > 0) return 1;
 
   if (w->on_ack != NULL) {
     w->on_ack(w, 0, sack);
@@ -843,7 +1054,7 @@ ack_packet (udx_stream_t *stream, uint32_t seq, int sack) {
   // TODO: the end condition needs work here to be more "stateless"
   // ie if the remote has acked all our writes, then instead of waiting for retransmits, we should
   // clear those and mark as local ended NOW.
-  if ((stream->status & UDX_STREAM_SHOULD_END) == UDX_STREAM_END && stream->pkts_waiting == 0 && stream->pkts_inflight == 0) {
+  if ((stream->status & UDX_STREAM_SHOULD_END) == UDX_STREAM_END && stream->pkts_waiting == 0 && stream->pkts_inflight == 0 && stream->write_queue.len == 0) {
     stream->status |= UDX_STREAM_ENDED;
     return 2;
   }
@@ -987,7 +1198,7 @@ process_packet (udx_socket_t *socket, char *buf, ssize_t buf_len, struct sockadd
   buf_len -= UDX_HEADER_SIZE;
 
   size_t header_len = (data_offset > 0 && data_offset < buf_len) ? data_offset : buf_len;
-  bool is_limited = stream->inflight + 2 * UDX_MSS < stream->cwnd * UDX_MSS;
+  bool is_limited = stream->inflight + 2 * max_payload(stream) < stream->cwnd * max_payload(stream);
 
   bool sacked = (type & UDX_HEADER_SACK) ? process_sacks(stream, buf, header_len) > 0 : false;
 
@@ -1286,7 +1497,7 @@ udx_socket_set_ttl (udx_socket_t *handle, int ttl) {
 }
 
 int
-udx_socket_bind (udx_socket_t *handle, const struct sockaddr *addr) {
+udx_socket_bind (udx_socket_t *handle, const struct sockaddr *addr, unsigned int flags) {
   uv_udp_t *socket = &(handle->socket);
   uv_poll_t *poll = &(handle->io_poll);
   uv_os_fd_t fd;
@@ -1300,7 +1511,7 @@ udx_socket_bind (udx_socket_t *handle, const struct sockaddr *addr) {
   }
 
   // This might actually fail in practice, so
-  int err = uv_udp_bind(socket, addr, 0);
+  int err = uv_udp_bind(socket, addr, flags);
   if (err) return err;
 
   // Asserting all the errors here as it massively simplifies error handling
@@ -1451,7 +1662,13 @@ udx_stream_init (udx_t *udx, udx_stream_t *handle, uint32_t local_id, udx_stream
   handle->reordering_seen = false;
   handle->retransmitting = 0;
 
-  handle->mtu = UDX_DEFAULT_MTU;
+  handle->mtu = UDX_MTU_BASE;
+  handle->mtu_state = UDX_MTU_STATE_BASE;
+  handle->mtu_probe_count = 0;
+  handle->mtu_probe_size = UDX_MTU_BASE; // starts with first ack, counts as a confirmation of base
+  handle->mtu_max = UDX_MTU_MAX;         // revised in connect()
+
+  uv_timer_init(udx->loop, &handle->mtu_raise_timer);
 
   handle->seq = 0;
   handle->ack = 0;
@@ -1500,6 +1717,8 @@ udx_stream_init (udx_t *udx, udx_stream_t *handle, uint32_t local_id, udx_stream
   udx__cirbuf_init(&(handle->incoming), 16);
   udx__fifo_init(&(handle->unordered), 1);
 
+  udx__fifo_init(&handle->write_queue, 1);
+
   handle->set_id = udx->streams_len++;
 
   if (udx->streams_len == udx->streams_max_len) {
@@ -1519,12 +1738,6 @@ udx_stream_init (udx_t *udx, udx_stream_t *handle, uint32_t local_id, udx_stream
 int
 udx_stream_get_mtu (udx_stream_t *handle, uint16_t *mtu) {
   *mtu = handle->mtu;
-  return 0;
-}
-
-int
-udx_stream_set_mtu (udx_stream_t *handle, uint16_t mtu) {
-  handle->mtu = mtu;
   return 0;
 }
 
@@ -1611,7 +1824,7 @@ udx_stream_check_timeouts (udx_stream_t *handle) {
     return 0;
   }
 
-  if (handle->remote_acked == handle->seq) {
+  if (handle->remote_acked == handle->seq && handle->write_queue.len == 0) {
     check_deferred_ack(handle);
     return 0;
   }
@@ -1657,12 +1870,21 @@ udx_stream_check_timeouts (udx_stream_t *handle) {
       handle->retransmits_waiting++;
     }
 
+    // todo: handle possibility of downward MTU change
+    // this would require re-sending in-flight packets that were too big to send.
+    // resizing is easier if sequence numbers are based on bytes
+
+    // handle->mtu = UDX_MTU_BASE;
+    // handle->mtu_state = UDX_MTU_STATE_ERROR;
+    // handle->mtu_probe_count = 0;
+    // handle->mtu_probe_size = UDX_MTU_BASE;
+
     debug_printf("timeout! pkt loss detected - inflight=%zu ssthresh=%u cwnd=%u acked=%u seq=%u rtt=%u\n", handle->inflight, handle->ssthresh, handle->cwnd, handle->remote_acked, handle->seq_flushed, handle->srtt);
   }
 
   check_deferred_ack(handle);
 
-  int err = flush_waiting_packets(handle);
+  int err = fill_window(handle);
   return err < 0 ? err : 0;
 }
 
@@ -1697,6 +1919,14 @@ udx_stream_connect (udx_stream_t *handle, udx_socket_t *socket, uint32_t remote_
     addr_to_v6((struct sockaddr_in *) &(handle->remote_addr));
     handle->remote_addr_len = sizeof(struct sockaddr_in6);
   }
+
+  int mtu = udx__get_link_mtu(remote_addr);
+
+  if (mtu == -1 || mtu > UDX_MTU_MAX) {
+    mtu = UDX_MTU_MAX;
+  }
+
+  handle->mtu_max = mtu;
 
   return update_poll(handle->socket);
 }
@@ -1744,94 +1974,42 @@ udx_stream_write_resume (udx_stream_t *handle, udx_stream_drain_cb drain_cb) {
 }
 
 int
-udx_stream_write (udx_stream_write_t *req, udx_stream_t *handle, const uv_buf_t bufs[], unsigned int bufs_len, udx_stream_ack_cb ack_cb) {
+udx_stream_write (udx_stream_write_t *req, udx_stream_t *stream, const uv_buf_t bufs[], unsigned int bufs_len, udx_stream_ack_cb ack_cb) {
   assert(bufs_len == 1);
 
-  req->packets = 0;
-  req->handle = handle;
+  req->handle = stream;
   req->on_ack = ack_cb;
 
   // if this is the first inflight packet, we should "restart" rto timer
-  if (handle->inflight == 0) {
-    handle->rto_timeout = get_milliseconds() + handle->rto;
+  if (stream->inflight == 0) {
+    stream->rto_timeout = get_milliseconds() + stream->rto;
   }
 
-  int err = 0;
+  req->bytes = bufs[0].len;
+  req->buf = bufs[0];
+  req->is_write_end = 0;
 
-  uv_buf_t buf = bufs[0];
+  udx__fifo_push(&stream->write_queue, req);
 
-  size_t mtu = handle->mtu - UDX_HEADER_SIZE;
-
-  do {
-    udx_packet_t *pkt = malloc(sizeof(udx_packet_t));
-
-    uv_buf_t buf_partial = uv_buf_init(buf.base, buf.len < mtu ? buf.len : mtu);
-
-    init_stream_packet(pkt, UDX_HEADER_DATA, handle, &buf_partial);
-
-    pkt->status = UDX_PACKET_WAITING;
-    pkt->type = UDX_PACKET_STREAM_WRITE;
-    pkt->ttl = 0;
-    pkt->ctx = req;
-
-    handle->seq++;
-    req->packets++;
-
-    buf.len -= buf_partial.len;
-    buf.base += buf_partial.len;
-
-    udx__cirbuf_set(&(handle->outgoing), (udx_cirbuf_val_t *) pkt);
-
-    // If we are not the first packet in the queue, wait to send us until the queue is flushed...
-    if (handle->pkts_waiting++ > 0) continue;
-    err = send_data_packet(handle, pkt);
-  } while (buf.len > 0 || err < 0);
-
-  return err;
+  return fill_window(stream);
 }
 
 int
-udx_stream_write_end (udx_stream_write_t *req, udx_stream_t *handle, const uv_buf_t bufs[], unsigned int bufs_len, udx_stream_ack_cb ack_cb) {
+udx_stream_write_end (udx_stream_write_t *req, udx_stream_t *stream, const uv_buf_t bufs[], unsigned int bufs_len, udx_stream_ack_cb ack_cb) {
   assert(bufs_len == 1);
 
-  handle->status |= UDX_STREAM_ENDING;
+  stream->status |= UDX_STREAM_ENDING;
 
-  req->packets = 0;
-  req->handle = handle;
+  req->handle = stream;
   req->on_ack = ack_cb;
 
-  int err = 0;
+  req->bytes = bufs[0].len;
+  req->buf = bufs[0];
+  req->is_write_end = 1;
 
-  uv_buf_t buf = bufs[0];
+  udx__fifo_push(&stream->write_queue, req);
 
-  size_t mtu = handle->mtu - UDX_HEADER_SIZE;
-
-  do {
-    udx_packet_t *pkt = malloc(sizeof(udx_packet_t));
-
-    uv_buf_t buf_partial = uv_buf_init(buf.base, buf.len < mtu ? buf.len : mtu);
-
-    init_stream_packet(pkt, UDX_HEADER_END, handle, &buf_partial);
-
-    pkt->status = UDX_PACKET_WAITING;
-    pkt->type = UDX_PACKET_STREAM_WRITE;
-    pkt->ttl = 0;
-    pkt->ctx = req;
-
-    handle->seq++;
-    req->packets++;
-
-    buf.len -= buf_partial.len;
-    buf.base += buf_partial.len;
-
-    udx__cirbuf_set(&(handle->outgoing), (udx_cirbuf_val_t *) pkt);
-
-    // If we are not the first packet in the queue, wait to send us until the queue is flushed...
-    if (handle->pkts_waiting++ > 0) continue;
-    err = send_data_packet(handle, pkt);
-  } while (buf.len > 0 || err < 0);
-
-  return err;
+  return fill_window(stream);
 }
 
 int
@@ -1847,6 +2025,7 @@ udx_stream_destroy (udx_stream_t *handle) {
   // clear the outgoing packets immediately as we don't want anything to leave to the network
   // while the destroy packet is being flushed. we could also destroy incoming packets here, but
   // that creates some reentry trickiness incase this was called from on_read.
+  // todo: can we delete this line now that the queue in front of the destroy packet is shorter?
   clear_outgoing_packets(handle);
 
   if (handle->relay_to != NULL) {

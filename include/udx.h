@@ -10,10 +10,21 @@ extern "C" {
 #include <stdint.h>
 #include <uv.h>
 
-// TODO: research the packets sizes a bit more
-#define UDX_MSS         1460 // just used for congestion to avoid too many variables...
-#define UDX_DEFAULT_MTU 1200
-#define UDX_HEADER_SIZE 20
+#define UDX_HEADER_SIZE      20
+#define UDX_IPV4_HEADER_SIZE (20 + 8 + UDX_HEADER_SIZE)
+#define UDX_IPV6_HEADER_SIZE (40 + 8 + UDX_HEADER_SIZE)
+
+// MTU constants TODO: move into udx.c or internal.h?
+#define UDX_MTU_BASE             1200
+#define UDX_MTU_MAX_PROBES       3
+#define UDX_MTU_MAX              1500
+#define UDX_MTU_STEP             32
+#define UDX_MTU_RAISE_TIMEOUT_MS 600000 // ten minutes
+
+#define UDX_MTU_STATE_BASE            1
+#define UDX_MTU_STATE_SEARCH          2
+#define UDX_MTU_STATE_ERROR           3
+#define UDX_MTU_STATE_SEARCH_COMPLETE 4
 
 #define UDX_CLOCK_GRANULARITY_MS 20
 
@@ -187,6 +198,14 @@ struct udx_stream_s {
   udx_stream_drain_cb on_drain;
   udx_stream_close_cb on_close;
 
+  // mtu. RFC8899 5.1.1 and 5.1.3
+  int mtu_state; // MTU_STATE_*
+  bool mtu_probe_wanted;
+  int mtu_probe_count;
+  int mtu_probe_size; // size of the outstanding probe
+  int mtu_max;        // min(UDX_MTU_MAX, get_link_mtu(remote_addr))
+  uint32_t mtu_probe_seq[UDX_MTU_MAX_PROBES];
+  uv_timer_t mtu_raise_timer; // set on entering SEARCH_COMPLETE, on expiration returns to SEARCHING
   uint16_t mtu;
 
   uint32_t seq;
@@ -226,6 +245,7 @@ struct udx_stream_s {
   // congestion state
   udx_cong_t cong;
 
+  udx_fifo_t write_queue; // udx_stream_write_t
   udx_cirbuf_t outgoing;
   udx_cirbuf_t incoming;
 
@@ -254,7 +274,7 @@ struct udx_packet_s {
   // just alloc it in place here, easier to manage
   char header[UDX_HEADER_SIZE];
   unsigned int bufs_len;
-  uv_buf_t bufs[2];
+  uv_buf_t bufs[3];
 };
 
 struct udx_socket_send_s {
@@ -267,9 +287,11 @@ struct udx_socket_send_s {
 };
 
 struct udx_stream_write_s {
-  uint32_t packets;
-  udx_stream_t *handle;
+  size_t bytes; // buf.len + size of payloads in flight
+  uv_buf_t buf;
+  bool is_write_end;
 
+  udx_stream_t *handle;
   udx_stream_ack_cb on_ack;
 
   void *data;
@@ -332,7 +354,7 @@ int
 udx_socket_set_ttl (udx_socket_t *handle, int ttl);
 
 int
-udx_socket_bind (udx_socket_t *handle, const struct sockaddr *addr);
+udx_socket_bind (udx_socket_t *handle, const struct sockaddr *addr, unsigned int flags);
 
 int
 udx_socket_getsockname (udx_socket_t *handle, struct sockaddr *name, int *name_len);
@@ -361,9 +383,6 @@ udx_stream_init (udx_t *udx, udx_stream_t *handle, uint32_t local_id, udx_stream
 
 int
 udx_stream_get_mtu (udx_stream_t *handle, uint16_t *mtu);
-
-int
-udx_stream_set_mtu (udx_stream_t *handle, uint16_t mtu);
 
 int
 udx_stream_get_seq (udx_stream_t *handle, uint32_t *seq);

@@ -33,7 +33,9 @@ struct {
 
 void
 on_ack (udx_stream_write_t *r, int status, int unordered) {
-  printf("write acked\n");
+  printf("write acked, status=%d %s\n", status, status == UV_ECANCELED ? "(UV_ECANCELED)" : "");
+  udx_stream_destroy(r->handle);
+  udx_stream_destroy(&astream);
 }
 
 void
@@ -42,14 +44,13 @@ on_read (udx_stream_t *handle, ssize_t read_len, const uv_buf_t *buf) {
   stats.last_read_ms = uv_hrtime() / 1000000;
 
   if (stats.bytes_read == options.size_bytes) {
-    udx_stream_destroy(handle);
+    printf("read all bytes\n");
   }
 }
 
 static void
 on_b_sock_close () {
   printf("sending socket closing\n");
-  uv_stop(&loop);
 }
 
 static void
@@ -87,12 +88,12 @@ main () {
 
   struct sockaddr_in baddr;
   uv_ip4_addr("127.0.0.1", 8082, &baddr);
-  e = udx_socket_bind(&bsock, (struct sockaddr *) &baddr);
+  e = udx_socket_bind(&bsock, (struct sockaddr *) &baddr, 0);
   assert(e == 0);
 
   struct sockaddr_in aaddr;
   uv_ip4_addr("127.0.0.1", 8081, &aaddr);
-  e = udx_socket_bind(&asock, (struct sockaddr *) &aaddr);
+  e = udx_socket_bind(&asock, (struct sockaddr *) &aaddr, 0);
   assert(e == 0);
 
   e = udx_stream_init(&udx, &astream, 1, on_a_stream_close);
@@ -114,7 +115,7 @@ main () {
 
   options.size_bytes = 2 * 1024 * 1024 * 1024L;
 
-  uint8_t *data = calloc(options.size_bytes, 1);
+  char *data = calloc(options.size_bytes, 1);
 
   assert(data != NULL && "malloc");
 
