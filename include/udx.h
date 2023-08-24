@@ -26,6 +26,8 @@ extern "C" {
 #define UDX_MTU_STATE_ERROR           3
 #define UDX_MTU_STATE_SEARCH_COMPLETE 4
 
+#define UDX_MAX_COMBINED_WRITES 10
+
 #define UDX_CLOCK_GRANULARITY_MS 20
 
 #define UDX_MAGIC_BYTE 255
@@ -266,15 +268,16 @@ struct udx_packet_s {
   uint16_t size;
   uint64_t time_sent;
 
-  void *ctx;
+  void *ctx[UDX_MAX_COMBINED_WRITES];
+  uint8_t nwrites;
 
   struct sockaddr_storage dest;
   int dest_len;
 
   // just alloc it in place here, easier to manage
   char header[UDX_HEADER_SIZE];
-  unsigned int bufs_len;
-  uv_buf_t bufs[3];
+  uint8_t bufs_len;
+  uv_buf_t bufs[UDX_MAX_COMBINED_WRITES + 2]; // 2 reserved bufs: header, and probe padding.
 };
 
 struct udx_socket_send_s {

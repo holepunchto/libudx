@@ -5,6 +5,7 @@ list(APPEND tests
   socket-send-recv
   socket-send-recv-dualstack
   socket-send-recv-ipv6
+  stream-combined-write-read
   stream-destroy
   stream-destroy-before-connect
   stream-preconnect
