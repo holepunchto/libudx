@@ -109,6 +109,7 @@ typedef void (*udx_socket_close_cb)(udx_socket_t *handle);
 typedef int (*udx_stream_firewall_cb)(udx_stream_t *handle, udx_socket_t *socket, const struct sockaddr *from);
 typedef void (*udx_stream_read_cb)(udx_stream_t *handle, ssize_t read_len, const uv_buf_t *buf);
 typedef void (*udx_stream_drain_cb)(udx_stream_t *handle);
+typedef void (*udx_stream_remote_changed_cb)(udx_stream_t *stream);
 typedef void (*udx_stream_ack_cb)(udx_stream_write_t *req, int status, int unordered);
 typedef void (*udx_stream_send_cb)(udx_stream_send_t *req, int status);
 typedef void (*udx_stream_recv_cb)(udx_stream_t *handle, ssize_t read_len, const uv_buf_t *buf);
@@ -189,6 +190,10 @@ struct udx_stream_s {
 
   struct sockaddr_storage remote_addr;
   int remote_addr_len;
+
+  bool remote_changing;
+  uint32_t seq_on_remote_changed;
+  udx_stream_remote_changed_cb on_remote_changed;
 
   void *data;
 
@@ -398,6 +403,9 @@ udx_stream_set_ack (udx_stream_t *handle, uint32_t ack);
 
 int
 udx_stream_connect (udx_stream_t *handle, udx_socket_t *socket, uint32_t remote_id, const struct sockaddr *remote_addr);
+
+int
+udx_stream_change_remote (udx_stream_t *stream, uint32_t remote_id, const struct sockaddr *remote_addr, udx_stream_remote_changed_cb remote_change_cb);
 
 int
 udx_stream_relay_to (udx_stream_t *handle, udx_stream_t *destination);

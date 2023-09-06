@@ -15,10 +15,12 @@ list(APPEND tests
   stream-write-read
   stream-write-read-ipv6
   stream-write-read-perf
+  stream-change-remote
 )
 
 list(APPEND skipped_tests
   stream-write-read-perf
+  stream-change-remote
 )
 
 foreach(test IN LISTS tests)
