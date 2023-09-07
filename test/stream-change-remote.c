@@ -93,15 +93,15 @@ main () {
   e = udx_socket_bind(&asock, (struct sockaddr *) &aaddr, 0);
   assert(e == 0);
 
-  uv_ip4_addr("127.0.0.2", 8082, &baddr);
+  uv_ip4_addr("127.0.0.1", 8082, &baddr);
   e = udx_socket_bind(&bsock, (struct sockaddr *) &baddr, 0);
   assert(e == 0);
 
-  uv_ip4_addr("127.0.0.3", 8083, &caddr);
+  uv_ip4_addr("127.0.0.1", 8083, &caddr);
   e = udx_socket_bind(&csock, (struct sockaddr *) &caddr, 0);
   assert(e == 0);
 
-  uv_ip4_addr("127.0.0.4", 8084, &daddr);
+  uv_ip4_addr("127.0.0.1", 8084, &daddr);
   e = udx_socket_bind(&dsock, (struct sockaddr *) &daddr, 0);
   assert(e == 0);
 
