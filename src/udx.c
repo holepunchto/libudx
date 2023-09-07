@@ -909,7 +909,6 @@ rack_detect_loss (udx_stream_t *stream) {
 
 static void
 ack_update (udx_stream_t *stream, uint32_t acked, bool is_limited) {
-
   uint64_t time = get_milliseconds();
 
   // also reset rto, since things are moving forward...
@@ -1928,13 +1927,10 @@ udx_stream_change_remote (udx_stream_t *stream, uint32_t remote_id, const struct
   printf("stream->seq=%d stream->remote_acked=%d\n", stream->seq, stream->remote_acked);
 
   if (stream->seq != stream->remote_acked) {
-
     stream->remote_changing = true;
     stream->seq_on_remote_changed = stream->seq;
     stream->on_remote_changed = on_remote_changed;
   } else {
-
-    printf("ready to change now\n");
     on_remote_changed(stream);
   }
 
