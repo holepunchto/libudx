@@ -20,7 +20,6 @@ list(APPEND tests
 
 list(APPEND skipped_tests
   stream-write-read-perf
-  stream-change-remote
 )
 
 foreach(test IN LISTS tests)
