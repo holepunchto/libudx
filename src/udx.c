@@ -1922,9 +1922,13 @@ udx_stream_change_remote (udx_stream_t *stream, uint32_t remote_id, const struct
   }
 
   memcpy(&stream->remote_addr, remote_addr, stream->remote_addr_len);
-  stream->remote_id = remote_id;
 
-  printf("stream->seq=%d stream->remote_acked=%d\n", stream->seq, stream->remote_acked);
+  if (stream->socket->family == 6 && stream->remote_addr.ss_family == AF_INET) {
+    addr_to_v6((struct sockaddr_in *) &stream->remote_addr);
+    stream->remote_addr_len = sizeof(struct sockaddr_in6);
+  }
+
+  stream->remote_id = remote_id;
 
   if (stream->seq != stream->remote_acked) {
     stream->remote_changing = true;
@@ -1941,11 +1945,6 @@ udx_stream_change_remote (udx_stream_t *stream, uint32_t remote_id, const struct
   stream->mtu_max = UDX_MTU_MAX;         // revised in connect()
 
   uv_timer_stop(&stream->mtu_raise_timer);
-
-  if (stream->socket->family == 6 && stream->remote_addr.ss_family == AF_INET) {
-    addr_to_v6((struct sockaddr_in *) &stream->remote_addr);
-    stream->remote_addr_len = sizeof(struct sockaddr_in6);
-  }
 
   return update_poll(stream->socket);
 }
