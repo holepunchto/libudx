@@ -16,6 +16,7 @@ list(APPEND tests
   stream-write-read
   stream-write-read-ipv6
   stream-write-read-perf
+  stream-change-remote
 )
 
 list(APPEND skipped_tests
