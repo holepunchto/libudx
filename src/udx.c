@@ -1258,6 +1258,14 @@ process_packet (udx_socket_t *socket, char *buf, ssize_t buf_len, struct sockadd
     return 1;
   }
 
+  if (stream->remote_changing && seq_diff(ack, stream->seq_on_remote_changed) >= 0) {
+    debug_printf("remote_change: packets to old remote acked. ack=%u, last=%u, seq_diff=%d\n", ack, stream->seq_on_remote_changed, seq_diff(ack, stream->seq_on_remote_changed));
+    stream->remote_changing = false;
+    if (stream->on_remote_changed) {
+      stream->on_remote_changed(stream);
+    }
+  }
+
   int32_t len = seq_diff(ack, stream->remote_acked);
 
   if (len > 0) {
@@ -1662,6 +1670,10 @@ udx_stream_init (udx_t *udx, udx_stream_t *handle, uint32_t local_id, udx_stream
   handle->reordering_seen = false;
   handle->retransmitting = 0;
 
+  handle->remote_changing = false;
+  handle->on_remote_changed = NULL;
+  handle->seq_on_remote_changed = 0;
+
   handle->mtu = UDX_MTU_BASE;
   handle->mtu_state = UDX_MTU_STATE_BASE;
   handle->mtu_probe_count = 0;
@@ -1886,6 +1898,55 @@ udx_stream_check_timeouts (udx_stream_t *handle) {
 
   int err = fill_window(handle);
   return err < 0 ? err : 0;
+}
+
+int
+udx_stream_change_remote (udx_stream_t *stream, uint32_t remote_id, const struct sockaddr *remote_addr, udx_stream_remote_changed_cb on_remote_changed) {
+  assert(stream->status & UDX_STREAM_CONNECTED);
+  if (!(stream->status & UDX_STREAM_CONNECTED)) {
+    return UV_EINVAL;
+  }
+
+  if (remote_addr->sa_family == AF_INET) {
+    stream->remote_addr_len = sizeof(struct sockaddr_in);
+    if (((struct sockaddr_in *) remote_addr)->sin_port == 0) {
+      return UV_EINVAL;
+    }
+  } else if (remote_addr->sa_family == AF_INET6) {
+    stream->remote_addr_len = sizeof(struct sockaddr_in6);
+    if (((struct sockaddr_in6 *) remote_addr)->sin6_port == 0) {
+      return UV_EINVAL;
+    }
+  } else {
+    return UV_EINVAL;
+  }
+
+  memcpy(&stream->remote_addr, remote_addr, stream->remote_addr_len);
+
+  if (stream->socket->family == 6 && stream->remote_addr.ss_family == AF_INET) {
+    addr_to_v6((struct sockaddr_in *) &stream->remote_addr);
+    stream->remote_addr_len = sizeof(struct sockaddr_in6);
+  }
+
+  stream->remote_id = remote_id;
+
+  if (stream->seq != stream->remote_acked) {
+    stream->remote_changing = true;
+    stream->seq_on_remote_changed = stream->seq;
+    stream->on_remote_changed = on_remote_changed;
+  } else {
+    on_remote_changed(stream);
+  }
+
+  stream->mtu = UDX_MTU_BASE;
+  stream->mtu_state = UDX_MTU_STATE_BASE;
+  stream->mtu_probe_count = 0;
+  stream->mtu_probe_size = UDX_MTU_BASE; // starts with first ack, counts as a confirmation of base
+  stream->mtu_max = UDX_MTU_MAX;         // revised in connect()
+
+  uv_timer_stop(&stream->mtu_raise_timer);
+
+  return update_poll(stream->socket);
 }
 
 int
