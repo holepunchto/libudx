@@ -5,6 +5,8 @@
 
 #include "../include/udx.h"
 
+#define NBYTES_TO_SEND 100000
+
 uv_loop_t loop;
 udx_t udx;
 
@@ -28,39 +30,44 @@ udx_stream_write_t req;
 
 bool ack_called = false;
 bool read_called = false;
+bool remote_changed_called = false;
 
-#define NBYTES_TO_SEND 100000
 size_t nbytes_read;
 
 void
 on_ack (udx_stream_write_t *r, int status, int unordered) {
   uv_stop(&loop);
+
   ack_called = true;
 }
 
-bool on_remote_changed_called = false;
-
 void
 on_remote_change (udx_stream_t *s) {
-  printf("on_remote_change!\n");
-  on_remote_changed_called = true;
+  remote_changed_called = true;
 }
-
-bool changed = false;
 
 void
 on_read (udx_stream_t *handle, ssize_t read_len, const uv_buf_t *buf) {
+  int e;
+
+  static bool changed = false;
 
   nbytes_read += read_len;
 
   // swap to relay 1/3 of the way into the stream
 
   if (nbytes_read > (NBYTES_TO_SEND / 3) && !changed) {
-    printf("switching remotes\n");
-
-    // change to talk directly to a
-    int e = udx_stream_change_remote(&dstream, 1, (struct sockaddr *) &aaddr, on_remote_change);
+    e = udx_stream_change_remote(&astream, 4, (struct sockaddr *) &daddr, on_remote_change);
     assert(e == 0 && "reconnect");
+
+    e = udx_stream_change_remote(&dstream, 1, (struct sockaddr *) &aaddr, on_remote_change);
+    assert(e == 0 && "reconnect");
+
+    e = udx_stream_destroy(&bstream);
+    assert(e == 0);
+
+    e = udx_stream_destroy(&cstream);
+    assert(e == 0);
 
     changed = true;
   }
@@ -141,11 +148,12 @@ main () {
   assert(e == 0);
 
   uv_buf_t buf = uv_buf_init(malloc(NBYTES_TO_SEND), NBYTES_TO_SEND);
-  udx_stream_write(&req, &dstream, &buf, 1, on_ack);
+  e = udx_stream_write(&req, &dstream, &buf, 1, on_ack);
+  assert(e && "drained");
 
   uv_run(&loop, UV_RUN_DEFAULT);
 
-  assert(ack_called && read_called && on_remote_changed_called && nbytes_read == NBYTES_TO_SEND);
+  assert(ack_called && read_called && remote_changed_called && nbytes_read == NBYTES_TO_SEND);
 
   return 0;
 }
