@@ -13,20 +13,15 @@ udx_stream_t astream;
 udx_socket_t bsock;
 udx_stream_t bstream;
 
-udx_stream_write_t req;
-
-bool ack_called = false;
-bool read_called = false;
+int ack_called = 0;
+int read_called = 0;
 
 void
 on_ack (udx_stream_write_t *r, int status, int unordered) {
-  assert(&req == r);
   assert(status == 0);
   assert(unordered == 0);
 
-  uv_stop(&loop);
-
-  ack_called = true;
+  if (++ack_called == 2) uv_stop(&loop);
 }
 
 void
@@ -35,7 +30,7 @@ on_read (udx_stream_t *handle, ssize_t read_len, const uv_buf_t *buf) {
   assert(buf->len == read_len);
   assert(memcmp(buf->base, "hello", 5) == 0);
 
-  read_called = true;
+  read_called++;
 }
 
 int
@@ -79,12 +74,18 @@ main () {
   assert(e == 0);
 
   uv_buf_t buf = uv_buf_init("hello", 5);
-  e = udx_stream_write(&req, &bstream, &buf, 1, on_ack);
+
+  udx_stream_write_t areq;
+  e = udx_stream_write(&areq, &bstream, &buf, 1, on_ack);
+  assert(e && "drained");
+
+  udx_stream_write_t breq;
+  e = udx_stream_write(&breq, &bstream, &buf, 1, on_ack);
   assert(e && "drained");
 
   uv_run(&loop, UV_RUN_DEFAULT);
 
-  assert(ack_called && read_called);
+  assert(ack_called == 2 && read_called == 2);
 
   return 0;
 }

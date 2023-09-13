@@ -661,7 +661,6 @@ get_window_bytes (udx_stream_t *stream) {
 
 static int
 fill_window (udx_stream_t *stream) {
-
   if (stream->pkts_waiting > 0) {
     int rc = flush_waiting_packets(stream);
     if (rc < 0) {
@@ -687,7 +686,6 @@ fill_window (udx_stream_t *stream) {
     if (buf->len < len) len = buf->len;
     if (mss < len) len = mss;
     if (mss > len && buf->len > len && stream->pkts_inflight > 0) {
-
       break;
     }
 
@@ -734,7 +732,7 @@ fill_window (udx_stream_t *stream) {
     }
   }
 
-  return 0;
+  return 1;
 }
 
 static int
