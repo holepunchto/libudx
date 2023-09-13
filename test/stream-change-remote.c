@@ -30,7 +30,7 @@ udx_stream_write_t req;
 
 bool ack_called = false;
 bool read_called = false;
-bool remote_changed_called = false;
+int remote_changed_called = 0;
 
 size_t nbytes_read;
 
@@ -43,7 +43,17 @@ on_ack (udx_stream_write_t *r, int status, int unordered) {
 
 void
 on_remote_change (udx_stream_t *s) {
-  remote_changed_called = true;
+  remote_changed_called++;
+
+  if (remote_changed_called == 2) {
+    int e;
+
+    e = udx_stream_destroy(&bstream);
+    assert(e == 0);
+
+    e = udx_stream_destroy(&cstream);
+    assert(e == 0);
+  }
 }
 
 void
@@ -62,12 +72,6 @@ on_read (udx_stream_t *handle, ssize_t read_len, const uv_buf_t *buf) {
 
     e = udx_stream_change_remote(&dstream, 1, (struct sockaddr *) &aaddr, on_remote_change);
     assert(e == 0 && "reconnect");
-
-    e = udx_stream_destroy(&bstream);
-    assert(e == 0);
-
-    e = udx_stream_destroy(&cstream);
-    assert(e == 0);
 
     changed = true;
   }
