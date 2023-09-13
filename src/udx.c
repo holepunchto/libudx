@@ -1662,6 +1662,7 @@ udx_stream_init (udx_t *udx, udx_stream_t *handle, uint32_t local_id, udx_stream
   handle->out_of_order = 0;
   handle->recovery = 0;
   handle->socket = NULL;
+  handle->relayed = false;
   handle->relay_to = NULL;
   handle->udx = udx;
 
@@ -1992,8 +1993,9 @@ udx_stream_connect (udx_stream_t *handle, udx_socket_t *socket, uint32_t remote_
 
 int
 udx_stream_relay_to (udx_stream_t *handle, udx_stream_t *destination) {
-  if (handle->relay_to != NULL) return UV_EINVAL;
+  if (handle->relayed) return UV_EINVAL;
 
+  handle->relayed = true;
   handle->relay_to = destination;
 
   udx__cirbuf_set(&(destination->relaying_streams), (udx_cirbuf_val_t *) handle);
@@ -2087,7 +2089,7 @@ udx_stream_destroy (udx_stream_t *handle) {
   // todo: can we delete this line now that the queue in front of the destroy packet is shorter?
   clear_outgoing_packets(handle);
 
-  if (handle->relay_to != NULL) {
+  if (handle->relayed) {
     handle->status |= UDX_STREAM_DESTROYED;
     close_maybe(handle, 0);
     return 0;
