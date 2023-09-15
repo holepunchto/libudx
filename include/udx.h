@@ -187,6 +187,7 @@ struct udx_stream_s {
   udx_t *udx;
   udx_socket_t *socket;
 
+  bool relayed;
   udx_stream_t *relay_to;
   udx_cirbuf_t relaying_streams;
 

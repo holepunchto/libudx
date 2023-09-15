@@ -14,6 +14,7 @@ list(APPEND tests
   stream-send-recv
   stream-send-recv-ipv6
   stream-write-read
+  stream-write-read-multiple
   stream-write-read-ipv6
   stream-write-read-perf
   stream-change-remote
