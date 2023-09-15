@@ -26,7 +26,7 @@ extern "C" {
 #define UDX_MTU_STATE_ERROR           3
 #define UDX_MTU_STATE_SEARCH_COMPLETE 4
 
-#define UDX_MAX_COMBINED_WRITES 10
+#define UDX_MAX_COMBINED_WRITES 20
 
 #define UDX_CLOCK_GRANULARITY_MS 20
 
@@ -273,20 +273,18 @@ struct udx_packet_s {
   uint16_t size;
   uint64_t time_sent;
 
-  void *ctx[UDX_MAX_COMBINED_WRITES];
-  uint8_t nwrites;
-
   struct sockaddr_storage dest;
   int dest_len;
 
   // just alloc it in place here, easier to manage
   char header[UDX_HEADER_SIZE];
-  uint8_t bufs_len;
-  uv_buf_t bufs[UDX_MAX_COMBINED_WRITES + 2]; // 2 reserved bufs: header, and probe padding.
+  uint8_t nbufs;
+  uv_buf_t bufs[]; // 2 reserved bufs: header, and probe padding.
 };
 
 struct udx_socket_send_s {
   udx_packet_t pkt;
+  uv_buf_t buf[3]; // todo: confirm aliasing from the pkt is not UB.
   udx_socket_t *handle;
 
   udx_socket_send_cb on_send;
@@ -307,6 +305,7 @@ struct udx_stream_write_s {
 
 struct udx_stream_send_s {
   udx_packet_t pkt;
+  uv_buf_t buf[3]; // todo: confirm aliasing from the pkt flexible array member is not UB
   udx_stream_t *handle;
 
   udx_stream_send_cb on_send;

@@ -410,9 +410,11 @@ clear_outgoing_packets (udx_stream_t *stream) {
 
     // this cancels writes for packets that are fully written (in-flight) but not acked.
 
-    for (int i = 0; i < pkt->nwrites; i++) {
-      udx_stream_write_t *w = (udx_stream_write_t *) pkt->ctx[i];
-      w->bytes -= pkt->bufs[2 + i].len;
+    assert(pkt->nbufs >= 2);
+
+    for (int i = 2; i < pkt->nbufs; i++) {
+      udx_stream_write_t *w = ((udx_stream_write_t **) &pkt->bufs[pkt->nbufs])[i - 2];
+      w->bytes -= pkt->bufs[i].len;
       if (w->bytes == 0 && w->on_ack) {
         w->on_ack(w, UV_ECANCELED, 0);
       }
@@ -443,7 +445,7 @@ clear_outgoing_packets (udx_stream_t *stream) {
     udx__fifo_remove(q, pkt, pkt->fifo_gc);
 
     if (pkt->type == UDX_PACKET_STREAM_SEND) {
-      udx_stream_send_t *req = pkt->ctx[0];
+      udx_stream_send_t *req = (udx_stream_send_t *) pkt;
 
       if (req->on_send != NULL) {
         req->on_send(req, UV_ECANCELED);
@@ -457,7 +459,7 @@ clear_outgoing_packets (udx_stream_t *stream) {
 }
 
 static void
-init_stream_packet (udx_packet_t *pkt, int type, udx_stream_t *stream, const uv_buf_t *buf) {
+init_stream_packet (udx_packet_t *pkt, int type, udx_stream_t *stream, const uv_buf_t *bufs, int nbufs) {
   uint8_t *b = (uint8_t *) &(pkt->header);
 
   // 8 bit magic byte + 8 bit version + 8 bit type + 8 bit extensions
@@ -480,16 +482,20 @@ init_stream_packet (udx_packet_t *pkt, int type, udx_stream_t *stream, const uv_
   pkt->seq = stream->seq;
   pkt->is_retransmit = 0;
   pkt->transmits = 0;
-  pkt->size = (uint16_t) (UDX_HEADER_SIZE + buf->len);
+  pkt->size = UDX_HEADER_SIZE;
+
   pkt->dest = stream->remote_addr;
   pkt->dest_len = stream->remote_addr_len;
 
-  pkt->bufs_len = 3;
-  pkt->nwrites = 1;
+  pkt->nbufs = nbufs + 2;
 
   pkt->bufs[0] = uv_buf_init((char *) &(pkt->header), UDX_HEADER_SIZE);
   pkt->bufs[1] = uv_buf_init("", 0);
-  pkt->bufs[2] = *buf;
+
+  for (int i = 0; i < nbufs; i++) {
+    pkt->bufs[i + 2] = bufs[i];
+    pkt->size += bufs[i].len;
+  }
 }
 
 static int
@@ -542,8 +548,9 @@ send_state_packet (udx_stream_t *stream) {
     ooo--;
 
     if (sacks == NULL) {
-      pkt = malloc(sizeof(udx_packet_t) + 1024);
-      payload = (((char *) pkt) + sizeof(udx_packet_t));
+      // maybe change alloc_packet to include extra bytes?
+      pkt = malloc(sizeof(udx_packet_t) + sizeof(uv_buf_t) * 3 + 1024);
+      payload = (((char *) pkt) + sizeof(udx_packet_t) + sizeof(uv_buf_t) * 3);
       sacks = (uint32_t *) payload;
       start = seq;
       end = seq + 1;
@@ -564,11 +571,11 @@ send_state_packet (udx_stream_t *stream) {
     payload_len += 8;
   }
 
-  if (pkt == NULL) pkt = malloc(sizeof(udx_packet_t));
+  if (pkt == NULL) pkt = malloc(sizeof(udx_packet_t) + sizeof(uv_buf_t) * 3);
 
   uv_buf_t buf = uv_buf_init(payload, payload_len);
 
-  init_stream_packet(pkt, payload ? UDX_HEADER_SACK : 0, stream, &buf);
+  init_stream_packet(pkt, payload ? UDX_HEADER_SACK : 0, stream, &buf, 1);
 
   pkt->status = UDX_PACKET_SENDING;
   pkt->type = UDX_PACKET_STREAM_STATE;
@@ -676,6 +683,14 @@ queued_bytes (udx_stream_t *stream) {
   return total;
 }
 
+static udx_packet_t *
+allocate_packet (int nbufs, int nptrs) {
+  // optimize todo: use free list / free cache for re-use before resorting to malloc.
+  udx_packet_t *pkt = malloc(sizeof(udx_packet_t) + sizeof(uv_buf_t) * (2 + nbufs) + sizeof(void *) * nptrs);
+  pkt->nbufs = 2 + nbufs;
+  return pkt;
+}
+
 static int
 fill_window (udx_stream_t *stream) {
 
@@ -710,17 +725,15 @@ fill_window (udx_stream_t *stream) {
       break;
     }
 
-    udx_packet_t *pkt = malloc(sizeof(udx_packet_t));
+    uv_buf_t bufs[UDX_MAX_COMBINED_WRITES];
+    udx_stream_write_t *writes[UDX_MAX_COMBINED_WRITES];
 
-    uv_buf_t dummy = uv_buf_init(NULL, 0); // replaced in the code below
-    init_stream_packet(pkt, header_flag, stream, &dummy);
-    pkt->bufs_len = 2;
-    pkt->nwrites = 0;
+    int nwrites = 0;
+    int size = 0;
 
-    while (pktsz > 0 && pkt->nwrites < UDX_MAX_COMBINED_WRITES) {
-      // debug_printf("pktsz=%u pkt->nwrites=%d, pkt->bufs_len=%d\n", pktsz, pkt->nwrites, pkt->bufs_len);
+    while (pktsz > 0 && nwrites < UDX_MAX_COMBINED_WRITES) {
+      // debug_printf("pktsz=%u pkt->nwrites=%d, pkt->nbufs=%d\n", pktsz, pkt->nwrites, pkt->nbufs);
 
-      assert(pkt->nwrites == pkt->bufs_len - 2);
       assert(stream->write_queue.len > 0 && "stream underflow"); // impossible if we total our queue correctly
       udx_stream_write_t *w = udx__fifo_peek(&stream->write_queue);
       uv_buf_t *buf = &w->buf;
@@ -732,15 +745,22 @@ fill_window (udx_stream_t *stream) {
       buf->len -= wrtsz;
       pktsz -= wrtsz;
 
-      pkt->bufs[pkt->bufs_len] = buf_partial;
-      pkt->size += buf_partial.len;
-      pkt->ctx[pkt->nwrites] = w;
-      pkt->nwrites++;
-      pkt->bufs_len++;
+      bufs[nwrites] = buf_partial;
+      writes[nwrites] = w;
+      size += pktsz;
+      nwrites++;
 
       if (buf->len == 0) {
         udx__fifo_shift(&stream->write_queue);
       }
+    }
+
+    udx_packet_t *pkt = allocate_packet(nwrites, nwrites);
+    init_stream_packet(pkt, header_flag, stream, bufs, nwrites);
+
+    udx_stream_write_t **pwrites = (udx_stream_write_t **) &pkt->bufs[pkt->nbufs];
+    for (int i = 0; i < nwrites; i++) {
+      pwrites[i] = writes[i];
     }
 
     pkt->status = UDX_PACKET_SENDING;
@@ -1076,11 +1096,13 @@ ack_packet (udx_stream_t *stream, uint32_t seq, int sack) {
     udx__fifo_remove(&(stream->socket->send_queue), pkt, pkt->fifo_gc);
   }
 
-  for (int i = 0; i < pkt->nwrites; i++) {
-    udx_stream_write_t *w = pkt->ctx[i];
-    w->bytes -= pkt->bufs[2 + i].len;
+  assert(pkt->nbufs >= 2);
 
-    if (i < pkt->nwrites - 1) {
+  for (int i = 2; i < pkt->nbufs; i++) {
+    udx_stream_write_t *w = ((udx_stream_write_t **) &pkt->bufs[pkt->nbufs])[i - 2];
+    w->bytes -= pkt->bufs[i].len;
+
+    if (i < pkt->nbufs - 1) {
       assert(w->bytes == 0 && "every write that's not the last should be a complete write");
     }
 
@@ -1090,8 +1112,6 @@ ack_packet (udx_stream_t *stream, uint32_t seq, int sack) {
   }
 
   free(pkt);
-
-  // if (w->bytes > 0) return 1;
 
   if (stream->status & UDX_STREAM_DEAD) return 2;
 
@@ -1179,9 +1199,9 @@ relay_packet (udx_stream_t *stream, char *buf, ssize_t buf_len, int type, uint32
       b.base += UDX_HEADER_SIZE;
       b.len -= UDX_HEADER_SIZE;
 
-      udx_packet_t *pkt = malloc(sizeof(udx_packet_t));
+      udx_packet_t *pkt = allocate_packet(1, 0);
 
-      init_stream_packet(pkt, type, relay, &b);
+      init_stream_packet(pkt, type, relay, &b, 1);
 
       h = (uint32_t *) &(pkt->header);
       h[3] = udx__swap_uint32_if_be(seq);
@@ -1375,7 +1395,7 @@ remove_next (udx_fifo_t *f) {
 void
 udx__trigger_send_callback (udx_socket_t *socket, udx_packet_t *pkt) {
   if (pkt->type == UDX_PACKET_SEND) {
-    udx_socket_send_t *req = pkt->ctx[0];
+    udx_socket_send_t *req = (udx_socket_send_t *) pkt;
 
     if (req->on_send != NULL) {
       req->on_send(req, 0);
@@ -1384,7 +1404,7 @@ udx__trigger_send_callback (udx_socket_t *socket, udx_packet_t *pkt) {
   }
 
   if (pkt->type == UDX_PACKET_STREAM_SEND) {
-    udx_stream_send_t *req = pkt->ctx[0];
+    udx_stream_send_t *req = (udx_stream_send_t *) pkt;
 
     udx_stream_t *stream = req->handle;
     remove_next(&(stream->unordered));
@@ -1396,10 +1416,11 @@ udx__trigger_send_callback (udx_socket_t *socket, udx_packet_t *pkt) {
   }
 
   if (pkt->type == UDX_PACKET_STREAM_DESTROY) {
-    udx_stream_t *stream = pkt->ctx[0];
-    remove_next(&(stream->unordered));
+    assert(pkt->nbufs == 2);
+    udx_stream_t *stream = *(udx_stream_t **) &pkt->bufs[pkt->nbufs];
+    remove_next(&(stream->unordered)); // invalid read of size 4
 
-    stream->status |= UDX_STREAM_DESTROYED;
+    stream->status |= UDX_STREAM_DESTROYED; // invalid read invalid write
     close_maybe(stream, 0);
     return;
   }
@@ -1616,7 +1637,6 @@ udx_socket_send_ttl (udx_socket_send_t *req, udx_socket_t *handle, const uv_buf_
   pkt->status = UDX_PACKET_SENDING;
   pkt->type = UDX_PACKET_SEND;
   pkt->ttl = ttl;
-  pkt->ctx[0] = req;
 
   if (dest->sa_family == AF_INET) {
     pkt->dest_len = sizeof(struct sockaddr_in);
@@ -1631,7 +1651,7 @@ udx_socket_send_ttl (udx_socket_send_t *req, udx_socket_t *handle, const uv_buf_
   pkt->is_retransmit = 0;
   pkt->transmits = 0;
 
-  pkt->bufs_len = 1;
+  pkt->nbufs = 1;
 
   pkt->bufs[0] = bufs[0];
 
@@ -1676,7 +1696,7 @@ udx_socket_close (udx_socket_t *handle, udx_socket_close_cb cb) {
     if (pkt == NULL) break;
 
     if (pkt->type == UDX_PACKET_SEND) {
-      udx_socket_send_t *req = pkt->ctx[0];
+      udx_socket_send_t *req = (udx_socket_send_t *) &pkt;
 
       if (req->on_send != NULL) {
         req->on_send(req, UV_ECANCELED);
@@ -1926,15 +1946,6 @@ udx_stream_check_timeouts (udx_stream_t *handle) {
       handle->retransmits_waiting++;
     }
 
-    // todo: handle possibility of downward MTU change
-    // this would require re-sending in-flight packets that were too big to send.
-    // resizing is easier if sequence numbers are based on bytes
-
-    // handle->mtu = UDX_MTU_BASE;
-    // handle->mtu_state = UDX_MTU_STATE_ERROR;
-    // handle->mtu_probe_count = 0;
-    // handle->mtu_probe_size = UDX_MTU_BASE;
-
     debug_printf("timeout! pkt loss detected - inflight=%zu ssthresh=%u cwnd=%u acked=%u seq=%u rtt=%u\n", handle->inflight, handle->ssthresh, handle->cwnd, handle->remote_acked, handle->seq_flushed, handle->srtt);
   }
 
@@ -2057,12 +2068,11 @@ udx_stream_send (udx_stream_send_t *req, udx_stream_t *handle, const uv_buf_t bu
   udx_socket_t *socket = handle->socket;
   udx_packet_t *pkt = &(req->pkt);
 
-  init_stream_packet(pkt, UDX_HEADER_MESSAGE, handle, &bufs[0]);
+  init_stream_packet(pkt, UDX_HEADER_MESSAGE, handle, &bufs[0], 1);
 
   pkt->status = UDX_PACKET_SENDING;
   pkt->type = UDX_PACKET_STREAM_SEND;
   pkt->ttl = 0;
-  pkt->ctx[0] = req;
   pkt->is_retransmit = 0;
   pkt->transmits = 0;
 
@@ -2139,16 +2149,15 @@ udx_stream_destroy (udx_stream_t *handle) {
     return 0;
   }
 
-  udx_packet_t *pkt = malloc(sizeof(udx_packet_t));
+  udx_packet_t *pkt = allocate_packet(0, 1);
 
-  uv_buf_t buf = uv_buf_init(NULL, 0);
-
-  init_stream_packet(pkt, UDX_HEADER_DESTROY, handle, &buf);
+  init_stream_packet(pkt, UDX_HEADER_DESTROY, handle, NULL, 0);
 
   pkt->status = UDX_PACKET_SENDING;
   pkt->type = UDX_PACKET_STREAM_DESTROY;
   pkt->ttl = 0;
-  pkt->ctx[0] = handle;
+  assert(pkt->nbufs == 2);
+  *(udx_stream_t **) &pkt->bufs[pkt->nbufs] = handle;
 
   handle->seq++;
 
