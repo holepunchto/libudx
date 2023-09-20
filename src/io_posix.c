@@ -171,7 +171,7 @@ udx__on_writable (udx_socket_t *socket) {
       int type = pkt->type;
 
       if (type & (UDX_PACKET_STREAM_SEND | UDX_PACKET_STREAM_DESTROY | UDX_PACKET_SEND)) {
-        udx__trigger_send_callback(socket, pkt);
+        udx__trigger_send_callback(pkt);
         // TODO: watch for re-entry here!
       }
 
@@ -223,7 +223,7 @@ udx__on_writable (udx_socket_t *socket) {
     int type = pkt->type;
 
     if (type & UDX_PACKET_CALLBACK) {
-      udx__trigger_send_callback(socket, pkt);
+      udx__trigger_send_callback(pkt);
       // TODO: watch for re-entry here!
     }
 

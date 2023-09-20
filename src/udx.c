@@ -374,7 +374,7 @@ unqueue_first_transmits (udx_stream_t *stream) {
     stream->inflight -= pkt->size;
     stream->seq_flushed--;
 
-    udx__fifo_remove(&(stream->socket->send_queue), pkt, pkt->fifo_gc);
+    udx__fifo_remove(pkt->send_queue, pkt, pkt->fifo_gc);
   }
 }
 
@@ -394,7 +394,6 @@ clear_incoming_packets (udx_stream_t *stream) {
 
 static void
 clear_outgoing_packets (udx_stream_t *stream) {
-  udx_fifo_t *q = &(stream->socket->send_queue);
 
   // We should make sure all existing packets do not send, and notify the user that they failed
   for (uint32_t seq = stream->remote_acked; seq != stream->seq; seq++) {
@@ -404,7 +403,7 @@ clear_outgoing_packets (udx_stream_t *stream) {
 
     // Make sure to remove it from the fifo, if it was added
     if (pkt->status == UDX_PACKET_SENDING) {
-      udx__fifo_remove(q, pkt, pkt->fifo_gc);
+      udx__fifo_remove(pkt->send_queue, pkt, pkt->fifo_gc);
     }
 
     udx_stream_write_t *w = (udx_stream_write_t *) pkt->ctx;
@@ -438,7 +437,7 @@ clear_outgoing_packets (udx_stream_t *stream) {
     udx_packet_t *pkt = udx__fifo_shift(u);
     if (pkt == NULL) continue;
 
-    udx__fifo_remove(q, pkt, pkt->fifo_gc);
+    udx__fifo_remove(pkt->send_queue, pkt, pkt->fifo_gc);
 
     if (pkt->type == UDX_PACKET_STREAM_SEND) {
       udx_stream_send_t *req = pkt->ctx;
@@ -481,6 +480,7 @@ init_stream_packet (udx_packet_t *pkt, int type, udx_stream_t *stream, const uv_
   pkt->size = (uint16_t) (UDX_HEADER_SIZE + buf->len);
   pkt->dest = stream->remote_addr;
   pkt->dest_len = stream->remote_addr_len;
+  pkt->send_queue = NULL;
 
   pkt->bufs_len = 2;
 
@@ -574,7 +574,8 @@ send_state_packet (udx_stream_t *stream) {
   pkt->type = UDX_PACKET_STREAM_STATE;
   pkt->ttl = 0;
 
-  udx__fifo_push(&(stream->socket->send_queue), pkt);
+  // pkt->send_queue = &stream->socket->send_queue;
+  udx__fifo_push(&stream->socket->send_queue, pkt);
   return update_poll(stream->socket);
 }
 
@@ -605,6 +606,7 @@ send_data_packet (udx_stream_t *stream, udx_packet_t *pkt) {
     stream->seq_flushed = pkt->seq + 1;
   }
 
+  pkt->send_queue = &stream->socket->send_queue;
   pkt->fifo_gc = udx__fifo_push(&(stream->socket->send_queue), pkt);
 
   int err = update_poll(stream->socket);
@@ -718,6 +720,7 @@ fill_window (udx_stream_t *stream) {
     assert(seq_compare(stream->seq_flushed, pkt->seq) <= 0);
     stream->seq_flushed = pkt->seq + 1;
 
+    pkt->send_queue = &stream->socket->send_queue;
     pkt->fifo_gc = udx__fifo_push(&stream->socket->send_queue, pkt);
 
     if (buf->len == 0) {
@@ -1032,7 +1035,8 @@ ack_packet (udx_stream_t *stream, uint32_t seq, int sack) {
 
   // If this packet was queued for sending we need to remove it from the queue.
   if (pkt->status == UDX_PACKET_SENDING) {
-    udx__fifo_remove(&(stream->socket->send_queue), pkt, pkt->fifo_gc);
+    debug_printf("removing packet from send_queue=%p pkt=%p, fifo_gc=%d\n", pkt->send_queue, pkt, pkt->fifo_gc);
+    udx__fifo_remove(pkt->send_queue, pkt, pkt->fifo_gc);
   }
 
   udx_stream_write_t *w = (udx_stream_write_t *) pkt->ctx;
@@ -1327,7 +1331,7 @@ remove_next (udx_fifo_t *f) {
 }
 
 void
-udx__trigger_send_callback (udx_socket_t *socket, udx_packet_t *pkt) {
+udx__trigger_send_callback (udx_packet_t *pkt) {
   if (pkt->type == UDX_PACKET_SEND) {
     udx_socket_send_t *req = pkt->ctx;
 
@@ -1589,6 +1593,7 @@ udx_socket_send_ttl (udx_socket_send_t *req, udx_socket_t *handle, const uv_buf_
 
   pkt->bufs[0] = bufs[0];
 
+  pkt->send_queue = &handle->send_queue;
   pkt->fifo_gc = udx__fifo_push(&(handle->send_queue), pkt);
 
   return update_poll(handle);
@@ -1680,6 +1685,7 @@ udx_stream_init (udx_t *udx, udx_stream_t *handle, uint32_t local_id, udx_stream
   handle->mtu_max = UDX_MTU_MAX;         // revised in connect()
 
   uv_timer_init(udx->loop, &handle->mtu_raise_timer);
+  handle->mtu_raise_timer.data = handle;
 
   handle->seq = 0;
   handle->ack = 0;
@@ -1900,8 +1906,12 @@ udx_stream_check_timeouts (udx_stream_t *handle) {
 }
 
 int
-udx_stream_change_remote (udx_stream_t *stream, uint32_t remote_id, const struct sockaddr *remote_addr, udx_stream_remote_changed_cb on_remote_changed) {
+udx_stream_change_remote (udx_stream_t *stream, udx_socket_t *socket, uint32_t remote_id, const struct sockaddr *remote_addr, udx_stream_remote_changed_cb on_remote_changed) {
   assert(stream->status & UDX_STREAM_CONNECTED);
+
+  // the since the udx_t object stores streams_by_id, we cannot migrate streams across udx objects
+  // the local id's of different udx streams may collide.
+  assert(socket->udx == stream->socket->udx);
   if (!(stream->status & UDX_STREAM_CONNECTED)) {
     return UV_EINVAL;
   }
@@ -1928,6 +1938,8 @@ udx_stream_change_remote (udx_stream_t *stream, uint32_t remote_id, const struct
   }
 
   stream->remote_id = remote_id;
+
+  stream->socket = socket;
 
   if (stream->seq != stream->remote_acked) {
     stream->remote_changing = true;
@@ -2022,7 +2034,8 @@ udx_stream_send (udx_stream_send_t *req, udx_stream_t *handle, const uv_buf_t bu
   pkt->is_retransmit = 0;
   pkt->transmits = 0;
 
-  pkt->fifo_gc = udx__fifo_push(&(socket->send_queue), pkt);
+  pkt->send_queue = &socket->send_queue;
+  pkt->fifo_gc = udx__fifo_push(&socket->send_queue, pkt);
   udx__fifo_push(&(handle->unordered), pkt);
 
   return update_poll(socket);
