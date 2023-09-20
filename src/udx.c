@@ -574,8 +574,8 @@ send_state_packet (udx_stream_t *stream) {
   pkt->type = UDX_PACKET_STREAM_STATE;
   pkt->ttl = 0;
 
-  // pkt->send_queue = &stream->socket->send_queue;
-  udx__fifo_push(&stream->socket->send_queue, pkt);
+  pkt->send_queue = &stream->socket->send_queue;
+  pkt->fifo_gc = udx__fifo_push(&stream->socket->send_queue, pkt);
   return update_poll(stream->socket);
 }
 
@@ -1149,8 +1149,8 @@ relay_packet (udx_stream_t *stream, char *buf, ssize_t buf_len, int type, uint32
       pkt->type = UDX_PACKET_STREAM_RELAY;
       pkt->seq = seq;
 
-      udx__fifo_push(&(relay->socket->send_queue), pkt);
-
+      pkt->send_queue = &relay->socket->send_queue;
+      pkt->fifo_gc = udx__fifo_push(&relay->socket->send_queue, pkt);
       update_poll(relay->socket);
     }
   }
@@ -1595,7 +1595,6 @@ udx_socket_send_ttl (udx_socket_send_t *req, udx_socket_t *handle, const uv_buf_
 
   pkt->send_queue = &handle->send_queue;
   pkt->fifo_gc = udx__fifo_push(&(handle->send_queue), pkt);
-
   return update_poll(handle);
 }
 
@@ -1646,7 +1645,9 @@ udx_socket_close (udx_socket_t *handle, udx_socket_close_cb cb) {
 
     // stream packet, allow them to flush, by requeueing them
     // flips the order but these are all state packets so whatevs
-    udx__fifo_push(&(handle->send_queue), pkt);
+
+    pkt->send_queue = &handle->send_queue;
+    pkt->fifo_gc = udx__fifo_push(&handle->send_queue, pkt);
   }
 
   if (handle->send_queue.len == 0) {
@@ -2121,7 +2122,8 @@ udx_stream_destroy (udx_stream_t *handle) {
 
   handle->seq++;
 
-  udx__fifo_push(&(handle->socket->send_queue), pkt);
+  pkt->send_queue = &handle->socket->send_queue;
+  pkt->fifo_gc = udx__fifo_push(&(handle->socket->send_queue), pkt);
   udx__fifo_push(&(handle->unordered), pkt);
 
   int err = update_poll(handle->socket);
