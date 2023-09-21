@@ -1186,7 +1186,7 @@ process_packet (udx_socket_t *socket, char *buf, ssize_t buf_len, struct sockadd
   if (stream == NULL || stream->status & UDX_STREAM_DEAD) return 0;
 
   // We expect this to be a stream packet from now on
-  if (!(stream->status & UDX_STREAM_CONNECTED) && stream->on_firewall != NULL) {
+  if (stream->socket != socket && stream->on_firewall != NULL) {
     if (is_addr_v4_mapped((struct sockaddr *) addr)) {
       addr_to_v4((struct sockaddr_in6 *) addr);
     }
