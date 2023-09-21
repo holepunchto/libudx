@@ -27,7 +27,7 @@ addr_to_v6 (struct sockaddr_in *addr) {
 }
 
 void
-udx__trigger_send_callback (udx_socket_t *socket, udx_packet_t *packet);
+udx__trigger_send_callback (udx_packet_t *packet);
 void
 udx__close_handles (udx_socket_t *socket);
 

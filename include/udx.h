@@ -266,7 +266,8 @@ struct udx_packet_s {
   int ttl;
   int is_retransmit;
 
-  uint32_t fifo_gc;
+  udx_fifo_t *send_queue; // pointer to socket->send_queue
+  uint32_t fifo_gc;       // index into socket->send_queue
 
   uint8_t transmits;
   uint16_t size;
@@ -406,7 +407,7 @@ int
 udx_stream_connect (udx_stream_t *handle, udx_socket_t *socket, uint32_t remote_id, const struct sockaddr *remote_addr);
 
 int
-udx_stream_change_remote (udx_stream_t *stream, uint32_t remote_id, const struct sockaddr *remote_addr, udx_stream_remote_changed_cb remote_changed_cb);
+udx_stream_change_remote (udx_stream_t *stream, udx_socket_t *socket, uint32_t remote_id, const struct sockaddr *remote_addr, udx_stream_remote_changed_cb remote_changed_cb);
 
 int
 udx_stream_relay_to (udx_stream_t *handle, udx_stream_t *destination);
