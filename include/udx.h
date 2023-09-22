@@ -179,7 +179,7 @@ struct udx_stream_s {
   int recovery;
   int deferred_ack;
   int pending_closes;
-  int err; // in case of error on close
+  int error; // in case of error on close
 
   bool reordering_seen;
   int retransmitting;

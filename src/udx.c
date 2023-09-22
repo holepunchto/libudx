@@ -161,7 +161,7 @@ trigger_stream_close (udx_stream_t *stream) {
   if (--stream->pending_closes) return;
 
   if (stream->on_close != NULL) {
-    stream->on_close(stream, stream->err);
+    stream->on_close(stream, stream->error);
   }
 
   ref_dec(stream->udx);
@@ -800,7 +800,7 @@ close_maybe (udx_stream_t *stream, int err) {
   udx__fifo_destroy(&stream->unordered);
   udx__fifo_destroy(&stream->write_queue);
 
-  stream->err = err;
+  stream->error = err;
 
   stream->pending_closes++;
   uv_close((uv_handle_t *) &stream->mtu_raise_timer, on_uv_stream_handle_close);
@@ -1722,7 +1722,7 @@ udx_stream_init (udx_t *udx, udx_stream_t *handle, uint32_t local_id, udx_stream
 
   handle->deferred_ack = 0;
   handle->pending_closes = 0;
-  handle->err = 0;
+  handle->error = 0;
 
   handle->pkts_waiting = 0;
   handle->pkts_inflight = 0;
