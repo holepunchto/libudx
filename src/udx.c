@@ -2006,7 +2006,7 @@ udx_stream_connect (udx_stream_t *handle, udx_socket_t *socket, uint32_t remote_
 
 int
 udx_stream_relay_to (udx_stream_t *handle, udx_stream_t *destination) {
-  if (handle->relayed) return UV_EINVAL;
+  if (handle->relayed || (destination->status & UDX_STREAM_CLOSED) != 0) return UV_EINVAL;
 
   handle->relayed = true;
   handle->relay_to = destination;
