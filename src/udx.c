@@ -1681,6 +1681,7 @@ udx_stream_init (udx_t *udx, udx_stream_t *handle, uint32_t local_id, udx_stream
 
   handle->mtu = UDX_MTU_BASE;
   handle->mtu_state = UDX_MTU_STATE_BASE;
+  handle->mtu_probe_wanted = false;
   handle->mtu_probe_count = 0;
   handle->mtu_probe_size = UDX_MTU_BASE; // starts with first ack, counts as a confirmation of base
   handle->mtu_max = UDX_MTU_MAX;         // revised in connect()
