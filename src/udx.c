@@ -762,6 +762,7 @@ close_maybe (udx_stream_t *stream, int err) {
   if (stream->status & UDX_STREAM_CLOSED) return 0;
 
   stream->status |= UDX_STREAM_CLOSED;
+  stream->status &= ~UDX_STREAM_CONNECTED;
 
   udx_t *udx = stream->udx;
 
