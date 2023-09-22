@@ -157,8 +157,24 @@ trigger_socket_close (udx_socket_t *socket) {
 }
 
 static void
-on_uv_close (uv_handle_t *handle) {
+trigger_stream_close (udx_stream_t *stream) {
+  if (--stream->pending_closes) return;
+
+  if (stream->on_close != NULL) {
+    stream->on_close(stream, stream->err);
+  }
+
+  ref_dec(stream->udx);
+}
+
+static void
+on_uv_socket_handle_close (uv_handle_t *handle) {
   trigger_socket_close((udx_socket_t *) handle->data);
+}
+
+static void
+on_uv_stream_handle_close (uv_handle_t *handle) {
+  trigger_stream_close((udx_stream_t *) handle->data);
 }
 
 static void
@@ -204,11 +220,11 @@ udx__close_handles (udx_socket_t *handle) {
   if (handle->status & UDX_SOCKET_BOUND) {
     handle->pending_closes++;
     uv_poll_stop(&(handle->io_poll));
-    uv_close((uv_handle_t *) &(handle->io_poll), on_uv_close);
+    uv_close((uv_handle_t *) &(handle->io_poll), on_uv_socket_handle_close);
   }
 
   handle->pending_closes += 2; // one below and one in trigger_socket_close
-  uv_close((uv_handle_t *) &(handle->socket), on_uv_close);
+  uv_close((uv_handle_t *) &(handle->socket), on_uv_socket_handle_close);
 
   udx_t *udx = handle->udx;
 
@@ -784,13 +800,10 @@ close_maybe (udx_stream_t *stream, int err) {
   udx__fifo_destroy(&stream->unordered);
   udx__fifo_destroy(&stream->write_queue);
 
-  if (stream->on_close != NULL) {
-    stream->on_close(stream, err);
-  }
+  stream->err = err;
 
-  uv_timer_stop(&stream->mtu_raise_timer);
-
-  ref_dec(udx);
+  stream->pending_closes++;
+  uv_close((uv_handle_t *) &stream->mtu_raise_timer, on_uv_stream_handle_close);
 
   return 1;
 }
@@ -1686,7 +1699,9 @@ udx_stream_init (udx_t *udx, udx_stream_t *handle, uint32_t local_id, udx_stream
   handle->mtu_probe_size = UDX_MTU_BASE; // starts with first ack, counts as a confirmation of base
   handle->mtu_max = UDX_MTU_MAX;         // revised in connect()
 
-  uv_timer_init(udx->loop, &handle->mtu_raise_timer);
+  int err = uv_timer_init(udx->loop, &handle->mtu_raise_timer);
+  assert(err == 0);
+
   handle->mtu_raise_timer.data = handle;
 
   handle->seq = 0;
@@ -1706,6 +1721,8 @@ udx_stream_init (udx_t *udx, udx_stream_t *handle, uint32_t local_id, udx_stream
   handle->rack_fack = 0;
 
   handle->deferred_ack = 0;
+  handle->pending_closes = 0;
+  handle->err = 0;
 
   handle->pkts_waiting = 0;
   handle->pkts_inflight = 0;
