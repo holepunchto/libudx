@@ -528,6 +528,7 @@ mtu_probeify_packet (udx_packet_t *pkt, int wanted_size) {
 static void
 mtu_unprobeify_packet (udx_packet_t *pkt) {
   assert(pkt->bufs_len == 3);
+  pkt->header[3] = 0;
   pkt->bufs[1] = pkt->bufs[2];
   pkt->bufs_len = 2;
 }
