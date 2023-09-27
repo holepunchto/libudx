@@ -30,7 +30,7 @@ debug_print_outgoing (udx_stream_t *stream) {
 
   printf("%-*s%-*s%s\n", i, "RA", j, "SF", "Seq");
 
-  for (int s = stream->remote_acked; s < stream->seq; s++) {
+  for (uint32_t s = stream->remote_acked; s < stream->seq; s++) {
     udx_packet_t *pkt = (udx_packet_t *) udx__cirbuf_get(&stream->outgoing, s);
     if (pkt == NULL) {
       printf("-");

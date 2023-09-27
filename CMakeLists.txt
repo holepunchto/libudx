@@ -15,6 +15,14 @@ set_target_properties(
   POSITION_INDEPENDENT_CODE ON
 )
 
+if(WIN32)
+  target_compile_options(udx PRIVATE /W4)
+endif()
+
+if(UNIX)
+  target_compile_options(udx PRIVATE -Wall -Wextra)
+endif()
+
 target_sources(
   udx
   INTERFACE

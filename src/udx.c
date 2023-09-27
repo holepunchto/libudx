@@ -596,8 +596,9 @@ send_state_packet (udx_stream_t *stream) {
   return update_poll(stream->socket);
 }
 
-static inline int
+static inline uint32_t
 max_payload (udx_stream_t *stream) {
+  assert(stream->mtu > (AF_INET ? UDX_IPV4_HEADER_SIZE : UDX_IPV6_HEADER_SIZE));
   return stream->mtu - (stream->remote_addr.ss_family == AF_INET ? UDX_IPV4_HEADER_SIZE : UDX_IPV6_HEADER_SIZE);
 }
 
@@ -698,7 +699,7 @@ fill_window (udx_stream_t *stream) {
 
     int header_flag = w->is_write_end ? UDX_HEADER_END : UDX_HEADER_DATA;
 
-    int mss = max_payload(stream);
+    uint32_t mss = max_payload(stream);
 
     uint32_t len = get_window_bytes(stream);
 
