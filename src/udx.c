@@ -160,6 +160,12 @@ static void
 trigger_stream_close (udx_stream_t *stream) {
   if (--stream->pending_closes) return;
 
+  udx__cirbuf_destroy(&stream->relaying_streams);
+  udx__cirbuf_destroy(&stream->incoming);
+  udx__cirbuf_destroy(&stream->outgoing);
+  udx__fifo_destroy(&stream->unordered);
+  udx__fifo_destroy(&stream->write_queue);
+
   if (stream->on_close != NULL) {
     stream->on_close(stream, stream->error);
   }
@@ -795,12 +801,6 @@ close_maybe (udx_stream_t *stream, int err) {
 
     if (stream) stream->relay_to = NULL;
   }
-
-  udx__cirbuf_destroy(&stream->relaying_streams);
-  udx__cirbuf_destroy(&stream->incoming);
-  udx__cirbuf_destroy(&stream->outgoing);
-  udx__fifo_destroy(&stream->unordered);
-  udx__fifo_destroy(&stream->write_queue);
 
   stream->error = err;
 
