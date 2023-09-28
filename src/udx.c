@@ -904,8 +904,8 @@ rack_detect_loss (udx_stream_t *stream) {
 
   if (resending > mtu_probes_lost) {
     debug_printf("resending=%d mtu_probe_lost=%d\n", resending, mtu_probes_lost);
-    if (stream->recovery == 0 /* && resending > mtu_probe_lost */) {
-      // debug_print_outgoing(stream);
+    if (stream->recovery == 0) {
+      debug_print_outgoing(stream);
       // easy win is to clear packets that are in the queue - they def wont help if sent.
       unqueue_first_transmits(stream);
 
@@ -1381,6 +1381,7 @@ udx__trigger_send_callback (udx_packet_t *pkt) {
 
 static void
 on_uv_poll (uv_poll_t *handle, int status, int events) {
+  UDX_UNUSED(status);
   udx_socket_t *socket = handle->data;
   ssize_t size;
 
