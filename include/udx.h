@@ -15,11 +15,10 @@ extern "C" {
 #define UDX_IPV6_HEADER_SIZE (40 + 8 + UDX_HEADER_SIZE)
 
 // MTU constants TODO: move into udx.c or internal.h?
-#define UDX_MTU_BASE             1200
-#define UDX_MTU_MAX_PROBES       3
-#define UDX_MTU_MAX              1500
-#define UDX_MTU_STEP             32
-#define UDX_MTU_RAISE_TIMEOUT_MS 600000 // ten minutes
+#define UDX_MTU_BASE       1200
+#define UDX_MTU_MAX_PROBES 3
+#define UDX_MTU_MAX        1500
+#define UDX_MTU_STEP       32
 
 #define UDX_MTU_STATE_BASE            1
 #define UDX_MTU_STATE_SEARCH          2
@@ -178,8 +177,6 @@ struct udx_stream_s {
   int out_of_order;
   int recovery;
   int deferred_ack;
-  int pending_closes;
-  int error; // in case of error on close
 
   bool reordering_seen;
   int retransmitting;
@@ -213,7 +210,6 @@ struct udx_stream_s {
   int mtu_probe_size; // size of the outstanding probe
   int mtu_max;        // min(UDX_MTU_MAX, get_link_mtu(remote_addr))
   uint32_t mtu_probe_seq[UDX_MTU_MAX_PROBES];
-  uv_timer_t mtu_raise_timer; // set on entering SEARCH_COMPLETE, on expiration returns to SEARCHING
   uint16_t mtu;
 
   uint32_t seq;
