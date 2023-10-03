@@ -157,30 +157,8 @@ trigger_socket_close (udx_socket_t *socket) {
 }
 
 static void
-trigger_stream_close (udx_stream_t *stream) {
-  if (--stream->pending_closes) return;
-
-  udx__cirbuf_destroy(&stream->relaying_streams);
-  udx__cirbuf_destroy(&stream->incoming);
-  udx__cirbuf_destroy(&stream->outgoing);
-  udx__fifo_destroy(&stream->unordered);
-  udx__fifo_destroy(&stream->write_queue);
-
-  if (stream->on_close != NULL) {
-    stream->on_close(stream, stream->error);
-  }
-
-  ref_dec(stream->udx);
-}
-
-static void
-on_uv_socket_handle_close (uv_handle_t *handle) {
+on_uv_close (uv_handle_t *handle) {
   trigger_socket_close((udx_socket_t *) handle->data);
-}
-
-static void
-on_uv_stream_handle_close (uv_handle_t *handle) {
-  trigger_stream_close((udx_stream_t *) handle->data);
 }
 
 static void
@@ -226,11 +204,11 @@ udx__close_handles (udx_socket_t *handle) {
   if (handle->status & UDX_SOCKET_BOUND) {
     handle->pending_closes++;
     uv_poll_stop(&(handle->io_poll));
-    uv_close((uv_handle_t *) &(handle->io_poll), on_uv_socket_handle_close);
+    uv_close((uv_handle_t *) &(handle->io_poll), on_uv_close);
   }
 
   handle->pending_closes += 2; // one below and one in trigger_socket_close
-  uv_close((uv_handle_t *) &(handle->socket), on_uv_socket_handle_close);
+  uv_close((uv_handle_t *) &(handle->socket), on_uv_close);
 
   udx_t *udx = handle->udx;
 
@@ -602,8 +580,9 @@ send_state_packet (udx_stream_t *stream) {
   return update_poll(stream->socket);
 }
 
-static inline int
+static inline uint32_t
 max_payload (udx_stream_t *stream) {
+  assert(stream->mtu > (AF_INET ? UDX_IPV4_HEADER_SIZE : UDX_IPV6_HEADER_SIZE));
   return stream->mtu - (stream->remote_addr.ss_family == AF_INET ? UDX_IPV4_HEADER_SIZE : UDX_IPV6_HEADER_SIZE);
 }
 
@@ -634,17 +613,6 @@ send_data_packet (udx_stream_t *stream, udx_packet_t *pkt) {
 
   int err = update_poll(stream->socket);
   return err < 0 ? err : 1;
-}
-
-static void
-mtu_raise_timeout (uv_timer_t *timer) {
-  udx_stream_t *stream = (udx_stream_t *) timer->data;
-  assert(stream->mtu_state == UDX_MTU_STATE_SEARCH_COMPLETE);
-
-  stream->mtu_state = UDX_MTU_STATE_SEARCH;
-  stream->mtu_probe_count = 0;
-
-  debug_printf("mtu: raise_timeout expired, restarting search with mtu=%d\n", stream->mtu_probe_size);
 }
 
 static int
@@ -704,7 +672,7 @@ fill_window (udx_stream_t *stream) {
 
     int header_flag = w->is_write_end ? UDX_HEADER_END : UDX_HEADER_DATA;
 
-    int mss = max_payload(stream);
+    uint32_t mss = max_payload(stream);
 
     uint32_t len = get_window_bytes(stream);
 
@@ -802,10 +770,17 @@ close_maybe (udx_stream_t *stream, int err) {
     if (stream) stream->relay_to = NULL;
   }
 
-  stream->error = err;
+  udx__cirbuf_destroy(&stream->relaying_streams);
+  udx__cirbuf_destroy(&stream->incoming);
+  udx__cirbuf_destroy(&stream->outgoing);
+  udx__fifo_destroy(&stream->unordered);
+  udx__fifo_destroy(&stream->write_queue);
 
-  stream->pending_closes++;
-  uv_close((uv_handle_t *) &stream->mtu_raise_timer, on_uv_stream_handle_close);
+  if (stream->on_close != NULL) {
+    stream->on_close(stream, err);
+  }
+
+  ref_dec(udx);
 
   return 1;
 }
@@ -882,12 +857,7 @@ rack_detect_loss (udx_stream_t *stream) {
           debug_printf("mtu: rack to on last probe, seq=%d count=%d/%d\n", seq, stream->mtu_probe_count, UDX_MTU_MAX_PROBES);
           if (stream->mtu_probe_count >= UDX_MTU_MAX_PROBES) {
             stream->mtu_state = UDX_MTU_STATE_SEARCH_COMPLETE;
-            debug_printf("mtu: established, mtu=%d", stream->mtu);
-            if (stream->mtu < stream->mtu_max) {
-              debug_printf(", %d<%d. scheduling mtu_raise_timer", stream->mtu, stream->mtu_max);
-              uv_timer_start(&stream->mtu_raise_timer, mtu_raise_timeout, UDX_MTU_RAISE_TIMEOUT_MS, 0);
-            }
-            debug_printf("\n");
+            debug_printf("mtu: established via probe timeout, mtu=%d\n", stream->mtu);
           } else {
             stream->mtu_probe_wanted = true;
           }
@@ -903,8 +873,8 @@ rack_detect_loss (udx_stream_t *stream) {
 
   if (resending > mtu_probes_lost) {
     debug_printf("resending=%d mtu_probe_lost=%d\n", resending, mtu_probes_lost);
-    if (stream->recovery == 0 /* && resending > mtu_probe_lost */) {
-      // debug_print_outgoing(stream);
+    if (stream->recovery == 0) {
+      debug_print_outgoing(stream);
       // easy win is to clear packets that are in the queue - they def wont help if sent.
       unqueue_first_transmits(stream);
 
@@ -974,8 +944,6 @@ ack_packet (udx_stream_t *stream, uint32_t seq, int sack) {
 
     if (stream->mtu_probe_size == stream->mtu_max) {
       stream->mtu_state = UDX_MTU_STATE_SEARCH_COMPLETE;
-      uv_timer_start(&stream->mtu_raise_timer, mtu_raise_timeout, UDX_MTU_RAISE_TIMEOUT_MS, 0);
-
     } else {
       stream->mtu_probe_size += UDX_MTU_STEP;
       if (stream->mtu_probe_size >= stream->mtu_max) {
@@ -1380,6 +1348,7 @@ udx__trigger_send_callback (udx_packet_t *pkt) {
 
 static void
 on_uv_poll (uv_poll_t *handle, int status, int events) {
+  UDX_UNUSED(status);
   udx_socket_t *socket = handle->data;
   ssize_t size;
 
@@ -1701,11 +1670,6 @@ udx_stream_init (udx_t *udx, udx_stream_t *handle, uint32_t local_id, udx_stream
   handle->mtu_probe_size = UDX_MTU_BASE; // starts with first ack, counts as a confirmation of base
   handle->mtu_max = UDX_MTU_MAX;         // revised in connect()
 
-  int err = uv_timer_init(udx->loop, &handle->mtu_raise_timer);
-  assert(err == 0);
-
-  handle->mtu_raise_timer.data = handle;
-
   handle->seq = 0;
   handle->ack = 0;
   handle->remote_acked = 0;
@@ -1723,8 +1687,6 @@ udx_stream_init (udx_t *udx, udx_stream_t *handle, uint32_t local_id, udx_stream
   handle->rack_fack = 0;
 
   handle->deferred_ack = 0;
-  handle->pending_closes = 0;
-  handle->error = 0;
 
   handle->pkts_waiting = 0;
   handle->pkts_inflight = 0;
@@ -1975,8 +1937,6 @@ udx_stream_change_remote (udx_stream_t *stream, udx_socket_t *socket, uint32_t r
   stream->mtu_probe_count = 0;
   stream->mtu_probe_size = UDX_MTU_BASE; // starts with first ack, counts as a confirmation of base
   stream->mtu_max = UDX_MTU_MAX;         // revised in connect()
-
-  uv_timer_stop(&stream->mtu_raise_timer);
 
   return update_poll(stream->socket);
 }
