@@ -188,8 +188,10 @@ on_udx_timer_close (uv_handle_t *handle) {
   udx_t *udx = (udx_t *) handle->data;
   udx_socket_t *socket = udx->timer_closed_by;
 
+  // always clear this as someone needs to reboot the timer now
+  udx->timer_closed_by = NULL;
+
   if (udx->sockets > 0) { // re-open
-    udx->timer_closed_by = NULL;
     udx_start_timer(udx);
   }
 
