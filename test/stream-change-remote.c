@@ -5,7 +5,7 @@
 
 #include "../include/udx.h"
 
-#define NBYTES_TO_SEND 100000
+#define NBYTES_TO_SEND 1000000
 
 uv_loop_t loop;
 udx_t udx;
@@ -33,6 +33,20 @@ bool read_called = false;
 int remote_changed_called = 0;
 
 size_t nbytes_read;
+
+size_t read_hash = 5381;
+size_t write_hash = 5381;
+
+static uint64_t
+hash (uint64_t prev, uint8_t *data, int len) {
+  uint64_t hash = prev;
+
+  for (int i = 0; i < len; i++) {
+    hash = ((hash << 5) + hash) + data[i];
+  }
+
+  return hash;
+}
 
 void
 on_ack (udx_stream_write_t *r, int status, int unordered) {
@@ -63,6 +77,8 @@ on_read (udx_stream_t *handle, ssize_t read_len, const uv_buf_t *buf) {
   static bool changed = false;
 
   nbytes_read += read_len;
+
+  read_hash = hash(read_hash, buf->base, read_len);
 
   // swap to relay 1/3 of the way into the stream
 
@@ -152,12 +168,18 @@ main () {
   assert(e == 0);
 
   uv_buf_t buf = uv_buf_init(malloc(NBYTES_TO_SEND), NBYTES_TO_SEND);
+
+  write_hash = hash(write_hash, buf.base, buf.len);
+
   e = udx_stream_write(&req, &dstream, &buf, 1, on_ack);
   assert(e && "drained");
 
   uv_run(&loop, UV_RUN_DEFAULT);
 
   assert(ack_called && read_called && remote_changed_called && nbytes_read == NBYTES_TO_SEND);
+
+  assert(read_hash == write_hash);
+  printf("read_hash=%lu write_hash=%lu\n", read_hash, write_hash);
 
   return 0;
 }
