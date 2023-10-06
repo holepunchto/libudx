@@ -4,6 +4,7 @@
 #include <string.h>
 
 #include "../include/udx.h"
+#include "helpers.h"
 
 uv_loop_t loop;
 udx_t udx;
@@ -31,19 +32,8 @@ struct {
   int finished;
 } stats;
 
-uint64_t read_hash = 5381;
-uint64_t write_hash = 5381;
-
-static uint64_t
-hash (uint64_t prev, uint8_t *data, int len) {
-  uint64_t hash = prev;
-
-  for (int i = 0; i < len; i++) {
-    hash = ((hash << 5) + hash) + data[i];
-  }
-
-  return hash;
-}
+uint64_t read_hash = HASH_INIT;
+uint64_t write_hash = HASH_INIT;
 
 void
 on_ack (udx_stream_write_t *r, int status, int unordered) {

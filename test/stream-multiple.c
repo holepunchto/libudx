@@ -4,6 +4,7 @@
 #include <string.h>
 
 #include "../include/udx.h"
+#include "helpers.h"
 
 #define NBYTES_TO_SEND 10000000
 #define NSTREAMS       16
@@ -31,17 +32,6 @@ struct receiver {
   size_t nbytes_read;
   size_t read_hash;
 } receiver[NSTREAMS];
-
-static uint64_t
-hash (uint64_t prev, uint8_t *data, int len) {
-  uint64_t hash = prev;
-
-  for (int i = 0; i < len; i++) {
-    hash = ((hash << 5) + hash) + data[i];
-  }
-
-  return hash;
-}
 
 static bool
 all_acked () {
@@ -82,7 +72,7 @@ main () {
 
   uv_buf_t buf = uv_buf_init(malloc(NBYTES_TO_SEND), NBYTES_TO_SEND);
 
-  size_t write_hash = 5381;
+  size_t write_hash = HASH_INIT;
 
   write_hash = hash(write_hash, buf.base, buf.len);
 
@@ -90,7 +80,7 @@ main () {
     int sender_id = i;
     int receiver_id = NSTREAMS + i;
 
-    receiver[i].read_hash = 5381;
+    receiver[i].read_hash = HASH_INIT;
     e = udx_socket_init(&udx, &sender[i].usock);
     assert(e == 0);
     uv_ip4_addr("127.0.0.1", 8000 + i, &sender[i].addr);

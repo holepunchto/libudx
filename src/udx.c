@@ -1127,8 +1127,8 @@ relay_packet (udx_stream_t *stream, char *buf, ssize_t buf_len, int type, uint8_
       b.len -= UDX_HEADER_SIZE;
 
       udx_packet_t *pkt = malloc(sizeof(udx_packet_t) + b.len);
-      memcpy((void *) pkt + sizeof(udx_packet_t), b.base, b.len);
-      b.base = (void *) pkt + sizeof(udx_packet_t);
+      memcpy((char *) pkt + sizeof(udx_packet_t), b.base, b.len);
+      b.base = (char *) pkt + sizeof(udx_packet_t);
 
       init_stream_packet(pkt, type, relay, &b);
 
