@@ -11,6 +11,12 @@ cmake -S . -B build
 cmake --build build
 ```
 
+Do note that the submodules need to be installed before building:
+```
+git submodule update --init --recursive
+```
+
+
 ## Debugging
 
 When debugging native code, make sure to configure a debug build:
