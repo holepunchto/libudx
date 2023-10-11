@@ -4,6 +4,7 @@
 #include <string.h>
 
 #include "../include/udx.h"
+#include "helpers.h"
 
 uv_loop_t loop;
 udx_t udx;
@@ -31,6 +32,9 @@ struct {
   int finished;
 } stats;
 
+uint64_t read_hash = HASH_INIT;
+uint64_t write_hash = HASH_INIT;
+
 void
 on_ack (udx_stream_write_t *r, int status, int unordered) {
   printf("write acked, status=%d %s\n", status, status == UV_ECANCELED ? "(UV_ECANCELED)" : "");
@@ -42,6 +46,10 @@ void
 on_read (udx_stream_t *handle, ssize_t read_len, const uv_buf_t *buf) {
   stats.bytes_read += read_len;
   stats.last_read_ms = uv_hrtime() / 1000000;
+
+  assert(read_len == buf->len);
+
+  read_hash = hash(read_hash, buf->base, read_len);
 
   if (stats.bytes_read == options.size_bytes) {
     printf("read all bytes\n");
@@ -113,9 +121,11 @@ main () {
 
   printf("generating data ...\n");
 
-  options.size_bytes = 2 * 1024 * 1024 * 1024L;
+  options.size_bytes = 50 * 1024 * 1024L;
 
   char *data = calloc(options.size_bytes, 1);
+
+  write_hash = hash(write_hash, data, options.size_bytes);
 
   assert(data != NULL && "malloc");
 
@@ -131,5 +141,7 @@ main () {
 
   // just for valgrind
   free(data);
+  printf("readhash=%x writehash=%x\n", read_hash, write_hash);
+  assert(read_hash == write_hash);
   return 0;
 }

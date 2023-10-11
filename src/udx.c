@@ -493,16 +493,18 @@ init_stream_packet (udx_packet_t *pkt, int type, udx_stream_t *stream, const uv_
 // returns 1 on success, zero if packet can't be promoted to a probe packet
 static int
 mtu_probeify_packet (udx_packet_t *pkt, int wanted_size) {
-  assert(pkt->bufs_len == 2);
-  assert(pkt->header[3] == 0);
   assert(wanted_size > pkt->size);
+
+  if (pkt->bufs_len != 2 || pkt->header[3] != 0) {
+    return 0;
+  }
   int header_size = (pkt->dest.ss_family == AF_INET ? UDX_IPV4_HEADER_SIZE : UDX_IPV6_HEADER_SIZE) - 20;
   int padding_size = wanted_size - (pkt->size + (pkt->dest.ss_family == AF_INET ? UDX_IPV4_HEADER_SIZE : UDX_IPV6_HEADER_SIZE) - 20);
   if (padding_size > 255) {
     return 0;
   }
   debug_printf("mtu: probeify seq=%d size=%u wanted=%d padding=%d\n", pkt->seq, pkt->size + header_size, wanted_size, padding_size);
-  static char probe_data[256] = "";
+  static char probe_data[256] = {0};
   pkt->bufs[2] = pkt->bufs[1];
   pkt->bufs[1].len = padding_size;
   pkt->bufs[1].base = probe_data;
@@ -1107,7 +1109,7 @@ process_data_packet (udx_stream_t *stream, int type, uint32_t seq, char *data, s
 }
 
 static int
-relay_packet (udx_stream_t *stream, char *buf, ssize_t buf_len, int type, uint32_t seq, uint32_t ack) {
+relay_packet (udx_stream_t *stream, char *buf, ssize_t buf_len, int type, uint8_t data_offset, uint32_t seq, uint32_t ack) {
   stream->seq = seq_max(stream->seq, seq);
 
   udx_stream_t *relay = stream->relay_to;
@@ -1124,7 +1126,9 @@ relay_packet (udx_stream_t *stream, char *buf, ssize_t buf_len, int type, uint32
       b.base += UDX_HEADER_SIZE;
       b.len -= UDX_HEADER_SIZE;
 
-      udx_packet_t *pkt = malloc(sizeof(udx_packet_t));
+      udx_packet_t *pkt = malloc(sizeof(udx_packet_t) + b.len);
+      memcpy((char *) pkt + sizeof(udx_packet_t), b.base, b.len);
+      b.base = (char *) pkt + sizeof(udx_packet_t);
 
       init_stream_packet(pkt, type, relay, &b);
 
@@ -1134,6 +1138,7 @@ relay_packet (udx_stream_t *stream, char *buf, ssize_t buf_len, int type, uint32
 
       pkt->status = UDX_PACKET_SENDING;
       pkt->type = UDX_PACKET_STREAM_RELAY;
+      pkt->header[3] = data_offset;
       pkt->seq = seq;
 
       pkt->send_queue = &relay->socket->send_queue;
@@ -1181,7 +1186,7 @@ process_packet (udx_socket_t *socket, char *buf, ssize_t buf_len, struct sockadd
     if (stream->on_firewall(stream, socket, addr)) return 1;
   }
 
-  if (stream->relay_to) return relay_packet(stream, buf, buf_len, type, seq, ack);
+  if (stream->relay_to) return relay_packet(stream, buf, buf_len, type, data_offset, seq, ack);
 
   buf += UDX_HEADER_SIZE;
   buf_len -= UDX_HEADER_SIZE;
