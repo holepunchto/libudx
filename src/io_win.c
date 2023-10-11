@@ -122,14 +122,5 @@ udx__on_writable (udx_socket_t *socket) {
     if (type & UDX_PACKET_FREE_ON_SEND) {
       free(pkt);
     }
-
-    // queue another write, might be able to do this smarter...
-    if (socket->send_queue.len > 0) continue;
-
-    // if the socket is under closure, we need to trigger shutdown now since no important writes are pending
-    if (socket->status & UDX_SOCKET_CLOSING) {
-      udx__close_handles(socket);
-      return;
-    }
   }
 }

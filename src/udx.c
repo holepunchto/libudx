@@ -1389,6 +1389,9 @@ on_uv_poll (uv_poll_t *handle, int status, int events) {
 
   if (events & UV_WRITABLE) {
     udx__on_writable(socket);
+    if (socket->status & UDX_SOCKET_CLOSING && socket->send_queue.len == 0) {
+      udx__close_handles(socket);
+    }
   }
 
   // update the poll if the socket is still active.
