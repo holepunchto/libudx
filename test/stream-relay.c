@@ -1,8 +1,12 @@
 #include <assert.h>
 #include <stdbool.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "../include/udx.h"
+#include "helpers.h"
+
+#define NBYTES_TO_SEND 1000000
 
 uv_loop_t loop;
 udx_t udx;
@@ -28,6 +32,11 @@ udx_stream_write_t req;
 bool ack_called = false;
 bool read_called = false;
 
+size_t write_hash = HASH_INIT;
+size_t read_hash = HASH_INIT;
+
+size_t nbytes_read;
+
 void
 on_ack (udx_stream_write_t *r, int status, int unordered) {
   assert(&req == r);
@@ -41,10 +50,15 @@ on_ack (udx_stream_write_t *r, int status, int unordered) {
 
 void
 on_read (udx_stream_t *handle, ssize_t read_len, const uv_buf_t *buf) {
-  assert(buf->len == 5);
   assert(buf->len == read_len);
-  assert(memcmp(buf->base, "hello", 5) == 0);
 
+  if (nbytes_read == 0) {
+    printf("read_len=%d\n", read_len);
+    assert(memcmp(buf->base, "hello", 5) == 0);
+  }
+  read_hash = hash(read_hash, buf->base, read_len);
+
+  nbytes_read += read_len;
   read_called = true;
 }
 
@@ -118,12 +132,19 @@ main () {
   e = udx_stream_connect(&dstream, &dsock, 3, (struct sockaddr *) &caddr);
   assert(e == 0);
 
-  uv_buf_t buf = uv_buf_init("hello", 5);
+  uv_buf_t buf = uv_buf_init(calloc(NBYTES_TO_SEND, 1), NBYTES_TO_SEND);
+
+  memcpy(buf.base, "hello", 5);
+
+  write_hash = hash(write_hash, buf.base, buf.len);
+
   udx_stream_write(&req, &dstream, &buf, 1, on_ack);
 
   uv_run(&loop, UV_RUN_DEFAULT);
 
   assert(ack_called && read_called);
+
+  assert(nbytes_read == NBYTES_TO_SEND && read_hash == write_hash);
 
   return 0;
 }
