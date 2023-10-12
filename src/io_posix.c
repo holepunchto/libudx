@@ -151,7 +151,9 @@ udx__on_writable (udx_socket_t *socket) {
 
     int nsent = rc > 0 ? rc : 0;
 
-    assert(rc >= 0 || rc == UV_EAGAIN || rc == UV_ENOBUFS);
+    if (rc < 0 && rc != UV_EAGAIN && rc != UV_ENOBUFS) {
+      nsent = pkts; // something errored badly, assume all packets sent and lost
+    }
 
     int unsent = pkts - nsent;
 
