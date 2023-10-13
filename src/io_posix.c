@@ -151,7 +151,9 @@ udx__on_writable (udx_socket_t *socket) {
 
     int nsent = rc > 0 ? rc : 0;
 
-    assert(rc >= 0 || rc == UV_EAGAIN || rc == UV_ENOBUFS);
+    if (rc < 0 && rc != UV_EAGAIN && rc != UV_ENOBUFS) {
+      nsent = pkts; // something errored badly, assume all packets sent and lost
+    }
 
     int unsent = pkts - nsent;
 
@@ -183,14 +185,6 @@ udx__on_writable (udx_socket_t *socket) {
 
     if (rc == UV_EAGAIN || rc == UV_ENOBUFS) {
       break;
-    }
-
-    if (socket->send_queue.len > 0) continue;
-
-    // if the socket is under closure, we need to trigger shutdown now since no important writes are pending
-    if (socket->status & UDX_SOCKET_CLOSING) {
-      udx__close_handles(socket);
-      return;
     }
   }
 #else /* no sendmmsg */
@@ -230,15 +224,6 @@ udx__on_writable (udx_socket_t *socket) {
 
     if (type & UDX_PACKET_FREE_ON_SEND) {
       free(pkt);
-    }
-
-    // queue another write, might be able to do this smarter...
-    if (socket->send_queue.len > 0) continue;
-
-    // if the socket is under closure, we need to trigger shutdown now since no important writes are pending
-    if (socket->status & UDX_SOCKET_CLOSING) {
-      udx__close_handles(socket);
-      return;
     }
   }
 #endif
