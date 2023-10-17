@@ -102,26 +102,32 @@ udx__recvmsg (udx_socket_t *handle, uv_buf_t *buf, struct sockaddr *addr, int ad
 void
 udx__on_writable (udx_socket_t *socket) {
 #ifdef UDX_PLATFORM_HAS_SENDMMSG
-  while (socket->send_queue.len > 0) {
+  udx_fifo_t *fifo = &socket->send_queue;
+
+  while (fifo->len > 0) {
     udx_packet_t *batch[UDX_SENDMMSG_BATCH_SIZE];
     struct mmsghdr h[UDX_SENDMMSG_BATCH_SIZE];
 
+    while (udx__fifo_peek(fifo) == NULL && fifo->len > 0) {
+      udx__fifo_shift(fifo);
+    }
+
+    if (fifo->len == 0) {
+      return;
+    }
+
     int pkts = 0;
 
-    while (pkts < UDX_SENDMMSG_BATCH_SIZE && socket->send_queue.len > 0) {
-      udx_packet_t *pkt = udx__fifo_shift(&(socket->send_queue));
-      /* pkt is null when descheduled after being acked */
-      if (pkt == NULL) {
-        if (pkts == 0) {
-          continue;
-        }
-        // return null to queue and send partial batch
-        // eliminates edge case where sendmmsg does
-        // a partial send and we must determine
-        // how many times to call udx__fifo_undo
-        udx__fifo_undo(&socket->send_queue);
-        break;
-      }
+    udx_packet_t *pkt = udx__fifo_peek(fifo);
+    int ttl = pkt->ttl;
+    bool adjust_ttl = ttl > 0 && socket->ttl != ttl;
+
+    while (pkts < UDX_SENDMMSG_BATCH_SIZE && fifo->len > 0) {
+      udx_packet_t *pkt = udx__fifo_peek(fifo);
+      // packet is null when desceduled after being acked
+      if (pkt == NULL || pkt->ttl != ttl) break;
+
+      udx__fifo_shift(fifo);
 
       if (socket->family == 6 && pkt->dest.ss_family == AF_INET) {
         addr_to_v6((struct sockaddr_in *) &(pkt->dest));
@@ -143,9 +149,13 @@ udx__on_writable (udx_socket_t *socket) {
 
     int rc;
 
+    if (adjust_ttl) uv_udp_set_ttl((uv_udp_t *) socket, ttl);
+
     do {
       rc = sendmmsg(socket->io_poll.io_watcher.fd, h, pkts, 0);
     } while (rc == -1 && errno == EINTR);
+
+    if (adjust_ttl) uv_udp_set_ttl((uv_udp_t *) socket, socket->ttl);
 
     rc = rc == -1 ? uv_translate_sys_error(errno) : rc;
 
@@ -157,12 +167,13 @@ udx__on_writable (udx_socket_t *socket) {
 
     int unsent = pkts - nsent;
 
-    /* return unsent packets to the fifo */
+    // return unsent packets to the fifo
     while (unsent--) {
-      udx__fifo_undo(&socket->send_queue);
+      udx__fifo_undo(fifo);
     }
 
-    /* update packet status for sent packets */
+    // update packet status for sent packets
+
     for (int i = 0; i < nsent; i++) {
       udx_packet_t *pkt = batch[i];
 
