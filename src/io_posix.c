@@ -124,7 +124,7 @@ udx__on_writable (udx_socket_t *socket) {
 
     while (pkts < UDX_SENDMMSG_BATCH_SIZE && fifo->len > 0) {
       udx_packet_t *pkt = udx__fifo_peek(fifo);
-      // packet is null when desceduled after being acked
+      // packet is null when descheduled after being acked
       if (pkt == NULL || pkt->ttl != ttl) break;
 
       udx__fifo_shift(fifo);
