@@ -47,6 +47,8 @@
 #define UDX_CONG_INIT_CWND   3
 #define UDX_CONG_MAX_CWND    65536
 
+#define UDX_HIGH_WATERMARK   262144
+
 typedef struct {
   uint32_t seq; // must be the first entry, so its compat with the cirbuf
 
@@ -395,6 +397,17 @@ clear_incoming_packets (udx_stream_t *stream) {
 }
 
 static void
+on_bytes_acked (udx_stream_t* stream, udx_stream_write_t *w, size_t bytes) {
+  w->bytes -= bytes;
+  stream->writes_queued_bytes -= bytes;
+
+  if (stream->hit_high_watermark && stream->writes_queued_bytes < UDX_HIGH_WATERMARK) {
+    stream->hit_high_watermark = false;
+    if (stream->on_drain != NULL) stream->on_drain(stream);
+  }
+}
+
+static void
 clear_outgoing_packets (udx_stream_t *stream) {
 
   // We should make sure all existing packets do not send, and notify the user that they failed
@@ -410,7 +423,8 @@ clear_outgoing_packets (udx_stream_t *stream) {
 
     udx_stream_write_t *w = (udx_stream_write_t *) pkt->ctx;
 
-    w->bytes -= pkt->bufs[pkt->bufs_len - 1].len;
+    size_t pkt_len = pkt->bufs[pkt->bufs_len - 1].len;
+    on_bytes_acked(stream, w, pkt_len);
 
     if (w->bytes == 0 && w->on_ack != NULL) {
       w->on_ack(w, UV_ECANCELED, 0);
@@ -424,7 +438,8 @@ clear_outgoing_packets (udx_stream_t *stream) {
     udx_stream_write_t *w = udx__fifo_shift(&stream->write_queue);
     assert(w != NULL);
 
-    w->bytes -= w->buf.len;
+    on_bytes_acked(stream, w, w->buf.len);
+
     assert(w->bytes == 0);
 
     if (w->on_ack) {
@@ -619,9 +634,18 @@ send_data_packet (udx_stream_t *stream, udx_packet_t *pkt) {
   return err < 0 ? err : 1;
 }
 
+static inline uint32_t
+get_window_bytes (udx_stream_t *stream) {
+  // todo: receive window, then return lesser of cwnd, rwnd
+
+  if (stream->inflight >= stream->cwnd * max_payload(stream)) {
+    return 0;
+  }
+  return stream->cwnd * max_payload(stream) - stream->inflight;
+}
+
 static int
 flush_waiting_packets (udx_stream_t *stream) {
-  const uint32_t was_waiting = stream->pkts_waiting;
   uint32_t seq = stream->retransmits_waiting ? stream->remote_acked : (stream->seq - stream->pkts_waiting);
 
   int sent = 0;
@@ -635,25 +659,8 @@ flush_waiting_packets (udx_stream_t *stream) {
     if (sent <= 0) break;
   }
 
-  // TODO: retransmits are counted in pkts_waiting, but we (prob) should not count them
-  // towards to drain loop - investigate that.
-  if (was_waiting > 0 && stream->pkts_waiting == 0 && stream->on_drain != NULL) {
-    // todo: move this callback into the fill window call?
-    stream->on_drain(stream);
-  }
-
   if (sent < 0) return sent;
   return 0;
-}
-
-static inline uint32_t
-get_window_bytes (udx_stream_t *stream) {
-  // todo: receive window, then return lesser of cwnd, rwnd
-
-  if (stream->inflight >= stream->cwnd * max_payload(stream)) {
-    return 0;
-  }
-  return stream->cwnd * max_payload(stream) - stream->inflight;
 }
 
 static int
@@ -683,7 +690,7 @@ fill_window (udx_stream_t *stream) {
     if (buf->len < len) len = buf->len;
     if (mss < len) len = mss;
     if (mss > len && buf->len > len && stream->pkts_inflight > 0) {
-      break;
+      return 0;
     }
 
     udx_packet_t *pkt = malloc(sizeof(udx_packet_t));
@@ -732,7 +739,7 @@ fill_window (udx_stream_t *stream) {
     }
   }
 
-  return 1;
+  return 0;
 }
 
 static int
@@ -1030,7 +1037,8 @@ ack_packet (udx_stream_t *stream, uint32_t seq, int sack) {
 
   udx_stream_write_t *w = (udx_stream_write_t *) pkt->ctx;
 
-  w->bytes -= pkt->bufs[pkt->bufs_len - 1].len;
+  size_t pkt_len = pkt->bufs[pkt->bufs_len - 1].len;
+  on_bytes_acked(stream, w, pkt_len);
 
   free(pkt);
 
@@ -1671,6 +1679,9 @@ udx_stream_init (udx_t *udx, udx_stream_t *handle, uint32_t local_id, udx_stream
   handle->reordering_seen = false;
   handle->retransmitting = 0;
 
+  handle->hit_high_watermark = false;
+  handle->writes_queued_bytes = 0;
+
   handle->remote_changing = false;
   handle->on_remote_changed = NULL;
   handle->seq_on_remote_changed = 0;
@@ -2056,9 +2067,18 @@ udx_stream_write (udx_stream_write_t *req, udx_stream_t *stream, const uv_buf_t 
   req->buf = bufs[0];
   req->is_write_end = 0;
 
+  stream->writes_queued_bytes += req->bytes;
   udx__fifo_push(&stream->write_queue, req);
 
-  return fill_window(stream);
+  int err = fill_window(stream);
+  if (err < 0) return err;
+
+  if (stream->writes_queued_bytes > UDX_HIGH_WATERMARK) {
+    stream->hit_high_watermark = true;
+    return 0;
+  }
+
+  return 1;
 }
 
 int
@@ -2074,9 +2094,18 @@ udx_stream_write_end (udx_stream_write_t *req, udx_stream_t *stream, const uv_bu
   req->buf = bufs[0];
   req->is_write_end = 1;
 
+  stream->writes_queued_bytes += req->bytes;
   udx__fifo_push(&stream->write_queue, req);
 
-  return fill_window(stream);
+  int err = fill_window(stream);
+  if (err < 0) return err;
+
+  if (stream->writes_queued_bytes > UDX_HIGH_WATERMARK) {
+    stream->hit_high_watermark = true;
+    return 0;
+  }
+
+  return 1;
 }
 
 int

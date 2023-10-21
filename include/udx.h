@@ -178,6 +178,9 @@ struct udx_stream_s {
   int recovery;
   int deferred_ack;
 
+  bool hit_high_watermark;
+  size_t writes_queued_bytes;
+
   bool reordering_seen;
   int retransmitting;
 
