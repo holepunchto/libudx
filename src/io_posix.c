@@ -123,13 +123,14 @@ udx__on_writable (udx_socket_t *socket) {
     bool adjust_ttl = ttl > 0 && socket->ttl != ttl;
 
     while (pkts < UDX_SENDMMSG_BATCH_SIZE && fifo->len > 0) {
-      udx_packet_t *pkt = udx__fifo_peek(fifo);
+      udx_packet_t *pkt = udx__fifo_shift(fifo);
 
       if (pkt == NULL) continue;
       // packet is null when descheduled after being acked
-      if (pkt->ttl != ttl) break;
-
-      udx__fifo_shift(fifo);
+      if (pkt->ttl != ttl) {
+        udx__fifo_undo(fifo);
+        break;
+      }
 
       if (socket->family == 6 && pkt->dest.ss_family == AF_INET) {
         addr_to_v6((struct sockaddr_in *) &(pkt->dest));
