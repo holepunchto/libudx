@@ -162,7 +162,7 @@ main () {
   write_hash = hash(write_hash, buf.base, buf.len);
 
   e = udx_stream_write(&req, &dstream, &buf, 1, on_ack);
-  assert(e && "drained");
+  assert(e == 0); // write bigger than hwm
 
   uv_run(&loop, UV_RUN_DEFAULT);
 
