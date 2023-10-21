@@ -164,7 +164,7 @@ udx__on_writable (udx_socket_t *socket) {
 
     int nsent = rc > 0 ? rc : 0;
 
-    if (rc < 0 && rc != UV_EAGAIN && rc != UV_ENOBUFS) {
+    if (rc < 0 && rc != UV_EAGAIN) {
       nsent = pkts; // something errored badly, assume all packets sent and lost
     }
 
@@ -200,7 +200,7 @@ udx__on_writable (udx_socket_t *socket) {
       }
     }
 
-    if (rc == UV_EAGAIN || rc == UV_ENOBUFS) {
+    if (rc == UV_EAGAIN) {
       break;
     }
   }
