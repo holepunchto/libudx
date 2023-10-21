@@ -108,7 +108,7 @@ udx__on_writable (udx_socket_t *socket) {
     udx_packet_t *batch[UDX_SENDMMSG_BATCH_SIZE];
     struct mmsghdr h[UDX_SENDMMSG_BATCH_SIZE];
 
-    while (udx__fifo_peek(fifo) == NULL && fifo->len > 0) {
+    while (fifo->len > 0 && udx__fifo_peek(fifo) == NULL) {
       udx__fifo_shift(fifo);
     }
 
