@@ -124,8 +124,10 @@ udx__on_writable (udx_socket_t *socket) {
 
     while (pkts < UDX_SENDMMSG_BATCH_SIZE && fifo->len > 0) {
       udx_packet_t *pkt = udx__fifo_peek(fifo);
+
+      if (pkt == NULL) continue;
       // packet is null when descheduled after being acked
-      if (pkt == NULL || pkt->ttl != ttl) break;
+      if (pkt->ttl != ttl) break;
 
       udx__fifo_shift(fifo);
 
@@ -167,9 +169,12 @@ udx__on_writable (udx_socket_t *socket) {
 
     int unsent = pkts - nsent;
 
-    // return unsent packets to the fifo
-    while (unsent--) {
+    while (unsent > 0) {
+      // restore an unsent packet
       udx__fifo_undo(fifo);
+      if (udx__fifo_peek(fifo) != NULL) {
+        unsent--;
+      }
     }
 
     // update packet status for sent packets
