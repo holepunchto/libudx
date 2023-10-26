@@ -102,24 +102,33 @@ udx__recvmsg (udx_socket_t *handle, uv_buf_t *buf, struct sockaddr *addr, int ad
 void
 udx__on_writable (udx_socket_t *socket) {
 #ifdef UDX_PLATFORM_HAS_SENDMMSG
-  while (socket->send_queue.len > 0) {
+  udx_fifo_t *fifo = &socket->send_queue;
+
+  while (fifo->len > 0) {
     udx_packet_t *batch[UDX_SENDMMSG_BATCH_SIZE];
     struct mmsghdr h[UDX_SENDMMSG_BATCH_SIZE];
 
+    while (fifo->len > 0 && udx__fifo_peek(fifo) == NULL) {
+      udx__fifo_shift(fifo);
+    }
+
+    if (fifo->len == 0) {
+      return;
+    }
+
     int pkts = 0;
 
-    while (pkts < UDX_SENDMMSG_BATCH_SIZE && socket->send_queue.len > 0) {
-      udx_packet_t *pkt = udx__fifo_shift(&(socket->send_queue));
-      /* pkt is null when descheduled after being acked */
-      if (pkt == NULL) {
-        if (pkts == 0) {
-          continue;
-        }
-        // return null to queue and send partial batch
-        // eliminates edge case where sendmmsg does
-        // a partial send and we must determine
-        // how many times to call udx__fifo_undo
-        udx__fifo_undo(&socket->send_queue);
+    udx_packet_t *pkt = udx__fifo_peek(fifo);
+    int ttl = pkt->ttl;
+    bool adjust_ttl = ttl > 0 && socket->ttl != ttl;
+
+    while (pkts < UDX_SENDMMSG_BATCH_SIZE && fifo->len > 0) {
+      udx_packet_t *pkt = udx__fifo_shift(fifo);
+
+      if (pkt == NULL) continue;
+      // packet is null when descheduled after being acked
+      if (pkt->ttl != ttl) {
+        udx__fifo_undo(fifo);
         break;
       }
 
@@ -143,26 +152,34 @@ udx__on_writable (udx_socket_t *socket) {
 
     int rc;
 
+    if (adjust_ttl) uv_udp_set_ttl((uv_udp_t *) socket, ttl);
+
     do {
       rc = sendmmsg(socket->io_poll.io_watcher.fd, h, pkts, 0);
     } while (rc == -1 && errno == EINTR);
+
+    if (adjust_ttl) uv_udp_set_ttl((uv_udp_t *) socket, socket->ttl);
 
     rc = rc == -1 ? uv_translate_sys_error(errno) : rc;
 
     int nsent = rc > 0 ? rc : 0;
 
-    if (rc < 0 && rc != UV_EAGAIN && rc != UV_ENOBUFS) {
+    if (rc < 0 && rc != UV_EAGAIN) {
       nsent = pkts; // something errored badly, assume all packets sent and lost
     }
 
     int unsent = pkts - nsent;
 
-    /* return unsent packets to the fifo */
-    while (unsent--) {
-      udx__fifo_undo(&socket->send_queue);
+    while (unsent > 0) {
+      // restore an unsent packet
+      udx__fifo_undo(fifo);
+      if (udx__fifo_peek(fifo) != NULL) {
+        unsent--;
+      }
     }
 
-    /* update packet status for sent packets */
+    // update packet status for sent packets
+
     for (int i = 0; i < nsent; i++) {
       udx_packet_t *pkt = batch[i];
 
@@ -183,7 +200,7 @@ udx__on_writable (udx_socket_t *socket) {
       }
     }
 
-    if (rc == UV_EAGAIN || rc == UV_ENOBUFS) {
+    if (rc == UV_EAGAIN) {
       break;
     }
   }
