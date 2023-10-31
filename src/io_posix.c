@@ -15,6 +15,7 @@
 #include "fifo.h"
 #include "internal.h"
 #include "io.h"
+#include "endian.h"
 
 #if defined(__APPLE__)
 
@@ -56,6 +57,22 @@ udx__get_link_mtu (const struct sockaddr *addr) {
   return mtu;
 }
 #endif
+
+static void
+ensure_latest_stream_ack (udx_packet_t *pkt) {
+  if (pkt->stream == NULL) return; // not a stream
+
+  uint32_t *i = (uint32_t *) pkt->header;
+
+  i += 4;
+
+  uint32_t packet_ack = *i;
+  uint32_t actual_ack = udx__swap_uint32_if_be(pkt->stream->ack);
+
+  if (packet_ack != actual_ack) {
+    *i = actual_ack;
+  }
+}
 
 ssize_t
 udx__sendmsg (udx_socket_t *handle, const uv_buf_t bufs[], unsigned int bufs_len, struct sockaddr *addr, int addr_len) {
@@ -137,6 +154,8 @@ udx__on_writable (udx_socket_t *socket) {
         pkt->dest_len = sizeof(struct sockaddr_in6);
       }
 
+      ensure_latest_stream_ack(pkt);
+
       batch[pkts] = pkt;
       struct mmsghdr *p = &h[pkts];
       memset(p, 0, sizeof(*p));
@@ -217,6 +236,8 @@ udx__on_writable (udx_socket_t *socket) {
       addr_to_v6((struct sockaddr_in *) &(pkt->dest));
       pkt->dest_len = sizeof(struct sockaddr_in6);
     }
+
+    ensure_latest_stream_ack(pkt);
 
     ssize_t size = udx__sendmsg(socket, pkt->bufs, pkt->bufs_len, (struct sockaddr *) &(pkt->dest), pkt->dest_len);
 

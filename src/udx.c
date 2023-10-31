@@ -498,6 +498,7 @@ init_stream_packet (udx_packet_t *pkt, int type, udx_stream_t *stream, const uv_
   pkt->dest = stream->remote_addr;
   pkt->dest_len = stream->remote_addr_len;
   pkt->send_queue = NULL;
+  pkt->stream = stream;
 
   pkt->bufs_len = 2;
 
@@ -1148,6 +1149,7 @@ relay_packet (udx_stream_t *stream, char *buf, ssize_t buf_len, int type, uint8_
       pkt->type = UDX_PACKET_STREAM_RELAY;
       pkt->header[3] = data_offset;
       pkt->seq = seq;
+      pkt->stream = NULL;
 
       pkt->send_queue = &relay->socket->send_queue;
       pkt->fifo_gc = udx__fifo_push(&relay->socket->send_queue, pkt);
@@ -1579,6 +1581,7 @@ udx_socket_send_ttl (udx_socket_send_t *req, udx_socket_t *handle, const uv_buf_
   pkt->type = UDX_PACKET_SEND;
   pkt->ttl = ttl;
   pkt->ctx = req;
+  pkt->stream = NULL;
 
   if (dest->sa_family == AF_INET) {
     pkt->dest_len = sizeof(struct sockaddr_in);
