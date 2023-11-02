@@ -38,11 +38,11 @@ udx__get_link_mtu (const struct sockaddr *addr) {
 }
 
 ssize_t
-udx__sendmsg (udx_socket_t *handle, const uv_buf_t bufs[], unsigned int bufs_len, struct sockaddr *addr, int addr_len) {
+udx__sendmsg (udx_socket_t *socket, const uv_buf_t bufs[], unsigned int bufs_len, struct sockaddr *addr, int addr_len) {
   DWORD bytes, flags = 0;
 
   int result = WSASendTo(
-    handle->socket.socket,
+    socket->handle.socket,
     (WSABUF *) bufs,
     bufs_len,
     &bytes,
@@ -61,11 +61,11 @@ udx__sendmsg (udx_socket_t *handle, const uv_buf_t bufs[], unsigned int bufs_len
 }
 
 ssize_t
-udx__recvmsg (udx_socket_t *handle, uv_buf_t *buf, struct sockaddr *addr, int addr_len) {
+udx__recvmsg (udx_socket_t *socket, uv_buf_t *buf, struct sockaddr *addr, int addr_len) {
   DWORD bytes, flags = 0;
 
   int result = WSARecvFrom(
-    handle->socket.socket,
+    socket->handle.socket,
     (WSABUF *) buf,
     1,
     &bytes,
