@@ -269,6 +269,7 @@ struct udx_packet_s {
 
   udx_fifo_t *send_queue; // pointer to socket->send_queue
   uint32_t fifo_gc;       // index into socket->send_queue
+  udx_stream_t *stream;   // pointer to the stream if stream packet
 
   uint8_t transmits;
   uint16_t size;
