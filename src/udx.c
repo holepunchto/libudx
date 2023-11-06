@@ -47,7 +47,7 @@
 #define UDX_CONG_INIT_CWND   3
 #define UDX_CONG_MAX_CWND    65536
 
-#define UDX_HIGH_WATERMARK   262144
+#define UDX_HIGH_WATERMARK 262144
 
 typedef struct {
   uint32_t seq; // must be the first entry, so its compat with the cirbuf
@@ -114,6 +114,17 @@ addr_to_v4 (struct sockaddr_in6 *addr) {
   memcpy(&(in.sin_addr), &(addr->sin6_addr.s6_addr[12]), 4);
 
   memcpy(addr, &in, sizeof(in));
+}
+
+static inline uint32_t
+max_payload (udx_stream_t *stream) {
+  assert(stream->mtu > (AF_INET ? UDX_IPV4_HEADER_SIZE : UDX_IPV6_HEADER_SIZE));
+  return stream->mtu - (stream->remote_addr.ss_family == AF_INET ? UDX_IPV4_HEADER_SIZE : UDX_IPV6_HEADER_SIZE);
+}
+
+static inline uint32_t
+cwnd_in_bytes (udx_stream_t *stream) {
+  return stream->cwnd * max_payload(stream);
 }
 
 static void
@@ -198,6 +209,22 @@ on_udx_timer_close (uv_handle_t *handle) {
   }
 
   trigger_socket_close(socket);
+}
+
+void
+udx__ensure_latest_stream_ack (udx_packet_t *pkt) {
+  if (pkt->stream == NULL) return; // not a stream
+
+  uint32_t *i = (uint32_t *) pkt->header;
+
+  i += 4;
+
+  uint32_t packet_ack = *i;
+  uint32_t actual_ack = udx__swap_uint32_if_be(pkt->stream->ack);
+
+  if (packet_ack != actual_ack) {
+    *i = actual_ack;
+  }
 }
 
 void
@@ -397,11 +424,11 @@ clear_incoming_packets (udx_stream_t *stream) {
 }
 
 static void
-on_bytes_acked (udx_stream_t* stream, udx_stream_write_t *w, size_t bytes) {
+on_bytes_acked (udx_stream_t *stream, udx_stream_write_t *w, size_t bytes) {
   w->bytes -= bytes;
   stream->writes_queued_bytes -= bytes;
 
-  if (stream->hit_high_watermark && stream->writes_queued_bytes < UDX_HIGH_WATERMARK) {
+  if (stream->hit_high_watermark && stream->writes_queued_bytes < UDX_HIGH_WATERMARK + cwnd_in_bytes(stream)) {
     stream->hit_high_watermark = false;
     if (stream->on_drain != NULL) stream->on_drain(stream);
   }
@@ -498,6 +525,7 @@ init_stream_packet (udx_packet_t *pkt, int type, udx_stream_t *stream, const uv_
   pkt->dest = stream->remote_addr;
   pkt->dest_len = stream->remote_addr_len;
   pkt->send_queue = NULL;
+  pkt->stream = stream;
 
   pkt->bufs_len = 2;
 
@@ -597,12 +625,6 @@ send_state_packet (udx_stream_t *stream) {
   pkt->send_queue = &stream->socket->send_queue;
   pkt->fifo_gc = udx__fifo_push(&stream->socket->send_queue, pkt);
   return update_poll(stream->socket);
-}
-
-static inline uint32_t
-max_payload (udx_stream_t *stream) {
-  assert(stream->mtu > (AF_INET ? UDX_IPV4_HEADER_SIZE : UDX_IPV6_HEADER_SIZE));
-  return stream->mtu - (stream->remote_addr.ss_family == AF_INET ? UDX_IPV4_HEADER_SIZE : UDX_IPV6_HEADER_SIZE);
 }
 
 static int
@@ -1148,6 +1170,7 @@ relay_packet (udx_stream_t *stream, char *buf, ssize_t buf_len, int type, uint8_
       pkt->type = UDX_PACKET_STREAM_RELAY;
       pkt->header[3] = data_offset;
       pkt->seq = seq;
+      pkt->stream = NULL;
 
       pkt->send_queue = &relay->socket->send_queue;
       pkt->fifo_gc = udx__fifo_push(&relay->socket->send_queue, pkt);
@@ -1200,7 +1223,7 @@ process_packet (udx_socket_t *socket, char *buf, ssize_t buf_len, struct sockadd
   buf_len -= UDX_HEADER_SIZE;
 
   size_t header_len = (data_offset > 0 && data_offset < buf_len) ? data_offset : buf_len;
-  bool is_limited = stream->inflight + 2 * max_payload(stream) < stream->cwnd * max_payload(stream);
+  bool is_limited = stream->writes_queued_bytes < UDX_HIGH_WATERMARK;
 
   bool sacked = (type & UDX_HEADER_SACK) ? process_sacks(stream, buf, header_len) > 0 : false;
 
@@ -1579,6 +1602,7 @@ udx_socket_send_ttl (udx_socket_send_t *req, udx_socket_t *handle, const uv_buf_
   pkt->type = UDX_PACKET_SEND;
   pkt->ttl = ttl;
   pkt->ctx = req;
+  pkt->stream = NULL;
 
   if (dest->sa_family == AF_INET) {
     pkt->dest_len = sizeof(struct sockaddr_in);
@@ -2073,7 +2097,7 @@ udx_stream_write (udx_stream_write_t *req, udx_stream_t *stream, const uv_buf_t 
   int err = fill_window(stream);
   if (err < 0) return err;
 
-  if (stream->writes_queued_bytes > UDX_HIGH_WATERMARK) {
+  if (stream->writes_queued_bytes > UDX_HIGH_WATERMARK + cwnd_in_bytes(stream)) {
     stream->hit_high_watermark = true;
     return 0;
   }
@@ -2100,7 +2124,7 @@ udx_stream_write_end (udx_stream_write_t *req, udx_stream_t *stream, const uv_bu
   int err = fill_window(stream);
   if (err < 0) return err;
 
-  if (stream->writes_queued_bytes > UDX_HIGH_WATERMARK) {
+  if (stream->writes_queued_bytes > UDX_HIGH_WATERMARK + cwnd_in_bytes(stream)) {
     stream->hit_high_watermark = true;
     return 0;
   }
