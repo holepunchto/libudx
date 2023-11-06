@@ -3,8 +3,8 @@
 
 #include "../include/udx.h"
 
-#define UDX_PACKET_CALLBACK     (UDX_PACKET_STREAM_SEND | UDX_PACKET_STREAM_DESTROY | UDX_PACKET_SEND)
-#define UDX_PACKET_FREE_ON_SEND (UDX_PACKET_STREAM_STATE | UDX_PACKET_STREAM_DESTROY)
+#define UDX_PACKET_CALLBACK     (UDX_PACKET_TYPE_STREAM_SEND | UDX_PACKET_TYPE_STREAM_DESTROY | UDX_PACKET_TYPE_SOCKET_SEND)
+#define UDX_PACKET_FREE_ON_SEND (UDX_PACKET_TYPE_STREAM_STATE | UDX_PACKET_TYPE_STREAM_DESTROY)
 
 #define UDX_UNUSED(x) ((void) (x))
 
@@ -32,5 +32,12 @@ void
 udx__trigger_send_callback (udx_packet_t *packet);
 void
 udx__close_handles (udx_socket_t *socket);
+
+udx_packet_t *
+udx__get_packet (udx_socket_t *socket);
+void
+udx__confirm_packet (udx_packet_t *pkt);
+void
+udx__cancel_packet (udx_packet_t *pkt);
 
 #endif // UDX_INTERNAL_H

@@ -47,16 +47,16 @@ extern "C" {
 #define UDX_STREAM_DESTROYED_REMOTE 0b01000000000
 #define UDX_STREAM_CLOSED           0b10000000000
 
-#define UDX_PACKET_WAITING  1
-#define UDX_PACKET_SENDING  2
-#define UDX_PACKET_INFLIGHT 3
+#define UDX_PACKET_STATE_UNCOMMITTED 0
+#define UDX_PACKET_STATE_INFLIGHT    1
+#define UDX_PACKET_STATE_RETRANSMIT  2
 
-#define UDX_PACKET_STREAM_RELAY   0b0
-#define UDX_PACKET_STREAM_STATE   0b00001
-#define UDX_PACKET_STREAM_WRITE   0b00010
-#define UDX_PACKET_STREAM_SEND    0b00100
-#define UDX_PACKET_STREAM_DESTROY 0b01000
-#define UDX_PACKET_SEND           0b10000
+#define UDX_PACKET_TYPE_STREAM_RELAY   0b0
+#define UDX_PACKET_TYPE_STREAM_STATE   0b00001
+#define UDX_PACKET_TYPE_STREAM_WRITE   0b00010
+#define UDX_PACKET_TYPE_STREAM_SEND    0b00100
+#define UDX_PACKET_TYPE_STREAM_DESTROY 0b01000
+#define UDX_PACKET_TYPE_SOCKET_SEND    0b10000
 
 #define UDX_HEADER_DATA    0b00001
 #define UDX_HEADER_END     0b00010
@@ -88,9 +88,8 @@ typedef struct udx_stream_s udx_stream_t;
 typedef struct udx_packet_s udx_packet_t;
 
 typedef struct udx_socket_send_s udx_socket_send_t;
-
-typedef struct udx_stream_write_s udx_stream_write_t;
 typedef struct udx_stream_send_s udx_stream_send_t;
+typedef struct udx_stream_write_s udx_stream_write_t;
 
 typedef enum {
   UDX_LOOKUP_FAMILY_IPV4 = 1,
@@ -137,7 +136,10 @@ struct udx_s {
 struct udx_socket_s {
   uv_udp_t handle;
   uv_poll_t io_poll;
+
   udx_fifo_t send_queue;
+  udx_fifo_t stream_queue; // when writing first fill this with all streams that need writing.
+                           // todo: better data structure
 
   udx_t *udx;
   udx_cirbuf_t *streams_by_id; // for convenience
@@ -256,6 +258,9 @@ struct udx_stream_s {
   udx_cirbuf_t outgoing;
   udx_cirbuf_t incoming;
 
+  udx_fifo_t inflight_queue;
+  udx_fifo_t retransmit_queue;
+
   udx_fifo_t unordered;
 };
 
@@ -266,9 +271,6 @@ struct udx_packet_s {
   int type;
   int ttl;
   int is_retransmit;
-
-  udx_fifo_t *send_queue; // pointer to socket->send_queue
-  uint32_t fifo_gc;       // index into socket->send_queue
 
   uint8_t transmits;
   uint16_t size;
@@ -295,6 +297,8 @@ struct udx_socket_send_s {
 };
 
 struct udx_stream_write_s {
+  // todo: more consistent to have 'buf' immutable
+  //       and have bytes instead be 'acked_bytes'
   size_t bytes; // buf.len + size of payloads in flight
   uv_buf_t buf;
   bool is_write_end;
