@@ -735,13 +735,11 @@ fill_window (udx_stream_t *stream) {
     stream->pkts_inflight++;
     stream->inflight += pkt->size;
 
-    /* There is an issue somewhere when probes run it seems, disabling for now
     if (stream->mtu_probe_wanted && mtu_probeify_packet(pkt, stream->mtu_probe_size)) {
       stream->mtu_probe_seq[stream->mtu_probe_count] = pkt->seq;
       stream->mtu_probe_count++;
       stream->mtu_probe_wanted = false;
     }
-    */
 
     assert(seq_compare(stream->seq_flushed, pkt->seq) <= 0);
     stream->seq_flushed = pkt->seq + 1;
