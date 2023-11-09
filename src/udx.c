@@ -1223,7 +1223,6 @@ process_packet (udx_socket_t *socket, char *buf, ssize_t buf_len, struct sockadd
   buf_len -= UDX_HEADER_SIZE;
 
   size_t header_len = (data_offset > 0 && data_offset < buf_len) ? data_offset : buf_len;
-  bool is_limited = stream->writes_queued_bytes < UDX_HIGH_WATERMARK;
 
   bool sacked = (type & UDX_HEADER_SACK) ? process_sacks(stream, buf, header_len) > 0 : false;
 
@@ -1292,13 +1291,7 @@ process_packet (udx_socket_t *socket, char *buf, ssize_t buf_len, struct sockadd
   }
 
   int32_t len = seq_diff(ack, stream->remote_acked);
-
-  if (len > 0) {
-    ack_update(stream, len, is_limited);
-    rack_detect_loss(stream);
-  } else if (sacked) {
-    rack_detect_loss(stream);
-  }
+  bool is_limited = stream->recovery;
 
   for (int32_t j = 0; j < len; j++) {
     if (stream->recovery > 0 && --(stream->recovery) == 0) {
@@ -1318,6 +1311,16 @@ process_packet (udx_socket_t *socket, char *buf, ssize_t buf_len, struct sockadd
       close_maybe(stream, 0);
     }
     return 1;
+  }
+
+  // we are user limited if queued bytes (that includes current inflight + a max packet) is less than the window
+  if (!is_limited) is_limited = stream->writes_queued_bytes + max_payload(stream) < cwnd_in_bytes(stream);
+
+  if (len > 0) {
+    ack_update(stream, len, is_limited);
+    rack_detect_loss(stream);
+  } else if (sacked) {
+    rack_detect_loss(stream);
   }
 
   // if data pkt, send an ack - use deferred acks as well...
