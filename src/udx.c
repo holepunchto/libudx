@@ -2110,15 +2110,21 @@ udx_stream_write (udx_stream_write_t *req, udx_stream_t *stream, const uv_buf_t 
 
 int
 udx_stream_write_end (udx_stream_write_t *req, udx_stream_t *stream, const uv_buf_t bufs[], unsigned int bufs_len, udx_stream_ack_cb ack_cb) {
-  assert(bufs_len == 1);
+  assert(bufs_len <= 1);
 
   stream->status |= UDX_STREAM_ENDING;
 
   req->handle = stream;
   req->on_ack = ack_cb;
 
-  req->bytes = bufs[0].len;
-  req->buf = bufs[0];
+  if (bufs_len == 0) {
+    req->bytes = 0;
+    req->buf = uv_buf_init(NULL, 0);
+  } else {
+    req->bytes = bufs[0].len;
+    req->buf = bufs[0];
+  }
+
   req->is_write_end = 1;
 
   stream->writes_queued_bytes += req->bytes;
