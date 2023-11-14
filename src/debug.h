@@ -33,11 +33,6 @@ debug_print_cwnd_stats (udx_stream_t *stream) {
 static void
 debug_print_outgoing (udx_stream_t *stream) {
   if (DEBUG) {
-    uint32_t i = stream->seq_flushed - stream->remote_acked;
-    uint32_t j = stream->seq - stream->seq_flushed;
-
-    debug_printf("%-*s%-*s%s\n", i, "RA", j, "SF", "Seq");
-
     for (uint32_t s = stream->remote_acked; s < stream->seq; s++) {
       udx_packet_t *pkt = (udx_packet_t *) udx__cirbuf_get(&stream->outgoing, s);
       if (pkt == NULL) {
@@ -45,15 +40,15 @@ debug_print_outgoing (udx_stream_t *stream) {
         continue;
       }
 
-      if (pkt->type == UDX_PACKET_INFLIGHT) {
+      if (pkt->status == UDX_PACKET_INFLIGHT) {
         debug_printf("I");
         continue;
       }
-      if (pkt->type == UDX_PACKET_SENDING) {
+      if (pkt->status == UDX_PACKET_SENDING) {
         debug_printf("S");
         continue;
       }
-      if (pkt->type == UDX_PACKET_WAITING) {
+      if (pkt->status == UDX_PACKET_WAITING) {
         debug_printf("W");
         continue;
       }

@@ -63,9 +63,10 @@ function udx.dissector(tvb, pinfo, tree)
 
     local data_offset = tvb(3,1):uint()
     local pos = 20
+    local sacks = ""
 
     if bit.band(type, TYPE_SACK) > 0 then
-        local sacks = " "
+        sacks = " "
         local header_end = data_offset > 0 and 20 + data_offset or len
         while pos + 8 <= header_end do
             local from = tvb(pos, 4):le_uint()
@@ -89,6 +90,7 @@ function udx.dissector(tvb, pinfo, tree)
         " Id=" .. id ..
         " Seq=" .. seq ..
         " Ack=" .. ack ..
+        sacks .. 
         " " .. type_names
     pinfo.cols.info:set(info)
 end
