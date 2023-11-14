@@ -212,7 +212,6 @@ struct udx_stream_s {
   int mtu_probe_count;
   int mtu_probe_size; // size of the outstanding probe
   int mtu_max;        // min(UDX_MTU_MAX, get_link_mtu(remote_addr))
-  uint32_t mtu_probe_seq[UDX_MTU_MAX_PROBES];
   uint16_t mtu;
 
   uint32_t seq;
@@ -272,6 +271,7 @@ struct udx_packet_s {
   udx_stream_t *stream;   // pointer to the stream if stream packet
 
   uint8_t transmits;
+  bool is_mtu_probe;
   uint16_t size;
   uint64_t time_sent;
 
