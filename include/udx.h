@@ -64,6 +64,10 @@ extern "C" {
 #define UDX_HEADER_MESSAGE 0b01000
 #define UDX_HEADER_DESTROY 0b10000
 
+#define UDX_STREAM_WRITE_WANT_DATA    0b001
+#define UDX_STREAM_WRITE_WANT_STATE   0b010
+#define UDX_STREAM_WRITE_WANT_DESTROY 0b100
+
 typedef struct {
   uint32_t seq;
 } udx_cirbuf_val_t;
@@ -138,8 +142,6 @@ struct udx_socket_s {
   uv_poll_t io_poll;
 
   udx_fifo_t send_queue;
-  udx_fifo_t stream_queue; // when writing first fill this with all streams that need writing.
-                           // todo: better data structure
 
   udx_t *udx;
   udx_cirbuf_t *streams_by_id; // for convenience
@@ -176,6 +178,7 @@ struct udx_stream_s {
 
   int set_id;
   int status;
+  int write_wanted;
   int out_of_order;
   int recovery; // number of packets to send before recovery finished
   int deferred_ack;
@@ -232,11 +235,8 @@ struct udx_stream_s {
   uint32_t rack_next_seq;
   uint32_t rack_fack;
 
-  uint32_t pkts_waiting;        // how many packets are added locally but not sent?
-  uint32_t pkts_inflight;       // packets inflight to the other peer
-  uint32_t pkts_buffered;       // how many (data) packets received but not processed (out of order)?
-  uint32_t retransmits_waiting; // how many retransmits are waiting to be sent? if 0, then inflight iteration is faster
-  uint32_t seq_flushed;         // highest seq that has been flushed. usually seq_flushed == seq
+  uint32_t pkts_inflight; // packets inflight to the other peer
+  uint32_t pkts_buffered; // how many (data) packets received but not processed (out of order)?
 
   // timestamps...
   uint64_t rto_timeout;
@@ -257,8 +257,7 @@ struct udx_stream_s {
   udx_cirbuf_t outgoing;
   udx_cirbuf_t incoming;
 
-  udx_fifo_t inflight_queue;
-  udx_fifo_t retransmit_queue;
+  udx_fifo_t retransmit_queue; // udx_packet_t
 
   udx_fifo_t unordered;
 };
@@ -283,6 +282,10 @@ struct udx_packet_s {
   struct sockaddr_storage dest;
   int dest_len;
 
+  uint32_t fifo_gc; // for removing from inflight / retransmit queue
+  // udx_packet_t *prev; // alternative for inflight / retransmit queues
+  // udx_packet_t *next; // alternative for inflight / retransmit queues
+
   // just alloc it in place here, easier to manage
   char header[UDX_HEADER_SIZE];
   unsigned int bufs_len;
@@ -299,10 +302,12 @@ struct udx_socket_send_s {
 };
 
 struct udx_stream_write_s {
-  // todo: more consistent to have 'buf' immutable
-  //       and have bytes instead be 'acked_bytes'
-  size_t bytes; // buf.len + size of payloads in flight
+  // immutable, original write
   uv_buf_t buf;
+
+  size_t bytes_acked;
+  size_t bytes_inflight;
+
   bool is_write_end;
 
   udx_stream_t *stream;

@@ -43,4 +43,7 @@ udx__confirm_packet (udx_packet_t *pkt);
 void
 udx__cancel_packet (udx_packet_t *pkt);
 
+void
+udx__initialize_stream_queue (udx_socket_t *socket);
+
 #endif // UDX_INTERNAL_H

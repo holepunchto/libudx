@@ -101,113 +101,95 @@ udx__recvmsg (udx_socket_t *handle, uv_buf_t *buf, struct sockaddr *addr, int ad
 
 void
 udx__on_writable (udx_socket_t *socket) {
-  /*
-  #ifdef UDX_PLATFORM_HAS_SENDMMSG
-    udx_fifo_t *fifo = &socket->send_queue;
+#ifdef UDX_PLATFORM_HAS_SENDMMSG
+  bool finished = false;
 
-    while (fifo->len > 0) {
-      udx_packet_t *batch[UDX_SENDMMSG_BATCH_SIZE];
-      struct mmsghdr h[UDX_SENDMMSG_BATCH_SIZE];
+  while (!finished) {
+    udx_packet_t *batch[UDX_SENDMMSG_BATCH_SIZE];
+    struct mmsghdr h[UDX_SENDMMSG_BATCH_SIZE];
 
-      while (fifo->len > 0 && udx__fifo_peek(fifo) == NULL) {
-        udx__fifo_shift(fifo);
-      }
+    int npkts = 0;
 
-      if (fifo->len == 0) {
-        return;
-      }
+    // todo: ttl
 
-      int pkts = 0;
+    int ttl = -1;
+    bool adjust_ttl;
 
-      udx_packet_t *pkt = udx__fifo_peek(fifo);
-      int ttl = pkt->ttl;
-      bool adjust_ttl = ttl > 0 && socket->ttl != ttl;
+    while (npkts < UDX_SENDMMSG_BATCH_SIZE) {
+      udx_packet_t *pkt = udx__get_packet(socket);
 
-      while (pkts < UDX_SENDMMSG_BATCH_SIZE && fifo->len > 0) {
-        udx_packet_t *pkt = udx__fifo_shift(fifo);
-
-        if (pkt == NULL) continue;
-        // packet is null when descheduled after being acked
-        if (pkt->ttl != ttl) {
-          udx__fifo_undo(fifo);
-          break;
-        }
-
-        if (socket->family == 6 && pkt->dest.ss_family == AF_INET) {
-          addr_to_v6((struct sockaddr_in *) &(pkt->dest));
-          pkt->dest_len = sizeof(struct sockaddr_in6);
-        }
-
-        batch[pkts] = pkt;
-        struct mmsghdr *p = &h[pkts];
-        memset(p, 0, sizeof(*p));
-        p->msg_hdr.msg_name = &pkt->dest;
-        p->msg_hdr.msg_namelen = pkt->dest_len;
-
-        p->msg_hdr.msg_iov = (struct iovec *) pkt->bufs;
-        p->msg_hdr.msg_iovlen = pkt->bufs_len;
-
-        pkts++;
-      }
-      uint64_t time_sent = uv_hrtime() / 1e6;
-
-      int rc;
-
-      if (adjust_ttl) uv_udp_set_ttl((uv_udp_t *) socket, ttl);
-
-      do {
-        rc = sendmmsg(socket->io_poll.io_watcher.fd, h, pkts, 0);
-      } while (rc == -1 && errno == EINTR);
-
-      if (adjust_ttl) uv_udp_set_ttl((uv_udp_t *) socket, socket->ttl);
-
-      rc = rc == -1 ? uv_translate_sys_error(errno) : rc;
-
-      int nsent = rc > 0 ? rc : 0;
-
-      if (rc < 0 && rc != UV_EAGAIN) {
-        nsent = pkts; // something errored badly, assume all packets sent and lost
-      }
-
-      int unsent = pkts - nsent;
-
-      while (unsent > 0) {
-        // restore an unsent packet
-        udx__fifo_undo(fifo);
-        if (udx__fifo_peek(fifo) != NULL) {
-          unsent--;
-        }
-      }
-
-      // update packet status for sent packets
-
-      for (int i = 0; i < nsent; i++) {
-        udx_packet_t *pkt = batch[i];
-
-        assert(pkt->status == UDX_PACKET_SENDING);
-        pkt->status = UDX_PACKET_INFLIGHT;
-        pkt->transmits++;
-        pkt->time_sent = time_sent;
-
-        int type = pkt->type;
-
-        if (type & (UDX_PACKET_STREAM_SEND | UDX_PACKET_STREAM_DESTROY | UDX_PACKET_SEND)) {
-          udx__trigger_send_callback(pkt);
-          // TODO: watch for re-entry here!
-        }
-
-        if (type & UDX_PACKET_FREE_ON_SEND) {
-          free(pkt);
-        }
-      }
-
-      if (rc == UV_EAGAIN) {
+      if (pkt == NULL) {
+        finished = true;
         break;
       }
+
+      if (ttl == -1) {
+        ttl = pkt->ttl;
+        adjust_ttl = ttl > 0 && socket->ttl != ttl;
+      }
+
+      if (pkt->ttl != ttl) {
+        udx__cancel_packet(pkt);
+        break;
+      }
+
+      if (socket->family == 6 && pkt->dest.ss_family == AF_INET) {
+        addr_to_v6((struct sockaddr_in *) &(pkt->dest));
+        pkt->dest_len = sizeof(struct sockaddr_in6);
+      }
+
+      batch[npkts] = pkt;
+      struct mmsghdr *p = &h[npkts];
+      memset(p, 0, sizeof(*p));
+      p->msg_hdr.msg_name = &pkt->dest;
+      p->msg_hdr.msg_namelen = pkt->dest_len;
+
+      p->msg_hdr.msg_iov = (struct iovec *) pkt->bufs;
+      p->msg_hdr.msg_iovlen = pkt->bufs_len;
+
+      npkts++;
     }
-  */
-  // #else /* no sendmmsg */
-  initialize_stream_queue(socket);
+
+    uint64_t time_sent = uv_hrtime() / 1e6;
+
+    int rc;
+
+    if (adjust_ttl) uv_udp_set_ttl((uv_udp_t *) socket, ttl);
+
+    do {
+      rc = sendmmsg(socket->io_poll.io_watcher.fd, h, npkts, 0);
+    } while (rc == -1 && errno == EINTR);
+
+    if (adjust_ttl) uv_udp_set_ttl((uv_udp_t *) socket, socket->ttl);
+
+    rc = rc == -1 ? uv_translate_sys_error(errno) : rc;
+
+    int nsent = rc > 0 ? rc : 0;
+
+    if (rc < 0 && rc != UV_EAGAIN) {
+      nsent = npkts; // something errored badly, assume all packets sent and lost
+    }
+
+    int unsent = npkts - nsent;
+
+    // cancel packets in reverse !
+    for (int i = npkts; i > npkts - unsent; i--) {
+      __builtin_trap();
+      udx__cancel_packet(batch[i - 1]);
+    }
+
+    for (int i = 0; i < nsent; i++) {
+      udx_packet_t *pkt = batch[i];
+      // todo: set in confirm packet with uv_now()
+      pkt->time_sent = time_sent;
+      udx__confirm_packet(batch[i]);
+    }
+
+    if (rc == UV_EAGAIN) {
+      finished = true;
+    }
+  }
+#else /* no sendmmsg */
   while (true) {
     udx_packet_t *pkt = udx__get_packet(socket);
     if (pkt == NULL) break;
@@ -229,8 +211,9 @@ udx__on_writable (udx_socket_t *socket) {
       udx__cancel_packet(pkt);
       break;
     }
-
+    // todo: set in confirm packet with uv_now()
+    pkt->time_sent = uv_hrtime() / 1e6;
     udx__confirm_packet(pkt);
   }
-  // #endif
+#endif
 }
