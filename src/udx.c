@@ -917,8 +917,6 @@ udx__confirm_packet (udx_packet_t *pkt) {
 
   int type = pkt->type;
 
-  assert(type == UDX_PACKET_TYPE_STREAM_STATE || type == UDX_PACKET_TYPE_STREAM_WRITE || type == UDX_PACKET_TYPE_STREAM_SEND || type == UDX_PACKET_TYPE_STREAM_DESTROY || type == UDX_PACKET_TYPE_SOCKET_SEND);
-
   if (pkt->type == UDX_PACKET_TYPE_STREAM_WRITE) {
     udx_stream_write_t *write = pkt->ctx;
     udx_stream_t *stream = write->stream;
@@ -955,13 +953,10 @@ udx__confirm_packet (udx_packet_t *pkt) {
 //                    or re-arm destroy, state flags
 
 void
-udx__cancel_packet (udx_packet_t *pkt) {
+udx__cancel_packet (udx_packet_t *pkt, udx_socket_t *socket) {
 
-  __builtin_trap(); // todo: test
   // don't need early return once all pkt types are covered
-  if (pkt->type == UDX_PACKET_TYPE_SOCKET_SEND) {
-    udx_socket_send_t *send = pkt->ctx;
-    udx_socket_t *socket = send->socket;
+  if (pkt->type == UDX_PACKET_TYPE_SOCKET_SEND || pkt->type == UDX_PACKET_TYPE_STREAM_RELAY) {
     udx__fifo_undo(&socket->send_queue);
   }
 
@@ -980,7 +975,6 @@ udx__cancel_packet (udx_packet_t *pkt) {
     // or a 'wait_queue' instead of freeing them
 
     if (pkt->is_retransmit) {
-      __builtin_trap();
       // return to the retransmit queue
       udx__fifo_undo(&stream->retransmit_queue);
     } else {
@@ -1011,13 +1005,11 @@ udx__cancel_packet (udx_packet_t *pkt) {
 
   if (pkt->type == UDX_PACKET_TYPE_STREAM_STATE) {
     pkt->stream->write_wanted |= UDX_STREAM_WRITE_WANT_STATE;
-    update_poll(pkt->stream->socket);
     free(pkt);
   }
 
   if (pkt->type == UDX_PACKET_TYPE_STREAM_DESTROY) {
     pkt->stream->write_wanted |= UDX_STREAM_WRITE_WANT_DESTROY;
-    update_poll(pkt->stream->socket);
     free(pkt);
   }
 
@@ -1337,7 +1329,6 @@ relay_packet (udx_stream_t *stream, char *buf, ssize_t buf_len, int type, uint8_
     int err = udx__sendmsg(relay->socket, &b, 1, (struct sockaddr *) &relay->remote_addr, relay->remote_addr_len);
 
     if (err == EAGAIN) {
-      __builtin_trap(); // todo: test relay queue in other socket
       b.base += UDX_HEADER_SIZE;
       b.len -= UDX_HEADER_SIZE;
 

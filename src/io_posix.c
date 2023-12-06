@@ -129,7 +129,7 @@ udx__on_writable (udx_socket_t *socket) {
       }
 
       if (pkt->ttl != ttl) {
-        udx__cancel_packet(pkt);
+        udx__cancel_packet(pkt, socket);
         break;
       }
 
@@ -175,7 +175,7 @@ udx__on_writable (udx_socket_t *socket) {
     // cancel packets in reverse !
     for (int i = npkts; i > npkts - unsent; i--) {
       __builtin_trap();
-      udx__cancel_packet(batch[i - 1]);
+      udx__cancel_packet(batch[i - 1], socket);
     }
 
     for (int i = 0; i < nsent; i++) {
@@ -208,7 +208,7 @@ udx__on_writable (udx_socket_t *socket) {
     if (adjust_ttl) uv_udp_set_ttl((uv_udp_t *) socket, socket->ttl);
 
     if (size == UV_EAGAIN) {
-      udx__cancel_packet(pkt);
+      udx__cancel_packet(pkt, socket);
       break;
     }
     // todo: set in confirm packet with uv_now()
