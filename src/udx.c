@@ -1506,7 +1506,10 @@ process_packet (udx_socket_t *socket, char *buf, ssize_t buf_len, struct sockadd
 
   if (type & UDX_HEADER_DATA_OR_END) {
     stream->write_wanted |= UDX_STREAM_WRITE_WANT_STATE;
-    update_poll(stream->socket);
+    if (stream->status & UDX_STREAM_CONNECTED) {
+      assert(stream->socket != NULL);
+      update_poll(stream->socket);
+    }
   }
 
   if ((stream->status & UDX_STREAM_SHOULD_END_REMOTE) == UDX_STREAM_END_REMOTE && seq_compare(stream->remote_ended, stream->ack) <= 0) {
