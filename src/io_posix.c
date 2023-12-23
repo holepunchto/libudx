@@ -174,7 +174,6 @@ udx__on_writable (udx_socket_t *socket) {
 
     // cancel packets in reverse !
     for (int i = npkts; i > npkts - unsent; i--) {
-      __builtin_trap();
       udx__cancel_packet(batch[i - 1], socket);
     }
 

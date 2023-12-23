@@ -91,6 +91,13 @@ typedef struct udx_socket_s udx_socket_t;
 typedef struct udx_stream_s udx_stream_t;
 typedef struct udx_packet_s udx_packet_t;
 
+typedef struct {
+  uint32_t len; // must be first to align next/prev correctly.
+
+  udx_packet_t *next;
+  udx_packet_t *prev;
+} udx_queue_t;
+
 typedef struct udx_socket_send_s udx_socket_send_t;
 typedef struct udx_stream_send_s udx_stream_send_t;
 typedef struct udx_stream_write_s udx_stream_write_t;
@@ -235,7 +242,6 @@ struct udx_stream_s {
   uint32_t rack_next_seq;
   uint32_t rack_fack;
 
-  uint32_t pkts_inflight; // packets inflight to the other peer
   uint32_t pkts_buffered; // how many (data) packets received but not processed (out of order)?
 
   // timestamps...
@@ -257,13 +263,19 @@ struct udx_stream_s {
   udx_cirbuf_t outgoing;
   udx_cirbuf_t incoming;
 
-  udx_fifo_t retransmit_queue; // udx_packet_t
+  // udx_fifo_t retransmit_queue; // udx_packet_t
+
+  udx_queue_t inflight_queue;
+  udx_queue_t retransmit_queue;
 
   udx_fifo_t unordered;
 };
 
 struct udx_packet_s {
   uint32_t seq; // must be the first entry, so its compat with the cirbuf
+
+  udx_packet_t *prev;
+  udx_packet_t *next;
 
   int status;
   int type;
@@ -281,10 +293,6 @@ struct udx_packet_s {
 
   struct sockaddr_storage dest;
   int dest_len;
-
-  uint32_t fifo_gc; // for removing from inflight / retransmit queue
-  // udx_packet_t *prev; // alternative for inflight / retransmit queues
-  // udx_packet_t *next; // alternative for inflight / retransmit queues
 
   // just alloc it in place here, easier to manage
   char header[UDX_HEADER_SIZE];
