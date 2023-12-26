@@ -282,7 +282,7 @@ should_cork (udx_stream_t *stream) {
   if (winsz < len) len = winsz;
 
   if (mss > len && wrtsz > len && stream->pkts_inflight > 0) {
-    debug_printf("cork: should cork stream. seq=%u len=%u\n", stream->seq, wrtsz);
+    // debug_printf("cork: should cork stream. seq=%u len=%u\n", stream->seq, wrtsz);
     return true;
   }
 
@@ -294,11 +294,6 @@ stream_write_wanted (udx_stream_t *stream) {
   if (!(stream->status & UDX_STREAM_CONNECTED)) {
     return false;
   }
-
-  // return stream->write_wanted ||
-  //  stream->unordered.len > 0 ||
-  //   ((stream->write_queue.len > 0 ||
-  //     stream->retransmit_queue.len > 0) && get_window_bytes(stream) > 0 && !should_cork(stream));
 
   if (stream->write_wanted) {
     return true;
@@ -653,18 +648,6 @@ get_stream (udx_socket_t *socket) {
   return NULL;
 }
 
-// void
-// udx__initialize_stream_queue (udx_socket_t *socket) {
-//   assert(socket->stream_queue.len == 0);
-//
-//   for (uint32_t i = 0; i < socket->udx->streams_len; i++) {
-//     udx_stream_t *stream = socket->udx->streams[i];
-//     if (stream->socket == socket && stream_write_wanted(stream)) {
-//       udx__fifo_push(&socket->stream_queue, stream);
-//     }
-//   }
-// }
-
 // sending packets
 // while the socket is writable send until EAGAIN or all packets are sent.
 // 1. get a packet to send 'get_packet'. if no packet is available it will return NULL
@@ -812,7 +795,7 @@ udx__shift_packet (udx_socket_t *socket) {
     if (mss < len) len = mss;
     // cork
     if (mss > len && wrtsz > len && stream->pkts_inflight > 0) {
-      debug_printf("cork: should cork packet len=%u, data=%.*s\n", wrtsz, wrtsz, write->buf.base + write->bytes_acked + write->bytes_inflight);
+      // debug_printf("cork: should cork packet len=%u, data=%.*s\n", wrtsz, wrtsz, write->buf.base + write->bytes_acked + write->bytes_inflight);
       return NULL;
     }
 
@@ -1148,9 +1131,6 @@ ack_packet (udx_stream_t *stream, uint32_t seq, int sack) {
     if (!sack) stream->sacks--; // packet not here, was sacked before
     return 0;
   }
-
-  stream->write_wanted |= UDX_STREAM_WRITE_WANT_STATE;
-  update_poll(stream->socket);
 
   if (stream->mtu_state == UDX_MTU_STATE_SEARCH && stream->mtu_probe_count > 0 && pkt->is_mtu_probe) {
     debug_printf("mtu: probe acked seq=%d mtu=%d->%d sack=%d\n", seq, stream->mtu, stream->mtu_probe_size, sack);
