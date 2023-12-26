@@ -674,7 +674,7 @@ get_stream (udx_socket_t *socket) {
 //    undo packet _must_ be called in reverse order of get_packet
 
 udx_packet_t *
-udx__get_packet (udx_socket_t *socket) {
+udx__shift_packet (udx_socket_t *socket) {
   // debug_printf("in get packet\n");
 
   while (socket->send_queue.len > 0) {
@@ -953,7 +953,7 @@ udx__confirm_packet (udx_packet_t *pkt) {
 //                    or re-arm destroy, state flags
 
 void
-udx__cancel_packet (udx_packet_t *pkt, udx_socket_t *socket) {
+udx__unshift_packet (udx_packet_t *pkt, udx_socket_t *socket) {
 
   // don't need early return once all pkt types are covered
   if (pkt->type == UDX_PACKET_TYPE_SOCKET_SEND || pkt->type == UDX_PACKET_TYPE_STREAM_RELAY) {
@@ -1942,7 +1942,7 @@ udx_stream_init (udx_t *udx, udx_stream_t *stream, uint32_t local_id, udx_stream
   udx__fifo_init(&(stream->unordered), 1);
 
   udx__fifo_init(&stream->write_queue, 1);
-  udx__fifo_init(&stream->retransmit_queue, 16);
+  udx__fifo_init(&stream->retransmit_queue, 1);
 
   stream->set_id = udx->streams_len++;
 

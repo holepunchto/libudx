@@ -37,13 +37,10 @@ void
 udx__close_handles (udx_socket_t *socket);
 
 udx_packet_t *
-udx__get_packet (udx_socket_t *socket);
+udx__shift_packet (udx_socket_t *socket);
 void
 udx__confirm_packet (udx_packet_t *pkt);
 void
-udx__cancel_packet (udx_packet_t *pkt, udx_socket_t *socket);
-
-void
-udx__initialize_stream_queue (udx_socket_t *socket);
+udx__unshift_packet (udx_packet_t *pkt, udx_socket_t *socket);
 
 #endif // UDX_INTERNAL_H

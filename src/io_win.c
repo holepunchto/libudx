@@ -86,7 +86,7 @@ udx__recvmsg (udx_socket_t *socket, uv_buf_t *buf, struct sockaddr *addr, int ad
 void
 udx__on_writable (udx_socket_t *socket) {
   while (true) {
-    udx_packet_t *pkt = udx__get_packet(socket);
+    udx_packet_t *pkt = udx__shift_packet(socket);
     if (pkt == NULL) break;
 
     bool adjust_ttl = pkt->ttl > 0 && socket->ttl != pkt->ttl;
@@ -103,7 +103,7 @@ udx__on_writable (udx_socket_t *socket) {
     if (adjust_ttl) uv_udp_set_ttl((uv_udp_t *) socket, socket->ttl);
 
     if (size == UV_EAGAIN) {
-      udx__cancel_packet(pkt, socket);
+      udx__unshift_packet(pkt, socket);
       break;
     }
     // todo: set in confirm packet with uv_now()
