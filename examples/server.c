@@ -19,12 +19,12 @@ static size_t bytes_sent = 0;
 static struct sockaddr_in dest_addr;
 
 static uv_buf_t chunk;
-static uv_buf_t empty = { .base = NULL, .len = 0 };
+static uv_buf_t empty = {.base = NULL, .len = 0};
 
 static bool printed_warning = false;
 
 static void
-pump_stream();
+pump_stream ();
 
 static void
 on_close (udx_stream_t *stream, int status) {
@@ -46,7 +46,7 @@ on_ack (udx_stream_write_t *req, int status, int unordered) {
 
 static void
 on_ack_end (udx_stream_write_t *req, int status, int unordered) {
-  udx_stream_destroy(req->handle);
+  udx_stream_destroy(req->stream);
   free(req);
 }
 

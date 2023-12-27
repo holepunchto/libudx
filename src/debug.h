@@ -40,18 +40,15 @@ debug_print_outgoing (udx_stream_t *stream) {
         continue;
       }
 
-      if (pkt->status == UDX_PACKET_INFLIGHT) {
+      if (pkt->status == UDX_PACKET_STATE_INFLIGHT) {
         debug_printf("I");
         continue;
       }
-      if (pkt->status == UDX_PACKET_SENDING) {
-        debug_printf("S");
+      if (pkt->status == UDX_PACKET_STATE_RETRANSMIT) {
+        debug_printf("R");
         continue;
       }
-      if (pkt->status == UDX_PACKET_WAITING) {
-        debug_printf("W");
-        continue;
-      }
+      assert(false && "should only be inflight or retransmitting");
     }
     debug_printf("\n");
   }

@@ -38,7 +38,7 @@ uint64_t write_hash = HASH_INIT;
 void
 on_ack (udx_stream_write_t *r, int status, int unordered) {
   printf("write acked, status=%d %s\n", status, status == UV_ECANCELED ? "(UV_ECANCELED)" : "");
-  udx_stream_destroy(r->handle);
+  udx_stream_destroy(r->stream);
   udx_stream_destroy(&astream);
 }
 
