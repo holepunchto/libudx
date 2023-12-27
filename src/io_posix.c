@@ -110,8 +110,6 @@ udx__on_writable (udx_socket_t *socket) {
 
     int npkts = 0;
 
-    // todo: ttl
-
     int ttl = -1;
     bool adjust_ttl;
 

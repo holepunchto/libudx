@@ -302,17 +302,8 @@ stream_write_wanted (udx_stream_t *stream) {
   return get_window_bytes(stream) > 0 && ((stream->write_queue.len > 0 && !should_cork(stream)) || stream->retransmit_queue.len > 0 || stream->unordered.len > 0);
 }
 
-// static int
-// socket_set_write_event (udx_socket_t *socket) {
-//   socket->events |= UV_WRITABLE;
-//   return uv_poll_start(&socket->io_poll, socket->events, on_uv_poll);
-// }
-
 static bool
 socket_write_wanted (udx_socket_t *socket) {
-  // todo: count writes wanted on socket to simplify this code
-  // e.g.
-  // return (socket->send_queue.len > 0 || socket->nwrites_wanted > 0) {
 
   if (socket->send_queue.len > 0) {
     return true;
@@ -504,10 +495,6 @@ clear_outgoing_packets (udx_stream_t *stream) {
 
     if (pkt == NULL) continue;
 
-    // if (pkt->state == UDX_PACKET_STATE_RETRANSMIT) {
-    //   udx_fifo_remove(&stream->retransmit_queue, pkt, pkt->fifo_gc);
-    // }
-
     udx_stream_write_t *w = (udx_stream_write_t *) pkt->ctx;
 
     size_t pkt_len = pkt->bufs[pkt->bufs_len - 1].len;
@@ -680,7 +667,6 @@ udx__shift_packet (udx_socket_t *socket) {
     return pkt;
   }
 
-  // if ((stream->write_wanted & UDX_STREAM_WRITE_WANT_STATE) && stream->unordered.len == 0 && stream->write_queue.len == 0 && stream->status & UDX_STREAM_CONNECTED) {
   if (stream->write_wanted & UDX_STREAM_WRITE_WANT_STATE) {
 
     assert(stream->status & UDX_STREAM_CONNECTED);
@@ -766,7 +752,6 @@ udx__shift_packet (udx_socket_t *socket) {
     return pkt;
   }
 
-  // if (stream->retransmit_queue.len > 0 && stream->cwnd > stream->pkts_inflight) {
   if (!(stream->status & UDX_STREAM_DEAD) && stream->retransmit_queue.len > 0 && get_window_bytes(stream) > 0) {
 
     while (stream->retransmit_queue.len > 0) {
@@ -780,7 +765,6 @@ udx__shift_packet (udx_socket_t *socket) {
     }
   }
 
-  // if (stream->write_queue.len > 0 && stream->cwnd > stream->pkts_inflight) {
   if (!(stream->status & UDX_STREAM_DEAD) && stream->write_queue.len > 0 && get_window_bytes(stream) > 0) {
     udx_stream_write_t *write = udx__fifo_peek(&stream->write_queue);
     assert(write != NULL);
@@ -808,8 +792,7 @@ udx__shift_packet (udx_socket_t *socket) {
     pkt->type = UDX_PACKET_TYPE_STREAM_WRITE;
     pkt->ttl = 0;
 
-    // undo in cancel packet
-    // decrement if packet is cancelled - or move to confirm packet
+    // decrement if packet is unshifted - or move to confirm packet
     stream->seq++;
 
     if (stream->mtu_probe_wanted && mtu_probeify_packet(pkt, stream->mtu_probe_size)) {
@@ -817,7 +800,7 @@ udx__shift_packet (udx_socket_t *socket) {
       stream->mtu_probe_wanted = false;
     }
 
-    // undo if cancelled. needed to prevent creating more than cwnd packets
+    // undo if unshifted. needed to prevent creating more than cwnd packets
     stream->pkts_inflight++;
     assert(pkt->size > 0 && pkt->size < 1500);
     stream->inflight += pkt->size;
@@ -1028,9 +1011,6 @@ rack_detect_loss (udx_stream_t *stream) {
   int resending = 0;
   int mtu_probes_lost = 0;
 
-  // simplify: iterate only in-flight packets
-  // hard to iterate inflight fifo and put things back
-
   for (uint32_t seq = stream->remote_acked; seq != stream->seq; seq++) {
     udx_packet_t *pkt = (udx_packet_t *) udx__cirbuf_get(&stream->outgoing, seq);
 
@@ -1038,8 +1018,6 @@ rack_detect_loss (udx_stream_t *stream) {
     assert(pkt->transmits > 0);
 
     if (!now) now = get_milliseconds();
-
-    // rack sent after is true
 
     // debug_printf("%lu > %lu=%d\n", stream->rack_time_sent, pkt->time_sent, stream->rack_time_sent > pkt->time_sent);
 
@@ -1539,6 +1517,17 @@ udx__trigger_send_callback (udx_packet_t *pkt) {
   }
 }
 
+static bool
+check_if_streams_have_data (udx_socket_t *socket) {
+  for (uint32_t i = 0; i < socket->udx->streams_len; i++) {
+    udx_stream_t *stream = socket->udx->streams[i];
+    if (stream->socket == socket && (stream->unordered.len > 0 || stream->write_queue.len > 0 || stream->retransmit_queue.len > 0 || stream->write_wanted)) {
+      return true;
+    }
+  }
+  return false;
+}
+
 static void
 on_uv_poll (uv_poll_t *handle, int status, int events) {
   UDX_UNUSED(status);
@@ -1573,7 +1562,7 @@ on_uv_poll (uv_poll_t *handle, int status, int events) {
 
   if (events & UV_WRITABLE) {
     udx__on_writable(socket);
-    if (socket->status & UDX_SOCKET_CLOSING && socket->send_queue.len == 0) {
+    if (socket->status & UDX_SOCKET_CLOSING && socket->send_queue.len == 0 && !check_if_streams_have_data(socket)) {
       udx__close_handles(socket);
     }
   }
@@ -1799,19 +1788,6 @@ udx_socket_recv_stop (udx_socket_t *socket) {
   return update_poll(socket);
 }
 
-static bool
-check_if_streams_have_data (udx_socket_t *socket) {
-  for (uint32_t i = 0; i < socket->udx->streams_len; i++) {
-    udx_stream_t *stream = socket->udx->streams[i];
-    // todo: check that this isn't supposed to include retransmits / inflight
-    // if (stream->socket == socket && (stream->unordered.len > 0 || stream->write_queue.len > 0 || stream->inflight_queue.len > 0 || stream->retransmit_queue.len > 0)) {
-    if (stream->socket == socket && (stream->unordered.len > 0 || stream->write_queue.len > 0)) {
-      return true;
-    }
-  }
-  return false;
-}
-
 int
 udx_socket_close (udx_socket_t *socket, udx_socket_close_cb cb) {
   // if (socket->streams_len > 0) return UV_EBUSY;
@@ -1821,7 +1797,6 @@ udx_socket_close (udx_socket_t *socket, udx_socket_close_cb cb) {
   socket->on_close = cb;
 
   // allow stream packets to flush, but cancel anything else
-  // todo: why allow streams to flush?
 
   while (socket->send_queue.len > 0) {
     udx_packet_t *pkt = udx__fifo_shift(&socket->send_queue);
@@ -1892,11 +1867,8 @@ udx_stream_init (udx_t *udx, udx_stream_t *stream, uint32_t local_id, udx_stream
 
   stream->deferred_ack = 0;
 
-  // stream->pkts_waiting = 0;
   stream->pkts_inflight = 0;
   stream->pkts_buffered = 0;
-  // stream->retransmits_waiting = 0;
-  // stream->seq_flushed = 0;
 
   stream->sacks = 0;
   stream->inflight = 0;
@@ -2016,13 +1988,6 @@ udx_stream_read_stop (udx_stream_t *stream) {
   return stream->socket == NULL ? 0 : update_poll(stream->socket);
 }
 
-// static void
-// check_deferred_ack (udx_stream_t *stream) {
-//   if (stream->deferred_ack == 0) return;
-//   if (--(stream->deferred_ack) > 0) return;
-//   send_state_packet(stream);
-// }
-
 int
 udx_stream_check_timeouts (udx_stream_t *stream) {
   if ((stream->status & UDX_STREAM_CONNECTED) == 0) {
@@ -2030,8 +1995,6 @@ udx_stream_check_timeouts (udx_stream_t *stream) {
   }
 
   if (stream->remote_acked == stream->seq && stream->write_queue.len == 0) {
-    // todo: decide if we want this or remove it
-    // check_deferred_ack(stream);
     return 0;
   }
 
@@ -2056,7 +2019,7 @@ udx_stream_check_timeouts (udx_stream_t *stream) {
     // Ensure it backs off until data is acked...
     stream->rto_timeout = now + 2 * stream->rto;
 
-    // Consider all packet losts - seems to be the simple consensus across different stream impls
+    // Consider all packets lost - seems to be the simple consensus across different stream impls
     // which we like cause it is nice and simple to implement.
     debug_printf("rto: flight lost [%u:%u], inflight=%lu\n", stream->remote_acked, stream->seq, stream->inflight);
 
@@ -2066,8 +2029,6 @@ udx_stream_check_timeouts (udx_stream_t *stream) {
       if (pkt == NULL) continue;
 
       if (pkt->status == UDX_PACKET_STATE_RETRANSMIT) {
-        // was already meant to retransmit..
-        // todo: why do we empty the retransmit queue first again? shouldn't be necessary
         pkt->fifo_gc = udx__fifo_push(&stream->retransmit_queue, pkt);
         continue;
       }
@@ -2097,8 +2058,6 @@ udx_stream_check_timeouts (udx_stream_t *stream) {
 
     debug_printf("timeout! pkt loss detected - inflight=%zu ssthresh=%u cwnd=%u acked=%u seq=%u rtt=%u\n", stream->inflight, stream->ssthresh, stream->cwnd, stream->remote_acked, stream->seq, stream->srtt);
   }
-
-  // check_deferred_ack(stream);
 
   int err = update_poll(stream->socket);
   return err < 0 ? err : 0;
