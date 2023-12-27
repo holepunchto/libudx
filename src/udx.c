@@ -879,7 +879,6 @@ void
 udx__confirm_packet (udx_packet_t *pkt) {
   pkt->status = UDX_PACKET_STATE_INFLIGHT;
   pkt->transmits++;
-  // pkt->time_sent = uv_hrtime() / 1e6;
 
   int type = pkt->type;
 
