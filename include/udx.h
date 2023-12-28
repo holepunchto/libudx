@@ -263,8 +263,6 @@ struct udx_stream_s {
   udx_cirbuf_t outgoing;
   udx_cirbuf_t incoming;
 
-  // udx_fifo_t retransmit_queue; // udx_packet_t
-
   udx_queue_t inflight_queue;
   udx_queue_t retransmit_queue;
 
@@ -293,6 +291,10 @@ struct udx_packet_s {
 
   struct sockaddr_storage dest;
   int dest_len;
+
+  uint32_t fifo_gc; // for removing from inflight / retransmit queue
+  // udx_packet_t *prev; // alternative for inflight / retransmit queues
+  // udx_packet_t *next; // alternative for inflight / retransmit queues
 
   // just alloc it in place here, easier to manage
   char header[UDX_HEADER_SIZE];

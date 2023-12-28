@@ -110,13 +110,11 @@ udx__on_writable (udx_socket_t *socket) {
 
     int npkts = 0;
 
-    // todo: ttl
-
     int ttl = -1;
     bool adjust_ttl;
 
     while (npkts < UDX_SENDMMSG_BATCH_SIZE) {
-      udx_packet_t *pkt = udx__get_packet(socket);
+      udx_packet_t *pkt = udx__shift_packet(socket);
 
       if (pkt == NULL) {
         finished = true;
@@ -129,7 +127,7 @@ udx__on_writable (udx_socket_t *socket) {
       }
 
       if (pkt->ttl != ttl) {
-        udx__cancel_packet(pkt, socket);
+        udx__unshift_packet(pkt, socket);
         break;
       }
 
@@ -174,7 +172,7 @@ udx__on_writable (udx_socket_t *socket) {
 
     // cancel packets in reverse !
     for (int i = npkts; i > npkts - unsent; i--) {
-      udx__cancel_packet(batch[i - 1], socket);
+      udx__unshift_packet(batch[i - 1], socket);
     }
 
     for (int i = 0; i < nsent; i++) {
@@ -190,7 +188,7 @@ udx__on_writable (udx_socket_t *socket) {
   }
 #else /* no sendmmsg */
   while (true) {
-    udx_packet_t *pkt = udx__get_packet(socket);
+    udx_packet_t *pkt = udx__shift_packet(socket);
     if (pkt == NULL) break;
 
     bool adjust_ttl = pkt->ttl > 0 && socket->ttl != pkt->ttl;
@@ -207,7 +205,7 @@ udx__on_writable (udx_socket_t *socket) {
     if (adjust_ttl) uv_udp_set_ttl((uv_udp_t *) socket, socket->ttl);
 
     if (size == UV_EAGAIN) {
-      udx__cancel_packet(pkt, socket);
+      udx__unshift_packet(pkt, socket);
       break;
     }
     // todo: set in confirm packet with uv_now()
