@@ -94,8 +94,8 @@ typedef struct udx_packet_s udx_packet_t;
 typedef struct {
   uint32_t len; // must be first to align next/prev correctly.
 
-  udx_packet_t *next;
   udx_packet_t *prev;
+  udx_packet_t *next;
 } udx_queue_t;
 
 typedef struct udx_socket_send_s udx_socket_send_t;

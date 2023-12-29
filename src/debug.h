@@ -33,6 +33,33 @@ debug_print_cwnd_stats (udx_stream_t *stream) {
 static void
 debug_print_outgoing (udx_stream_t *stream) {
   if (DEBUG) {
+
+    int i = stream->retransmit_queue.len;
+
+    if (i) {
+      debug_printf("rtx: ");
+      udx_packet_t *pkt = stream->retransmit_queue.prev;
+
+      while (pkt != (udx_packet_t *) &stream->retransmit_queue) {
+        debug_printf("%u ", pkt->seq);
+        pkt = pkt->next;
+      }
+      debug_printf("\n");
+    }
+
+    i = stream->inflight_queue.len;
+
+    if (i) {
+      debug_printf("in-flight: ");
+      udx_packet_t *pkt = stream->inflight_queue.next;
+
+      while (pkt != (udx_packet_t *) &stream->inflight_queue) {
+        debug_printf("%u ", pkt->seq);
+        pkt = pkt->next;
+      }
+      debug_printf("\n");
+    }
+
     for (uint32_t s = stream->remote_acked; s < stream->seq; s++) {
       udx_packet_t *pkt = (udx_packet_t *) udx__cirbuf_get(&stream->outgoing, s);
       if (pkt == NULL) {

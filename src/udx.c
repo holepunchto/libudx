@@ -757,7 +757,7 @@ udx__shift_packet (udx_socket_t *socket) {
 
     while (stream->retransmit_queue.len > 0) {
       udx_packet_t *pkt = udx__queue_shift(&stream->retransmit_queue);
-      // todo: must actually queue to the front of the inflight_queue
+
       udx__queue_tail(&stream->inflight_queue, pkt);
 
       stream->inflight += pkt->size;
@@ -1042,6 +1042,7 @@ rack_detect_loss (udx_stream_t *stream) {
       stream->inflight -= pkt->size;
 
       udx__queue_unlink(q, pkt);
+      // todo: optimize: order retransmit queue by seq# ?
       udx__queue_tail(&stream->retransmit_queue, pkt);
 
       if (pkt->is_mtu_probe) {
@@ -1116,9 +1117,6 @@ ack_packet (udx_stream_t *stream, uint32_t seq, int sack) {
     if (!sack) stream->sacks--; // packet not here, was sacked before
     return 0;
   }
-
-  stream->write_wanted |= UDX_STREAM_WRITE_WANT_STATE;
-  update_poll(stream->socket);
 
   if (stream->mtu_state == UDX_MTU_STATE_SEARCH && stream->mtu_probe_count > 0 && pkt->is_mtu_probe) {
     debug_printf("mtu: probe acked seq=%d mtu=%d->%d sack=%d\n", seq, stream->mtu, stream->mtu_probe_size, sack);
@@ -2016,9 +2014,6 @@ udx_stream_check_timeouts (udx_stream_t *stream) {
     // Bail out of fast recovery mode if we are in it
     stream->recovery = 0;
 
-    // clear out old retransmit queue
-    udx__queue_init(&stream->retransmit_queue);
-
     // Reduce the congestion window (full reset)
     reduce_cwnd(stream, true);
 
@@ -2029,21 +2024,14 @@ udx_stream_check_timeouts (udx_stream_t *stream) {
     // which we like cause it is nice and simple to implement.
     debug_printf("rto: flight lost [%u:%u], inflight=%lu\n", stream->remote_acked, stream->seq, stream->inflight);
 
-    for (uint32_t seq = stream->remote_acked; seq < stream->seq; seq++) {
+    udx_queue_t *q = &stream->inflight_queue;
+    udx_packet_t *pkt;
+    udx_packet_t *tmp;
 
-      udx_packet_t *pkt = (udx_packet_t *) udx__cirbuf_get(&stream->outgoing, seq);
-      if (pkt == NULL) continue;
-
-      if (pkt->status == UDX_PACKET_STATE_RETRANSMIT) {
-        // was already meant to retransmit..
-        // todo: why do we empty the retransmit queue first again? shouldn't be necessary
-        udx__queue_tail(&stream->retransmit_queue, pkt);
-        continue;
-      }
-
-      assert(pkt->status == UDX_PACKET_STATE_INFLIGHT);
-
-      udx__queue_unlink(&stream->inflight_queue, pkt);
+    // for each inflight packet
+    for (pkt = q->next, tmp = pkt->next;
+         pkt != (udx_packet_t *) q;
+         pkt = tmp, tmp = pkt->next) {
 
       if (pkt->transmits >= UDX_MAX_TRANSMITS) {
         stream->status |= UDX_STREAM_DESTROYED;
@@ -2060,10 +2048,12 @@ udx_stream_check_timeouts (udx_stream_t *stream) {
         mtu_unprobeify_packet(pkt, stream);
       }
 
+      udx__queue_unlink(&stream->inflight_queue, pkt);
       udx__queue_tail(&stream->retransmit_queue, pkt);
     }
 
     debug_printf("timeout! pkt loss detected - inflight=%zu ssthresh=%u cwnd=%u acked=%u seq=%u rtt=%u\n", stream->inflight, stream->ssthresh, stream->cwnd, stream->remote_acked, stream->seq, stream->srtt);
+    // debug_print_outgoing(stream);
   }
 
   int err = update_poll(stream->socket);

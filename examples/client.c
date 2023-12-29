@@ -1,6 +1,6 @@
 #include <stdio.h>
-#include <uv.h>
 #include <stdlib.h>
+#include <uv.h>
 
 #include "../include/udx.h"
 #ifdef _WIN32
@@ -62,7 +62,10 @@ on_send (udx_socket_send_t *r, int status) {
 
 int
 main (int argc, char **argv) {
-  if (argc < 2) return 1;
+  if (argc < 2) {
+    fprintf(stderr, "usage: ./client ip\n");
+    return 1;
+  }
 
   uv_ip4_addr(argv[1], 18081, &dest_addr);
 
@@ -80,7 +83,7 @@ main (int argc, char **argv) {
   client_id = (uint32_t) getpid();
   server_id = client_id + 1;
 
-  uint32_t ids[2] = { client_id, server_id };
+  uint32_t ids[2] = {client_id, server_id};
 
   uv_buf_t buf = uv_buf_init((char *) ids, 8);
   udx_socket_send(&req, &sock, &buf, 1, (struct sockaddr *) &dest_addr, on_send);
