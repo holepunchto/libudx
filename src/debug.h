@@ -37,8 +37,8 @@ debug_print_outgoing (udx_stream_t *stream) {
     int i = stream->retransmit_queue.len;
 
     if (i) {
-      debug_printf("rtx: ");
-      udx_packet_t *pkt = stream->retransmit_queue.prev;
+      debug_printf("rtx: (%d pkts) ", i);
+      udx_packet_t *pkt = stream->retransmit_queue.next;
 
       while (pkt != (udx_packet_t *) &stream->retransmit_queue) {
         debug_printf("%u ", pkt->seq);
@@ -50,7 +50,7 @@ debug_print_outgoing (udx_stream_t *stream) {
     i = stream->inflight_queue.len;
 
     if (i) {
-      debug_printf("in-flight: ");
+      debug_printf("in-flight: (%d pkts) ", i);
       udx_packet_t *pkt = stream->inflight_queue.next;
 
       while (pkt != (udx_packet_t *) &stream->inflight_queue) {
