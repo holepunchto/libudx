@@ -11,9 +11,6 @@ udx__queue_init (udx_queue_t *q) {
 // all insertion operations call this general version
 static void
 queue_insert (udx_packet_t *pkt, udx_packet_t *prev, udx_packet_t *next, udx_queue_t *queue) {
-  if (pkt == NULL) __builtin_trap();
-  if (prev == NULL) __builtin_trap();
-  if (next == NULL) __builtin_trap();
   pkt->next = next;
   pkt->prev = prev;
   next->prev = pkt;
