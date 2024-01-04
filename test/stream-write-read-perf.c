@@ -121,7 +121,7 @@ main () {
 
   printf("generating data ...\n");
 
-  options.size_bytes = 50 * 1024 * 1024L;
+  options.size_bytes = 500 * 1024 * 1024L;
 
   char *data = calloc(options.size_bytes, 1);
 
