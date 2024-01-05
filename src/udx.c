@@ -1532,7 +1532,7 @@ on_uv_poll (uv_poll_t *handle, int status, int events) {
   udx_socket_t *socket = handle->data;
   ssize_t size;
 
-  uint64_t start = uv_now(handle->loop);
+  const uint64_t start = uv_now(handle->loop);
 
   bool read = false;
 
@@ -1566,7 +1566,6 @@ on_uv_poll (uv_poll_t *handle, int status, int events) {
   if (events & UV_WRITABLE) {
     if (read) {
       uv_update_time(handle->loop);
-      start = uv_now(handle->loop);
     }
     udx__on_writable(socket);
     if (socket->status & UDX_SOCKET_CLOSING && socket->send_queue.len == 0 && !check_if_streams_have_data(socket)) {
