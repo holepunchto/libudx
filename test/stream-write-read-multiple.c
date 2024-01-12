@@ -16,6 +16,8 @@ udx_stream_t bstream;
 int ack_called = 0;
 int read_called = 0;
 
+size_t total_read = 0;
+
 void
 on_ack (udx_stream_write_t *r, int status, int unordered) {
   assert(status == 0);
@@ -26,8 +28,9 @@ on_ack (udx_stream_write_t *r, int status, int unordered) {
 
 void
 on_read (udx_stream_t *handle, ssize_t read_len, const uv_buf_t *buf) {
-  assert(buf->len == 5);
-  assert(buf->len == read_len);
+
+  total_read += read_len;
+
   assert(memcmp(buf->base, "hello", 5) == 0);
 
   read_called++;
@@ -85,7 +88,7 @@ main () {
 
   uv_run(&loop, UV_RUN_DEFAULT);
 
-  assert(ack_called == 2 && read_called == 2);
+  assert(ack_called == 2 && total_read == buf.len * 2);
 
   return 0;
 }

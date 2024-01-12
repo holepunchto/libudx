@@ -143,7 +143,7 @@ udx__on_writable (udx_socket_t *socket) {
       p->msg_hdr.msg_namelen = pkt->dest_len;
 
       p->msg_hdr.msg_iov = (struct iovec *) pkt->bufs;
-      p->msg_hdr.msg_iovlen = pkt->bufs_len;
+      p->msg_hdr.msg_iovlen = pkt->nbufs;
 
       npkts++;
     }
@@ -200,7 +200,7 @@ udx__on_writable (udx_socket_t *socket) {
       pkt->dest_len = sizeof(struct sockaddr_in6);
     }
 
-    ssize_t size = udx__sendmsg(socket, pkt->bufs, pkt->bufs_len, (struct sockaddr *) &(pkt->dest), pkt->dest_len);
+    ssize_t size = udx__sendmsg(socket, pkt->bufs, pkt->nbufs, (struct sockaddr *) &(pkt->dest), pkt->dest_len);
 
     if (adjust_ttl) uv_udp_set_ttl((uv_udp_t *) socket, socket->ttl);
 

@@ -270,30 +270,27 @@ struct udx_packet_s {
   int ttl;
   int is_retransmit;
 
-  udx_stream_t *stream; // pointer to the stream if stream packet
-
   uint8_t transmits;
   bool is_mtu_probe;
   uint16_t size;
   uint64_t time_sent;
 
-  void *ctx;
+  void *ctx; // stream_send_t | socket_send_t | stream_t
 
   struct sockaddr_storage dest;
   int dest_len;
 
   uint32_t fifo_gc; // for removing from inflight / retransmit queue
-  // udx_packet_t *prev; // alternative for inflight / retransmit queues
-  // udx_packet_t *next; // alternative for inflight / retransmit queues
 
   // just alloc it in place here, easier to manage
   char header[UDX_HEADER_SIZE];
-  unsigned int bufs_len;
-  uv_buf_t bufs[3];
+  unsigned short nbufs;
+  uv_buf_t bufs[];
 };
 
 struct udx_socket_send_s {
   udx_packet_t pkt;
+  uv_buf_t bufs[3]; // todo: confirm aliasing of bufs[] from packet is valid C
   udx_socket_t *socket;
 
   udx_socket_send_cb on_send;
@@ -318,6 +315,7 @@ struct udx_stream_write_s {
 
 struct udx_stream_send_s {
   udx_packet_t pkt;
+  uv_buf_t bufs[3];
   udx_stream_t *stream;
 
   udx_stream_send_cb on_send;

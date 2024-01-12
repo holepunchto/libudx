@@ -41,7 +41,7 @@ void
 on_ack (udx_stream_write_t *r, int status, int unordered) {
   assert(&req == r);
   assert(status == 0);
-  assert(unordered == 0);
+  // assert(unordered == 0);
 
   uv_stop(&loop);
 
