@@ -1295,11 +1295,10 @@ relay_packet (udx_stream_t *stream, char *buf, ssize_t buf_len, int type, uint8_
     if (err == EAGAIN) {
       b.base += UDX_HEADER_SIZE;
       b.len -= UDX_HEADER_SIZE;
-      __builtin_trap(); // test
 
       udx_packet_t *pkt = malloc(sizeof(udx_packet_t) + 3 * sizeof(uv_buf_t) + b.len);
       memcpy((char *) pkt + sizeof(udx_packet_t) + 3 * sizeof(uv_buf_t), b.base, b.len);
-      b.base = (char *) pkt + sizeof(udx_packet_t);
+      b.base = (char *) pkt + sizeof(udx_packet_t) + 3 * sizeof(uv_buf_t);
 
       init_stream_packet(pkt, type, relay, &b, 1);
 
