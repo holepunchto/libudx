@@ -285,12 +285,15 @@ struct udx_packet_s {
   // just alloc it in place here, easier to manage
   char header[UDX_HEADER_SIZE];
   unsigned short nbufs;
-  // buf_t[] starts here
+
+  // inefficient - only relevant for stream_t packets
+  unsigned short nwrites;
+  udx_stream_write_t **writes;
 };
 
 struct udx_socket_send_s {
   udx_packet_t pkt;
-  uv_buf_t bufs[1]; // buf_t[] must be after packet
+  uv_buf_t bufs[1]; // buf_t[] must be after packet_t
   udx_socket_t *socket;
 
   udx_socket_send_cb on_send;
@@ -315,7 +318,7 @@ struct udx_stream_write_s {
 
 struct udx_stream_send_s {
   udx_packet_t pkt;
-  uv_buf_t bufs[3]; // buf_t[] must be after packet
+  uv_buf_t bufs[3]; // buf_t[] must be after packet_t
   udx_stream_t *stream;
 
   udx_stream_send_cb on_send;
