@@ -949,7 +949,7 @@ udx__unshift_packet (udx_packet_t *pkt, udx_socket_t *socket) {
         debug_printf("undoing packet that finished write\n");
         udx__fifo_undo(&stream->write_queue);
       }
-      write->bytes_inflight -= pkt->bufs[1].len;
+      write->bytes_inflight -= pkt->bufs[pkt->bufs_len - 1].len;
 
       // probe rollback
       if (pkt->is_mtu_probe) {
