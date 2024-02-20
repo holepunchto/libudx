@@ -1,4 +1,4 @@
-cmake_minimum_required(VERSION 3.22)
+cmake_minimum_required(VERSION 3.25)
 
 project(udx C)
 
@@ -15,12 +15,12 @@ set_target_properties(
   POSITION_INDEPENDENT_CODE ON
 )
 
-if(WIN32)
-  target_compile_options(udx PRIVATE /W4)
-endif()
-
 if(UNIX)
   target_compile_options(udx PRIVATE -Wall -Wextra)
+endif()
+
+if(WIN32)
+  target_compile_options(udx PRIVATE /W4)
 endif()
 
 target_sources(
@@ -61,7 +61,7 @@ if(WIN32)
   )
 endif()
 
-add_library(udx_shared SHARED $<TARGET_OBJECTS:udx>)
+add_library(udx_shared SHARED)
 
 set_target_properties(
   udx_shared
@@ -73,6 +73,7 @@ set_target_properties(
 target_link_libraries(
   udx_shared
   PUBLIC
+    udx
     uv
 )
 
@@ -84,7 +85,7 @@ if(UNIX)
   )
 endif()
 
-add_library(udx_static STATIC $<TARGET_OBJECTS:udx>)
+add_library(udx_static STATIC)
 
 set_target_properties(
   udx_static
@@ -95,6 +96,7 @@ set_target_properties(
 target_link_libraries(
   udx_static
   PUBLIC
+    udx
     uv_a
 )
 
