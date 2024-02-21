@@ -793,7 +793,6 @@ udx__shift_packet (udx_socket_t *socket) {
     pkt->type = UDX_PACKET_TYPE_STREAM_WRITE;
     pkt->ttl = 0;
 
-    // decrement if packet is unshifted - or move to confirm packet
     stream->seq++;
 
     if (stream->mtu_probe_wanted && mtu_probeify_packet(pkt, stream->mtu_probe_size)) {
@@ -952,7 +951,7 @@ udx__unshift_packet (udx_packet_t *pkt, udx_socket_t *socket) {
         debug_printf("undoing packet that finished write\n");
         udx__fifo_undo(&stream->write_queue);
       }
-      write->bytes_inflight -= pkt->bufs[1].len;
+      write->bytes_inflight -= pkt->bufs[pkt->bufs_len - 1].len;
 
       // probe rollback
       if (pkt->is_mtu_probe) {
@@ -2052,7 +2051,6 @@ udx_stream_check_timeouts (udx_stream_t *stream) {
       udx__queue_tail(&stream->retransmit_queue, pkt);
     }
 
-    debug_printf("timeout! pkt loss detected - inflight=%zu ssthresh=%u cwnd=%u acked=%u seq=%u rtt=%u\n", stream->inflight, stream->ssthresh, stream->cwnd, stream->remote_acked, stream->seq, stream->srtt);
     // debug_print_outgoing(stream);
   }
 

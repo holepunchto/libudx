@@ -141,7 +141,7 @@ main () {
 
   // just for valgrind
   free(data);
-  printf("readhash=%x writehash=%x\n", read_hash, write_hash);
+  printf("readhash=%lx writehash=%lx\n", read_hash, write_hash);
   assert(read_hash == write_hash);
   return 0;
 }
