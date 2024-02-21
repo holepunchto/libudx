@@ -824,8 +824,6 @@ close_maybe (udx_stream_t *stream, int err) {
   // if we already destroyed, bail.
   if (stream->status & UDX_STREAM_CLOSED) return 0;
 
-  debug_printf("close stream->local_id=%u\n", stream->local_id);
-
   stream->status |= UDX_STREAM_CLOSED;
   stream->status &= ~UDX_STREAM_CONNECTED;
 
