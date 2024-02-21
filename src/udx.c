@@ -918,9 +918,9 @@ udx__confirm_packet (udx_packet_t *pkt) {
 void
 udx__unshift_packet (udx_packet_t *pkt, udx_socket_t *socket) {
 
-  // don't need early return once all pkt types are covered
   if (pkt->type == UDX_PACKET_TYPE_SOCKET_SEND || pkt->type == UDX_PACKET_TYPE_STREAM_RELAY) {
     udx__fifo_undo(&socket->send_queue);
+    return;
   }
 
   if (pkt->type == UDX_PACKET_TYPE_STREAM_WRITE) {
@@ -980,7 +980,7 @@ udx__unshift_packet (udx_packet_t *pkt, udx_socket_t *socket) {
     return;
   }
 
-  return; // should be unreachable
+  return;
 }
 
 // rack recovery implemented using https://datatracker.ietf.org/doc/rfc8985/
