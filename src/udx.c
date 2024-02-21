@@ -960,25 +960,29 @@ udx__unshift_packet (udx_packet_t *pkt, udx_socket_t *socket) {
 
       free(pkt);
     }
+    return;
   }
 
   if (pkt->type == UDX_PACKET_TYPE_STREAM_SEND) {
     udx_stream_send_t *req = pkt->ctx;
     udx_stream_t *stream = req->stream;
     udx__fifo_undo(&stream->unordered);
+    return;
   }
 
   if (pkt->type == UDX_PACKET_TYPE_STREAM_STATE) {
     pkt->stream->write_wanted |= UDX_STREAM_WRITE_WANT_STATE;
     free(pkt);
+    return;
   }
 
   if (pkt->type == UDX_PACKET_TYPE_STREAM_DESTROY) {
     pkt->stream->write_wanted |= UDX_STREAM_WRITE_WANT_DESTROY;
     free(pkt);
+    return;
   }
 
-  return;
+  return; // should be unreachable
 }
 
 // rack recovery implemented using https://datatracker.ietf.org/doc/rfc8985/
