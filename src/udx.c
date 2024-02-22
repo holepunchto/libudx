@@ -761,7 +761,6 @@ udx__shift_packet (udx_socket_t *socket) {
     udx_stream_write_t *write = udx__fifo_peek(&stream->write_queue);
     assert(write != NULL);
     int header_flag = write->is_write_end ? UDX_HEADER_END : UDX_HEADER_DATA;
-    // uint32_t wrtsz = write->buf.len - write->bytes_acked - write->bytes_inflight;
     uint32_t mss = max_payload(stream);
 
     uint64_t capacity = mss;
@@ -774,6 +773,7 @@ udx__shift_packet (udx_socket_t *socket) {
 
     while (capacity > 0 && nwrites < UDX_MAX_COMBINED_WRITES && stream->write_queue.len > 0) {
       udx_stream_write_t *write = udx__fifo_peek(&stream->write_queue);
+
       uv_buf_t *buf = &write->buf;
 
       uint64_t writesz = buf->len - write->bytes_acked - write->bytes_inflight;
@@ -791,6 +791,7 @@ udx__shift_packet (udx_socket_t *socket) {
       size += len;
       nwrites++;
 
+      header_flag |= write->is_write_end ? UDX_HEADER_END : UDX_HEADER_DATA;
       if ((write->bytes_acked + write->bytes_inflight) == write->buf.len) {
         udx__fifo_shift(&stream->write_queue);
       }
@@ -842,8 +843,6 @@ close_maybe (udx_stream_t *stream, int err) {
   if ((stream->status & UDX_STREAM_ALL_ENDED) != UDX_STREAM_ALL_ENDED && !(stream->status & UDX_STREAM_ALL_DESTROYED)) return 0;
   // if we already destroyed, bail.
   if (stream->status & UDX_STREAM_CLOSED) return 0;
-
-  debug_printf("close stream->local_id=%u\n", stream->local_id);
 
   stream->status |= UDX_STREAM_CLOSED;
   stream->status &= ~UDX_STREAM_CONNECTED;
@@ -938,14 +937,13 @@ udx__confirm_packet (udx_packet_t *pkt) {
 void
 udx__unshift_packet (udx_packet_t *pkt, udx_socket_t *socket) {
 
-  // don't need early return once all pkt types are covered
   if (pkt->type == UDX_PACKET_TYPE_SOCKET_SEND || pkt->type == UDX_PACKET_TYPE_STREAM_RELAY) {
     udx__fifo_undo(&socket->send_queue);
+    return;
   }
 
   if (pkt->type == UDX_PACKET_TYPE_STREAM_WRITE) {
-    udx_stream_write_t *write = pkt->ctx;
-    udx_stream_t *stream = write->stream;
+    udx_stream_t *stream = pkt->ctx;
 
     if (pkt->seq + 1 == stream->seq) {
       stream->seq--;
@@ -963,15 +961,22 @@ udx__unshift_packet (udx_packet_t *pkt, udx_socket_t *socket) {
     } else {
       assert(pkt->transmits == 0);
       // if the packet was the one that shifted a write, undo it
-      if (write->bytes_acked + write->bytes_inflight == write->buf.len) {
-        debug_printf("undoing packet that finished write\n");
-        udx__fifo_undo(&stream->write_queue);
-      }
+
+      debug_printf("undoing write on local failure\n");
 
       uv_buf_t *bufs = (uv_buf_t *) (pkt + 1);
 
-      for (int i = 2; i < pkt->nbufs; i++) {
-        write->bytes_inflight -= bufs[i].len;
+      for (int i = 0; i < pkt->nwrites; i++) {
+        udx_stream_write_t *write = pkt->writes[i];
+        debug_printf("write=%d/%d\n", i + 1, pkt->nwrites);
+        if (write->bytes_acked + write->bytes_inflight == write->buf.len) {
+          debug_printf("undoing packet that finished write\n");
+          udx__fifo_undo(&stream->write_queue);
+        }
+
+        debug_printf("refunding %ld bytes\n", bufs[(pkt->is_mtu_probe ? 2 : 1) + i].len);
+
+        write->bytes_inflight -= bufs[(pkt->is_mtu_probe ? 2 : 1) + i].len;
       }
 
       // probe rollback
@@ -983,27 +988,29 @@ udx__unshift_packet (udx_packet_t *pkt, udx_socket_t *socket) {
 
       free(pkt);
     }
+    return;
   }
 
   if (pkt->type == UDX_PACKET_TYPE_STREAM_SEND) {
     udx_stream_send_t *req = pkt->ctx;
     udx_stream_t *stream = req->stream;
     udx__fifo_undo(&stream->unordered);
+    return;
   }
 
   if (pkt->type == UDX_PACKET_TYPE_STREAM_STATE) {
     udx_stream_t *stream = pkt->ctx;
     stream->write_wanted |= UDX_STREAM_WRITE_WANT_STATE;
     free(pkt);
+    return;
   }
 
   if (pkt->type == UDX_PACKET_TYPE_STREAM_DESTROY) {
     udx_stream_t *stream = pkt->ctx;
     stream->write_wanted |= UDX_STREAM_WRITE_WANT_DESTROY;
     free(pkt);
+    return;
   }
-
-  return;
 }
 
 // rack recovery implemented using https://datatracker.ietf.org/doc/rfc8985/
