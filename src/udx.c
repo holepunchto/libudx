@@ -636,7 +636,6 @@ get_stream (udx_socket_t *socket) {
 
 udx_packet_t *
 udx__shift_packet (udx_socket_t *socket) {
-  // debug_printf("in get packet\n");
 
   while (socket->send_queue.len > 0) {
     udx_packet_t *pkt = udx__fifo_shift(&socket->send_queue);
@@ -760,7 +759,14 @@ udx__shift_packet (udx_socket_t *socket) {
 
     udx_stream_write_t *write = udx__fifo_peek(&stream->write_queue);
     assert(write != NULL);
-    int header_flag = write->is_write_end ? UDX_HEADER_END : UDX_HEADER_DATA;
+
+    // header_flag will be either
+    // DATA     - packet has payload and all data written with udx_stream_write()
+    // DATA|END - packet has payload and and some or all data was written with udx_stream_write_end()
+    // END      - packet has no payload and is the result of udx_stream_write_end() with an empty buffer
+
+    int header_flag = 0;
+
     uint32_t mss = max_payload(stream);
 
     uint64_t capacity = mss;
@@ -791,15 +797,20 @@ udx__shift_packet (udx_socket_t *socket) {
       size += len;
       nwrites++;
 
+      if (size > 0) {
+        header_flag |= UDX_HEADER_DATA;
+      }
+
       header_flag |= write->is_write_end ? UDX_HEADER_END : UDX_HEADER_DATA;
       if ((write->bytes_acked + write->bytes_inflight) == write->buf.len) {
+        if (write->is_write_end) {
+          header_flag |= UDX_HEADER_END;
+        }
         udx__fifo_shift(&stream->write_queue);
       }
     }
 
-    if (nwrites > 1) {
-      debug_printf("combined write, nwrites=%d\n", nwrites);
-    }
+    assert(header_flag & UDX_HEADER_DATA_OR_END);
 
     int nbufs = 2 + nwrites; // extra for 1.header 2.padding
 
@@ -827,7 +838,7 @@ udx__shift_packet (udx_socket_t *socket) {
 
     // undo if unshifted. needed to prevent creating more than cwnd packets
     stream->pkts_inflight++;
-    // debug_printf("pkt->size=%u\n", pkt->size);
+
     assert(pkt->size > 0 && pkt->size < 1500);
     stream->inflight += pkt->size;
 
@@ -962,19 +973,13 @@ udx__unshift_packet (udx_packet_t *pkt, udx_socket_t *socket) {
       assert(pkt->transmits == 0);
       // if the packet was the one that shifted a write, undo it
 
-      debug_printf("undoing write on local failure\n");
-
       uv_buf_t *bufs = (uv_buf_t *) (pkt + 1);
 
       for (int i = 0; i < pkt->nwrites; i++) {
         udx_stream_write_t *write = pkt->writes[i];
-        debug_printf("write=%d/%d\n", i + 1, pkt->nwrites);
         if (write->bytes_acked + write->bytes_inflight == write->buf.len) {
-          debug_printf("undoing packet that finished write\n");
           udx__fifo_undo(&stream->write_queue);
         }
-
-        debug_printf("refunding %ld bytes\n", bufs[(pkt->is_mtu_probe ? 2 : 1) + i].len);
 
         write->bytes_inflight -= bufs[(pkt->is_mtu_probe ? 2 : 1) + i].len;
       }
@@ -1082,7 +1087,7 @@ rack_detect_loss (udx_stream_t *stream) {
   if (resending > mtu_probes_lost) {
     debug_printf("resending=%d mtu_probe_lost=%d\n", resending, mtu_probes_lost);
     if (stream->recovery == 0) {
-      debug_print_outgoing(stream);
+      // debug_print_outgoing(stream);
 
       // recover until the full window is acked
       stream->recovery = seq_diff(stream->seq, stream->remote_acked);
@@ -1422,6 +1427,7 @@ process_packet (udx_socket_t *socket, char *buf, ssize_t buf_len, struct sockadd
       return 1;
     }
   }
+
   if (type & UDX_HEADER_MESSAGE) {
     if (stream->on_recv != NULL) {
       uv_buf_t b = uv_buf_init(buf, buf_len);
@@ -1543,7 +1549,6 @@ udx__trigger_send_callback (udx_packet_t *pkt) {
 
   if (pkt->type == UDX_PACKET_TYPE_STREAM_DESTROY) {
     udx_stream_t *stream = pkt->ctx;
-    // debug_printf("send callback: stream destroy, stream->local_id=%u pkt->seq=%u\n", stream->local_id, pkt->seq);
 
     stream->status |= UDX_STREAM_DESTROYED;
     stream->write_wanted &= ~UDX_STREAM_WRITE_WANT_DESTROY;
@@ -1965,6 +1970,7 @@ udx_stream_get_seq (udx_stream_t *stream, uint32_t *seq) {
 int
 udx_stream_set_seq (udx_stream_t *stream, uint32_t seq) {
   stream->seq = seq;
+  stream->remote_acked = seq;
   return 0;
 }
 
@@ -2059,6 +2065,7 @@ udx_stream_check_timeouts (udx_stream_t *stream) {
 
     // Consider all packets lost - seems to be the simple consensus across different stream impls
     // which we like cause it is nice and simple to implement.
+
     debug_printf("rto: flight lost [%u:%u], inflight=%lu\n", stream->remote_acked, stream->seq, stream->inflight);
 
     for (uint32_t seq = stream->remote_acked; seq < stream->seq; seq++) {
