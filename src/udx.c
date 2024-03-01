@@ -1521,8 +1521,6 @@ on_uv_poll (uv_poll_t *handle, int status, int events) {
   udx_socket_t *socket = handle->data;
   ssize_t size;
 
-  const uint64_t start = uv_now(handle->loop);
-
   bool read = false;
 
   if (events & UV_READABLE) {
@@ -1565,15 +1563,6 @@ on_uv_poll (uv_poll_t *handle, int status, int events) {
   // update the poll if the socket is still active.
   if (uv_is_active((uv_handle_t *) &socket->io_poll)) {
     update_poll(socket);
-  }
-
-  // debug message if on_uv_loop took > 5ms
-
-  uv_update_time(handle->loop);
-  uint64_t finished = uv_now(handle->loop);
-
-  if ((finished - start) > 5) {
-    debug_printf("warn: loop took %lu ms\n", finished - start);
   }
 }
 
