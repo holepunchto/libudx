@@ -57,18 +57,6 @@ typedef struct {
   uv_buf_t buf;
 } udx_pending_read_t;
 
-/*
-static uint64_t
-get_microseconds () {
-  return uv_hrtime() / 1000;
-}
-
-static uint64_t
-get_milliseconds () {
-  return get_microseconds() / 1000;
-}
-*/
-
 static inline uint32_t
 cubic_root (uint64_t a) {
   return (uint32_t) cbrt(a);
@@ -646,7 +634,6 @@ get_stream (udx_socket_t *socket) {
 
 udx_packet_t *
 udx__shift_packet (udx_socket_t *socket) {
-  // debug_printf("in get packet\n");
 
   while (socket->send_queue.len > 0) {
     udx_packet_t *pkt = udx__fifo_shift(&socket->send_queue);
