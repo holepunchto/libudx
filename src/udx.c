@@ -825,8 +825,6 @@ close_maybe (udx_stream_t *stream, int err) {
   // if we already destroyed, bail.
   if (stream->status & UDX_STREAM_CLOSED) return 0;
 
-  debug_printf("close stream->local_id=%u\n", stream->local_id);
-
   stream->status |= UDX_STREAM_CLOSED;
   stream->status &= ~UDX_STREAM_CONNECTED;
 
@@ -921,9 +919,9 @@ udx__confirm_packet (udx_packet_t *pkt) {
 void
 udx__unshift_packet (udx_packet_t *pkt, udx_socket_t *socket) {
 
-  // don't need early return once all pkt types are covered
   if (pkt->type == UDX_PACKET_TYPE_SOCKET_SEND || pkt->type == UDX_PACKET_TYPE_STREAM_RELAY) {
     udx__fifo_undo(&socket->send_queue);
+    return;
   }
 
   if (pkt->type == UDX_PACKET_TYPE_STREAM_WRITE) {
@@ -950,7 +948,7 @@ udx__unshift_packet (udx_packet_t *pkt, udx_socket_t *socket) {
         debug_printf("undoing packet that finished write\n");
         udx__fifo_undo(&stream->write_queue);
       }
-      write->bytes_inflight -= pkt->bufs[1].len;
+      write->bytes_inflight -= pkt->bufs[pkt->bufs_len - 1].len;
 
       // probe rollback
       if (pkt->is_mtu_probe) {
@@ -961,22 +959,26 @@ udx__unshift_packet (udx_packet_t *pkt, udx_socket_t *socket) {
 
       free(pkt);
     }
+    return;
   }
 
   if (pkt->type == UDX_PACKET_TYPE_STREAM_SEND) {
     udx_stream_send_t *req = pkt->ctx;
     udx_stream_t *stream = req->stream;
     udx__fifo_undo(&stream->unordered);
+    return;
   }
 
   if (pkt->type == UDX_PACKET_TYPE_STREAM_STATE) {
     pkt->stream->write_wanted |= UDX_STREAM_WRITE_WANT_STATE;
     free(pkt);
+    return;
   }
 
   if (pkt->type == UDX_PACKET_TYPE_STREAM_DESTROY) {
     pkt->stream->write_wanted |= UDX_STREAM_WRITE_WANT_DESTROY;
     free(pkt);
+    return;
   }
 
   return;

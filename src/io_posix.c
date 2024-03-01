@@ -111,7 +111,7 @@ udx__on_writable (udx_socket_t *socket) {
     int npkts = 0;
 
     int ttl = -1;
-    bool adjust_ttl;
+    bool adjust_ttl = false;
 
     while (npkts < UDX_SENDMMSG_BATCH_SIZE) {
       udx_packet_t *pkt = udx__shift_packet(socket);
