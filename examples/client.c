@@ -1,6 +1,6 @@
 #include <stdio.h>
-#include <uv.h>
 #include <stdlib.h>
+#include <uv.h>
 
 #include "../include/udx.h"
 #ifdef _WIN32
@@ -33,7 +33,7 @@ get_milliseconds () {
 
 static void
 on_uv_interval (uv_timer_t *handle) {
-  printf("received %zu bytes in %llu ms\n", bytes_recv, get_milliseconds() - started);
+  printf("received %zu bytes in %lu ms\n", bytes_recv, get_milliseconds() - started);
 }
 
 static void
@@ -45,7 +45,7 @@ on_read (udx_stream_t *handle, ssize_t read_len, const uv_buf_t *buf) {
   }
 
   if (read_len < 0) {
-    printf("received %zu bytes in %llu ms\n", bytes_recv, get_milliseconds() - started);
+    printf("received %zu bytes in %lu ms\n", bytes_recv, get_milliseconds() - started);
     printf("stream is done!\n");
     exit(0);
   }
@@ -80,7 +80,7 @@ main (int argc, char **argv) {
   client_id = (uint32_t) getpid();
   server_id = client_id + 1;
 
-  uint32_t ids[2] = { client_id, server_id };
+  uint32_t ids[2] = {client_id, server_id};
 
   uv_buf_t buf = uv_buf_init((char *) ids, 8);
   udx_socket_send(&req, &sock, &buf, 1, (struct sockaddr *) &dest_addr, on_send);
