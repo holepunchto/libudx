@@ -106,8 +106,7 @@ udx__on_writable (udx_socket_t *socket) {
       udx__unshift_packet(pkt, socket);
       break;
     }
-    // todo: set in confirm packet with uv_now()
-    pkt->time_sent = uv_hrtime() / 1e6;
+    pkt->time_sent = uv_now(socket->udx->loop);
     udx__confirm_packet(pkt);
   }
 }
