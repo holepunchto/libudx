@@ -1521,8 +1521,6 @@ on_uv_poll (uv_poll_t *handle, int status, int events) {
   udx_socket_t *socket = handle->data;
   ssize_t size;
 
-  bool read = false;
-
   if (events & UV_READABLE) {
     struct sockaddr_storage addr;
     int addr_len = sizeof(addr);
@@ -1535,7 +1533,6 @@ on_uv_poll (uv_poll_t *handle, int status, int events) {
     buf.len = 2048;
 
     while ((size = udx__recvmsg(socket, &buf, (struct sockaddr *) &addr, addr_len)) >= 0) {
-      read = true;
       if (!process_packet(socket, b, size, (struct sockaddr *) &addr) && socket->on_recv != NULL) {
         buf.len = size;
 
@@ -1551,7 +1548,8 @@ on_uv_poll (uv_poll_t *handle, int status, int events) {
   }
 
   if (events & UV_WRITABLE) {
-    if (read) {
+    if (events & UV_READABLE) {
+      // compensate for potentially long-running read callbacks
       uv_update_time(handle->loop);
     }
     udx__on_writable(socket);
