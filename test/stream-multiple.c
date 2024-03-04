@@ -111,7 +111,7 @@ main () {
   uv_run(&loop, UV_RUN_DEFAULT);
 
   for (int i = 0; i < NSTREAMS; i++) {
-    printf("%d: send_hash=%x receive_hash=%x sent_bytes=%lu recv_bytes=%lu\n", i, sender[i].write_hash, receiver[i].read_hash, NBYTES_TO_SEND, receiver[i].nbytes_read);
+    printf("%d: send_hash=%lx receive_hash=%lx sent_bytes=%d recv_bytes=%lu\n", i, sender[i].write_hash, receiver[i].read_hash, NBYTES_TO_SEND, receiver[i].nbytes_read);
     assert(sender[i].write_hash == receiver[i].read_hash);
     assert(receiver[i].nbytes_read == NBYTES_TO_SEND);
   }
