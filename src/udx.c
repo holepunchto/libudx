@@ -59,16 +59,6 @@ typedef struct {
   uv_buf_t buf;
 } udx_pending_read_t;
 
-static uint64_t
-get_microseconds () {
-  return uv_hrtime() / 1000;
-}
-
-static uint64_t
-get_milliseconds () {
-  return get_microseconds() / 1000;
-}
-
 static inline uint32_t
 cubic_root (uint64_t a) {
   return (uint32_t) cbrt(a);
@@ -1042,7 +1032,7 @@ static void
 rack_detect_loss (udx_stream_t *stream) {
   uint64_t timeout = 0;
   uint32_t reo_wnd = rack_update_reo_wnd(stream);
-  uint64_t now = 0;
+  uint64_t now = uv_now(stream->udx->loop);
 
   int resending = 0;
   int mtu_probes_lost = 0;
@@ -1052,8 +1042,6 @@ rack_detect_loss (udx_stream_t *stream) {
 
     if (pkt == NULL || pkt->status != UDX_PACKET_STATE_INFLIGHT) continue;
     assert(pkt->transmits > 0);
-
-    if (!now) now = get_milliseconds();
 
     // debug_printf("%lu > %lu=%d\n", stream->rack_time_sent, pkt->time_sent, stream->rack_time_sent > pkt->time_sent);
 
@@ -1105,7 +1093,7 @@ rack_detect_loss (udx_stream_t *stream) {
 
 static void
 ack_update (udx_stream_t *stream, uint32_t acked, bool is_limited) {
-  uint64_t time = get_milliseconds();
+  uint64_t time = uv_now(stream->udx->loop);
 
   // also reset rto, since things are moving forward...
   stream->rto_timeout = time + stream->rto;
@@ -1179,7 +1167,7 @@ ack_packet (udx_stream_t *stream, uint32_t seq, int sack) {
     stream->inflight -= pkt->size;
   }
 
-  const uint64_t time = get_milliseconds();
+  const uint64_t time = uv_now(stream->udx->loop);
   const uint32_t rtt = (uint32_t) (time - pkt->time_sent);
   const uint32_t next = seq + 1;
 
@@ -1601,6 +1589,10 @@ on_uv_poll (uv_poll_t *handle, int status, int events) {
   }
 
   if (events & UV_WRITABLE) {
+    if (events & UV_READABLE) {
+      // compensate for potentially long-running read callbacks
+      uv_update_time(handle->loop);
+    }
     udx__on_writable(socket);
     if (socket->status & UDX_SOCKET_CLOSING && socket->send_queue.len == 0 && !check_if_streams_have_data(socket)) {
       udx__close_handles(socket);
@@ -1899,7 +1891,7 @@ udx_stream_init (udx_t *udx, udx_stream_t *stream, uint32_t local_id, udx_stream
   stream->srtt = 0;
   stream->rttvar = 0;
   stream->rto = 1000;
-  stream->rto_timeout = get_milliseconds() + stream->rto;
+  stream->rto_timeout = uv_now(udx->loop) + stream->rto;
   stream->rack_timeout = 0;
 
   stream->rack_rtt_min = 0;
@@ -2042,7 +2034,7 @@ udx_stream_check_timeouts (udx_stream_t *stream) {
     return 0;
   }
 
-  const uint64_t now = stream->inflight ? get_milliseconds() : 0;
+  const uint64_t now = stream->inflight ? uv_now(stream->udx->loop) : 0;
 
   if (stream->rack_timeout > 0 && now >= stream->rack_timeout) {
     rack_detect_loss(stream);
@@ -2257,7 +2249,7 @@ udx_stream_write (udx_stream_write_t *req, udx_stream_t *stream, const uv_buf_t 
 
   // if this is the first inflight packet, we should "restart" rto timer
   if (stream->inflight == 0) {
-    stream->rto_timeout = get_milliseconds() + stream->rto;
+    stream->rto_timeout = uv_now(stream->udx->loop) + stream->rto;
   }
 
   req->bytes_acked = 0;

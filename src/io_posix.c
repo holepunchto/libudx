@@ -148,8 +148,6 @@ udx__on_writable (udx_socket_t *socket) {
       npkts++;
     }
 
-    uint64_t time_sent = uv_hrtime() / 1e6;
-
     int rc;
 
     if (adjust_ttl) uv_udp_set_ttl((uv_udp_t *) socket, ttl);
@@ -178,7 +176,7 @@ udx__on_writable (udx_socket_t *socket) {
     for (int i = 0; i < nsent; i++) {
       udx_packet_t *pkt = batch[i];
       // todo: set in confirm packet with uv_now()
-      pkt->time_sent = time_sent;
+      pkt->time_sent = uv_now(socket->udx->loop);
       udx__confirm_packet(batch[i]);
     }
 
@@ -209,7 +207,7 @@ udx__on_writable (udx_socket_t *socket) {
       break;
     }
     // todo: set in confirm packet with uv_now()
-    pkt->time_sent = uv_hrtime() / 1e6;
+    pkt->time_sent = uv_now(socket->udx->loop);
     udx__confirm_packet(pkt);
   }
 #endif

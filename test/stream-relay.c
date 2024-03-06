@@ -53,7 +53,7 @@ on_read (udx_stream_t *handle, ssize_t read_len, const uv_buf_t *buf) {
   assert(buf->len == read_len);
 
   if (nbytes_read == 0) {
-    printf("read_len=%d\n", read_len);
+    printf("read_len=%ld\n", read_len);
     assert(memcmp(buf->base, "hello", 5) == 0);
   }
   read_hash = hash(read_hash, buf->base, read_len);
