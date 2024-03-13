@@ -94,6 +94,7 @@ typedef struct udx_packet_s udx_packet_t;
 typedef struct udx_socket_send_s udx_socket_send_t;
 typedef struct udx_stream_send_s udx_stream_send_t;
 typedef struct udx_stream_write_s udx_stream_write_t;
+typedef struct udx_stream_write_buf_s udx_stream_write_buf_t;
 
 typedef enum {
   UDX_LOOKUP_FAMILY_IPV4 = 1,
@@ -287,8 +288,8 @@ struct udx_packet_s {
   unsigned short nbufs;
 
   // inefficient - only relevant for stream_t packets
-  unsigned short nwrites;
-  udx_stream_write_t **writes;
+  unsigned short nwbufs;
+  udx_stream_write_buf_t **wbufs;
 };
 
 struct udx_socket_send_s {
@@ -301,13 +302,23 @@ struct udx_socket_send_s {
   void *data;
 };
 
-struct udx_stream_write_s {
-  // immutable, original write
+struct udx_stream_write_buf_s {
+  // immutable original buf
   uv_buf_t buf;
 
-  size_t bytes_acked;
+  // 1. remove from write_queue when bytes_inflight + bytes_acked == buf.len
+  // 2. free when bytes_acked == buf.len
   size_t bytes_inflight;
+  size_t bytes_acked;
 
+  udx_stream_write_t *write;
+
+  bool is_write_end;
+};
+
+struct udx_stream_write_s {
+  size_t size;
+  size_t bytes_acked;
   bool is_write_end;
 
   udx_stream_t *stream;

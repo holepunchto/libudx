@@ -20,6 +20,7 @@ size_t total_read = 0;
 
 void
 on_ack (udx_stream_write_t *r, int status, int unordered) {
+  printf("on_ack\n");
   assert(status == 0);
   assert(unordered == 0);
 
@@ -77,6 +78,7 @@ main () {
   assert(e == 0);
 
   uv_buf_t buf = uv_buf_init("hello", 5);
+  printf("starting write\n");
 
   udx_stream_write_t areq;
   e = udx_stream_write(&areq, &bstream, &buf, 1, on_ack);
