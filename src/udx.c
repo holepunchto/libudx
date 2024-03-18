@@ -500,7 +500,7 @@ clear_outgoing_packets (udx_stream_t *stream) {
     udx_stream_write_t *w = udx__fifo_shift(&stream->write_queue);
     assert(w != NULL);
 
-    debug_printf("cancelled write. remaining bytes=%lu (of %lu)\n", w->buf.len - (w->bytes_acked + w->bytes_inflight), w->buf.len);
+    debug_printf("closing write rid=%u remaining bytes=%lu (of %lu)\n", stream->remote_id, w->buf.len - (w->bytes_acked + w->bytes_inflight), w->buf.len);
 
     on_bytes_acked(stream, w, w->buf.len - w->bytes_acked, true);
 
@@ -579,7 +579,7 @@ mtu_probeify_packet (udx_packet_t *pkt, int wanted_size) {
   if (padding_size > 255) {
     return 0;
   }
-  debug_printf("mtu: probeify seq=%d size=%u wanted=%d padding=%d\n", pkt->seq, pkt->size + header_size, wanted_size, padding_size);
+  debug_printf("mtu: probeify rid=%u seq=%u size=%u wanted=%d padding=%d\n", udx__swap_uint32_if_be(((unsigned int *) pkt->header)[1]), pkt->seq, pkt->size + header_size, wanted_size, padding_size);
   static char probe_data[256] = {0};
   pkt->bufs[2] = pkt->bufs[1];
   pkt->bufs[1].len = padding_size;
@@ -599,7 +599,7 @@ mtu_unprobeify_packet (udx_packet_t *pkt, udx_stream_t *stream) {
   pkt->bufs_len = 2;
   pkt->is_mtu_probe = false;
 
-  debug_printf("mtu: probe %d/%d", stream->mtu_probe_count, UDX_MTU_MAX_PROBES);
+  debug_printf("mtu: probe failed rid=%u %d/%d", stream->remote_id, stream->mtu_probe_count, UDX_MTU_MAX_PROBES);
   if (stream->mtu_state == UDX_MTU_STATE_SEARCH) {
     if (stream->mtu_probe_count >= UDX_MTU_MAX_PROBES) {
       debug_printf(" established mtu=%d via timeout", stream->mtu);
@@ -863,8 +863,12 @@ close_maybe (udx_stream_t *stream, int err) {
 
 void
 udx__confirm_packet (udx_packet_t *pkt) {
+  // only count first transmission and RTO retransmits
+  // (not rack fast retransmits)
+  if (pkt->transmits == 0 || (pkt->status == UDX_PACKET_STATE_RETRANSMIT && pkt->is_retransmit == UDX_SLOW_RETRANSMIT)) {
+    pkt->transmits++;
+  }
   pkt->status = UDX_PACKET_STATE_INFLIGHT;
-  pkt->transmits++;
 
   int type = pkt->type;
 
@@ -1036,7 +1040,7 @@ rack_detect_loss (udx_stream_t *stream) {
   }
 
   if (resending > mtu_probes_lost) {
-    debug_printf("resending=%d mtu_probe_lost=%d\n", resending, mtu_probes_lost);
+    debug_printf("rack: rid=%u lost=%d mtu_probe_lost=%d\n", stream->remote_id, resending, mtu_probes_lost);
     if (stream->recovery == 0) {
       debug_print_outgoing(stream);
 
@@ -1046,7 +1050,7 @@ rack_detect_loss (udx_stream_t *stream) {
       // only reduce congestion window if more than just the mtu probe was lost
       reduce_cwnd(stream, false);
 
-      debug_printf("fast recovery: start=[%u:%u] (%u pkts) inflight=%zu cwnd=%u srtt=%u\n", stream->remote_acked, stream->seq, stream->recovery, stream->inflight, stream->cwnd, stream->srtt);
+      debug_printf("rack: fast recovery rid=%u start=[%u:%u] (%u pkts) inflight=%zu cwnd=%u srtt=%u\n", stream->remote_id, stream->remote_acked, stream->seq, stream->recovery, stream->inflight, stream->cwnd, stream->srtt);
     }
   }
 
@@ -1098,7 +1102,7 @@ ack_packet (udx_stream_t *stream, uint32_t seq, int sack) {
   }
 
   if (stream->mtu_state == UDX_MTU_STATE_SEARCH && stream->mtu_probe_count > 0 && pkt->is_mtu_probe) {
-    debug_printf("mtu: probe acked seq=%d mtu=%d->%d sack=%d\n", seq, stream->mtu, stream->mtu_probe_size, sack);
+    debug_printf("mtu: probe acked rid=%u seq=%u mtu=%d->%d sack=%d\n", stream->remote_id, seq, stream->mtu, stream->mtu_probe_size, sack);
 
     stream->mtu_probe_count = 0;
     stream->mtu = stream->mtu_probe_size;
@@ -1418,7 +1422,7 @@ process_packet (udx_socket_t *socket, char *buf, ssize_t buf_len, struct sockadd
       // The end of fast recovery, adjust according to the spec (unsure if we need this as we do not modify cwnd during recovery but oh well...)
       if (stream->ssthresh < stream->cwnd) stream->cwnd = stream->ssthresh;
 
-      debug_printf("fast recovery: ended, inflight=%zu, cwnd=%u, acked=%u, seq=%u\n", stream->inflight, stream->cwnd, stream->remote_acked + 1, stream->seq);
+      debug_printf("rack: fast recovery ended rid=%u inflight=%zu, cwnd=%u, acked=%u, seq=%u\n", stream->remote_id, stream->inflight, stream->cwnd, stream->remote_acked + 1, stream->seq);
     }
 
     int a = ack_packet(stream, stream->remote_acked++, 0);
@@ -1997,7 +2001,6 @@ udx_stream_check_timeouts (udx_stream_t *stream) {
 
   if (now > stream->rto_timeout) {
     // Bail out of fast recovery mode if we are in it
-    // unqueue_first_transmits(stream);
     stream->recovery = 0;
     // clear out old retransmit queue
     while (stream->retransmit_queue.len > 0) {
@@ -2012,7 +2015,7 @@ udx_stream_check_timeouts (udx_stream_t *stream) {
 
     // Consider all packets lost - seems to be the simple consensus across different stream impls
     // which we like cause it is nice and simple to implement.
-    debug_printf("rto: flight lost [%u:%u], inflight=%lu\n", stream->remote_acked, stream->seq, stream->inflight);
+    debug_printf("rto: lost rid=%u [%u:%u] inflight=%lu ssthresh=%u cwnd=%u srtt=%u\n", stream->remote_id, stream->remote_acked, stream->seq, stream->inflight, stream->ssthresh, stream->cwnd, stream->srtt);
 
     for (uint32_t seq = stream->remote_acked; seq < stream->seq; seq++) {
 
@@ -2046,8 +2049,6 @@ udx_stream_check_timeouts (udx_stream_t *stream) {
 
       pkt->fifo_gc = udx__fifo_push(&stream->retransmit_queue, pkt);
     }
-
-    debug_printf("timeout! pkt loss detected - inflight=%zu ssthresh=%u cwnd=%u acked=%u seq=%u rtt=%u\n", stream->inflight, stream->ssthresh, stream->cwnd, stream->remote_acked, stream->seq, stream->srtt);
   }
 
   int err = update_poll(stream->socket);
