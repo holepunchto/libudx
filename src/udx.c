@@ -2279,8 +2279,13 @@ _udx_stream_write (udx_stream_write_t *write, udx_stream_t *stream, const uv_buf
 
   for (unsigned int i = 0; i < bufs_len; i++) {
     udx_stream_write_buf_t *wbuf = &write->wbuf[i];
+
     wbuf->buf = bufs[i];
+    wbuf->bytes_inflight = 0;
+    wbuf->bytes_acked = 0;
     wbuf->write = write;
+    wbuf->write_end = false;
+
     write->size += bufs[i].len;
     stream->writes_queued_bytes += bufs[i].len;
 
