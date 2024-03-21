@@ -53,7 +53,7 @@ on_ack_end (udx_stream_write_t *req, int status, int unordered) {
 static void
 pump_writes () {
   while (bytes_sent < PUMP_BYTES) {
-    udx_stream_write_t *req = malloc(sizeof(udx_stream_write_t));
+    udx_stream_write_t *req = malloc(udx_stream_write_sizeof(1));
     bytes_sent += chunk.len;
 
     if (udx_stream_write(req, &stream, &chunk, 1, on_ack)) continue;
@@ -62,7 +62,7 @@ pump_writes () {
     return;
   }
 
-  udx_stream_write_t *req = malloc(sizeof(udx_stream_write_t));
+  udx_stream_write_t *req = malloc(udx_stream_write_sizeof(1));
   udx_stream_write_end(req, &stream, &empty, 1, on_ack_end);
 }
 

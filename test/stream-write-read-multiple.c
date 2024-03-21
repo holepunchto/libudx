@@ -1,5 +1,6 @@
 #include <assert.h>
 #include <stdbool.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "../include/udx.h"
@@ -16,6 +17,8 @@ udx_stream_t bstream;
 int ack_called = 0;
 int read_called = 0;
 
+size_t total_read = 0;
+
 void
 on_ack (udx_stream_write_t *r, int status, int unordered) {
   assert(status == 0);
@@ -26,8 +29,9 @@ on_ack (udx_stream_write_t *r, int status, int unordered) {
 
 void
 on_read (udx_stream_t *handle, ssize_t read_len, const uv_buf_t *buf) {
-  assert(buf->len == 5);
-  assert(buf->len == read_len);
+
+  total_read += read_len;
+
   assert(memcmp(buf->base, "hello", 5) == 0);
 
   read_called++;
@@ -74,18 +78,19 @@ main () {
   assert(e == 0);
 
   uv_buf_t buf = uv_buf_init("hello", 5);
+  printf("starting write\n");
 
-  udx_stream_write_t areq;
-  e = udx_stream_write(&areq, &bstream, &buf, 1, on_ack);
+  udx_stream_write_t *areq = malloc(udx_stream_write_sizeof(1));
+  e = udx_stream_write(areq, &bstream, &buf, 1, on_ack);
   assert(e && "drained");
 
-  udx_stream_write_t breq;
-  e = udx_stream_write(&breq, &bstream, &buf, 1, on_ack);
+  udx_stream_write_t *breq = malloc(udx_stream_write_sizeof(1));
+  e = udx_stream_write(breq, &bstream, &buf, 1, on_ack);
   assert(e && "drained");
 
   uv_run(&loop, UV_RUN_DEFAULT);
 
-  assert(ack_called == 2 && read_called == 2);
+  assert(ack_called == 2 && total_read == buf.len * 2);
 
   return 0;
 }
