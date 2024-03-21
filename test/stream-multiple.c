@@ -86,7 +86,7 @@ main () {
     uv_ip4_addr("127.0.0.1", 8000 + i, &sender[i].addr);
     e = udx_socket_bind(&sender[i].usock, (struct sockaddr *) &sender[i].addr, 0);
     assert(e == 0);
-    sender[i].write = allocate_write(1);
+    sender[i].write = malloc(udx_stream_write_sizeof(1));
     e = udx_stream_init(&udx, &sender[i].stream, sender_id, NULL);
 
     udx_socket_init(&udx, &receiver[i].usock);

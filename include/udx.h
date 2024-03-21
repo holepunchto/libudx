@@ -465,6 +465,9 @@ int
 udx_stream_write_resume (udx_stream_t *stream, udx_stream_drain_cb drain_cb);
 
 int
+udx_stream_write_sizeof (int nwbufs);
+
+int
 udx_stream_write (udx_stream_write_t *req, udx_stream_t *stream, const uv_buf_t bufs[], unsigned int bufs_len, udx_stream_ack_cb ack_cb);
 
 int

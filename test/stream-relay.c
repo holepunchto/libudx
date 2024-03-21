@@ -62,7 +62,7 @@ on_read (udx_stream_t *handle, ssize_t read_len, const uv_buf_t *buf) {
 int
 main () {
 
-  udx_stream_write_t *req = allocate_write(1);
+  udx_stream_write_t *req = malloc(udx_stream_write_sizeof(1));
   int e;
 
   uv_loop_init(&loop);

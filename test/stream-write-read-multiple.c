@@ -1,9 +1,9 @@
 #include <assert.h>
 #include <stdbool.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "../include/udx.h"
-#include "helpers.h"
 
 uv_loop_t loop;
 udx_t udx;
@@ -80,11 +80,11 @@ main () {
   uv_buf_t buf = uv_buf_init("hello", 5);
   printf("starting write\n");
 
-  udx_stream_write_t *areq = allocate_write(1);
+  udx_stream_write_t *areq = malloc(udx_stream_write_sizeof(1));
   e = udx_stream_write(areq, &bstream, &buf, 1, on_ack);
   assert(e && "drained");
 
-  udx_stream_write_t *breq = allocate_write(1);
+  udx_stream_write_t *breq = malloc(udx_stream_write_sizeof(1));
   e = udx_stream_write(breq, &bstream, &buf, 1, on_ack);
   assert(e && "drained");
 

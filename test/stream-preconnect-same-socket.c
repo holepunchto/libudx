@@ -1,10 +1,8 @@
+#include "../include/udx.h"
 #include <assert.h>
 #include <stdbool.h>
-#include <string.h>
-
-#include "../include/udx.h"
-#include "helpers.h"
 #include <stdlib.h>
+#include <string.h>
 
 uv_loop_t loop;
 udx_t udx;
@@ -46,7 +44,7 @@ int
 main () {
   int e;
 
-  req = allocate_write(1);
+  req = malloc(udx_stream_write_sizeof(1));
 
   uv_loop_init(&loop);
 

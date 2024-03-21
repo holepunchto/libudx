@@ -14,7 +14,4 @@ hash (uint64_t prev, uint8_t *data, int len) {
   return hash;
 }
 
-udx_stream_write_t *
-allocate_write (int nbufs);
-
 #endif // TEST_HELPERS_H
