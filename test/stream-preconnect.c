@@ -3,7 +3,6 @@
 #include <string.h>
 
 #include "../include/udx.h"
-#include "helpers.h"
 #include <stdlib.h>
 
 uv_loop_t loop;
@@ -46,7 +45,7 @@ int
 main () {
   int e;
 
-  udx_stream_write_t *req = allocate_write(1);
+  udx_stream_write_t *req = malloc(udx_stream_write_sizeof(1));
 
   uv_loop_init(&loop);
 

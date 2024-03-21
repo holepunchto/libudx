@@ -414,6 +414,11 @@ clear_incoming_packets (udx_stream_t *stream) {
   }
 }
 
+int
+udx_stream_write_sizeof (int nwbufs) {
+  return sizeof(udx_stream_write_t) + sizeof(udx_stream_write_buf_t) * nwbufs;
+}
+
 static void
 on_bytes_acked (udx_stream_write_buf_t *wbuf, size_t bytes, bool cancelled) {
 
@@ -2289,7 +2294,8 @@ _udx_stream_write (udx_stream_write_t *write, udx_stream_t *stream, const uv_buf
 int
 udx_stream_write (udx_stream_write_t *req, udx_stream_t *stream, const uv_buf_t bufs[], unsigned int bufs_len, udx_stream_ack_cb ack_cb) {
   assert(bufs_len > 0);
-  assert(req->nwbufs == bufs_len);
+
+  req->nwbufs = bufs_len;
 
   // if this is the first inflight packet, we should "restart" rto timer
   // todo: move this into _udx_stream_write ?
@@ -2312,12 +2318,13 @@ udx_stream_write (udx_stream_write_t *req, udx_stream_t *stream, const uv_buf_t 
 
 int
 udx_stream_write_end (udx_stream_write_t *req, udx_stream_t *stream, const uv_buf_t bufs[], unsigned int bufs_len, udx_stream_ack_cb ack_cb) {
-  assert(req->nwbufs == bufs_len || req->nwbufs == 1);
   stream->status |= UDX_STREAM_ENDING;
 
   if (bufs_len > 0) {
+    req->nwbufs = bufs_len;
     _udx_stream_write(req, stream, bufs, bufs_len, ack_cb, true);
   } else {
+    req->nwbufs = 1;
     uv_buf_t buf = uv_buf_init("", 0);
     _udx_stream_write(req, stream, &buf, 1, ack_cb, true);
   }

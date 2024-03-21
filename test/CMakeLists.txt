@@ -25,7 +25,7 @@ list(APPEND skipped_tests
 )
 
 foreach(test IN LISTS tests)
-  add_executable(${test} ${test}.c helpers.c)
+  add_executable(${test} ${test}.c)
 
   target_link_libraries(
     ${test}
