@@ -325,6 +325,9 @@ struct udx_stream_write_s {
   udx_stream_ack_cb on_ack;
 
   void *data;
+
+  unsigned int nwbufs;
+  udx_stream_write_buf_t wbuf[];
 };
 
 struct udx_stream_send_s {

@@ -469,11 +469,6 @@ clear_outgoing_packets (udx_stream_t *stream) {
       // todo: move into on_bytes_acked itself
       udx_stream_write_t *write = wbuf->write;
 
-      if (wbuf->bytes_acked == wbuf->buf.len) {
-        free(wbuf);
-        wbuf = NULL;
-      }
-
       if (write->bytes_acked == write->size && write->on_ack) {
         write->on_ack(write, UV_ECANCELED, 0);
       }
@@ -1240,10 +1235,6 @@ ack_packet (udx_stream_t *stream, uint32_t seq, int sack) {
     on_bytes_acked(wbuf, pkt_len, false);
 
     udx_stream_write_t *write = wbuf->write;
-
-    if (wbuf->bytes_acked == wbuf->buf.len) {
-      free(wbuf);
-    }
 
     if (write->bytes_acked == write->size && write->on_ack) {
       write->on_ack(write, 0, sack);
@@ -2282,7 +2273,7 @@ _udx_stream_write (udx_stream_write_t *write, udx_stream_t *stream, const uv_buf
   // the stream_t object could hold writes but they may grow indefinitely
 
   for (unsigned int i = 0; i < bufs_len; i++) {
-    udx_stream_write_buf_t *wbuf = calloc(1, sizeof(*wbuf)); // calloc to zero wbuf
+    udx_stream_write_buf_t *wbuf = &write->wbuf[i];
     wbuf->buf = bufs[i];
     wbuf->write = write;
     write->size += bufs[i].len;
@@ -2298,6 +2289,7 @@ _udx_stream_write (udx_stream_write_t *write, udx_stream_t *stream, const uv_buf
 int
 udx_stream_write (udx_stream_write_t *req, udx_stream_t *stream, const uv_buf_t bufs[], unsigned int bufs_len, udx_stream_ack_cb ack_cb) {
   assert(bufs_len > 0);
+  assert(req->nwbufs == bufs_len);
 
   // if this is the first inflight packet, we should "restart" rto timer
   // todo: move this into _udx_stream_write ?
@@ -2320,7 +2312,7 @@ udx_stream_write (udx_stream_write_t *req, udx_stream_t *stream, const uv_buf_t 
 
 int
 udx_stream_write_end (udx_stream_write_t *req, udx_stream_t *stream, const uv_buf_t bufs[], unsigned int bufs_len, udx_stream_ack_cb ack_cb) {
-
+  assert(req->nwbufs == bufs_len || req->nwbufs == 1);
   stream->status |= UDX_STREAM_ENDING;
 
   if (bufs_len > 0) {

@@ -27,8 +27,6 @@ struct sockaddr_in daddr;
 udx_socket_t dsock;
 udx_stream_t dstream;
 
-udx_stream_write_t req;
-
 bool ack_called = false;
 bool read_called = false;
 int remote_changed_called = 0;
@@ -88,6 +86,8 @@ on_read (udx_stream_t *handle, ssize_t read_len, const uv_buf_t *buf) {
 int
 main () {
   int e;
+
+  udx_stream_write_t *req = allocate_write(1);
 
   uv_loop_init(&loop);
 
@@ -161,7 +161,7 @@ main () {
 
   write_hash = hash(write_hash, buf.base, buf.len);
 
-  e = udx_stream_write(&req, &dstream, &buf, 1, on_ack);
+  e = udx_stream_write(req, &dstream, &buf, 1, on_ack);
   assert(e == 0); // write bigger than hwm
 
   uv_run(&loop, UV_RUN_DEFAULT);
@@ -170,6 +170,8 @@ main () {
 
   assert(read_hash == write_hash);
   printf("read_hash=%lu write_hash=%lu\n", read_hash, write_hash);
+
+  free(req);
 
   return 0;
 }

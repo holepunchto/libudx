@@ -16,8 +16,7 @@ struct sender {
   struct sockaddr_in addr;
   udx_socket_t usock;
   udx_stream_t stream;
-  udx_stream_write_t write;
-
+  udx_stream_write_t *write;
   // size_t nbytes_written;
   size_t write_hash;
 
@@ -45,7 +44,8 @@ all_acked () {
 
 void
 on_ack (udx_stream_write_t *r, int status, int unordered) {
-  struct sender *s = (struct sender *) ((char *) r - offsetof(struct sender, write));
+
+  struct sender *s = &sender[r->stream->local_id];
   s->ack = true;
 
   if (all_acked()) {
@@ -55,7 +55,7 @@ on_ack (udx_stream_write_t *r, int status, int unordered) {
 
 void
 on_read (udx_stream_t *handle, ssize_t read_len, const uv_buf_t *buf) {
-  struct receiver *r = (struct receiver *) ((char *) handle - offsetof(struct receiver, stream));
+  struct receiver *r = &receiver[handle->local_id - NSTREAMS];
 
   r->nbytes_read += read_len;
   r->read_hash = hash(r->read_hash, buf->base, read_len);
@@ -86,6 +86,7 @@ main () {
     uv_ip4_addr("127.0.0.1", 8000 + i, &sender[i].addr);
     e = udx_socket_bind(&sender[i].usock, (struct sockaddr *) &sender[i].addr, 0);
     assert(e == 0);
+    sender[i].write = allocate_write(1);
     e = udx_stream_init(&udx, &sender[i].stream, sender_id, NULL);
 
     udx_socket_init(&udx, &receiver[i].usock);
@@ -105,7 +106,7 @@ main () {
     e = udx_stream_connect(&receiver[i].stream, &receiver[i].usock, sender_id, (struct sockaddr *) &sender[i].addr);
     assert(e == 0);
 
-    udx_stream_write(&sender[i].write, &sender[i].stream, &buf, 1, on_ack);
+    udx_stream_write(sender[i].write, &sender[i].stream, &buf, 1, on_ack);
   }
 
   uv_run(&loop, UV_RUN_DEFAULT);

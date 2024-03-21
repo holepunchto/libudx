@@ -3,6 +3,8 @@
 #include <string.h>
 
 #include "../include/udx.h"
+#include "helpers.h"
+#include <stdlib.h>
 
 uv_loop_t loop;
 udx_t udx;
@@ -15,14 +17,11 @@ struct sockaddr_in baddr;
 udx_socket_t bsock;
 udx_stream_t bstream;
 
-udx_stream_write_t req;
-
 bool ack_called = false;
 bool read_called = false;
 
 void
 on_ack (udx_stream_write_t *r, int status, int unordered) {
-  assert(&req == r);
   assert(status == 0);
   assert(unordered == 0);
 
@@ -46,6 +45,8 @@ on_read (udx_stream_t *handle, ssize_t read_len, const uv_buf_t *buf) {
 int
 main () {
   int e;
+
+  udx_stream_write_t *req = allocate_write(1);
 
   uv_loop_init(&loop);
 
@@ -79,11 +80,13 @@ main () {
   assert(e == 0);
 
   uv_buf_t buf = uv_buf_init("hello", 5);
-  udx_stream_write(&req, &bstream, &buf, 1, on_ack);
+  udx_stream_write(req, &bstream, &buf, 1, on_ack);
 
   uv_run(&loop, UV_RUN_DEFAULT);
 
   assert(ack_called && read_called);
+
+  free(req); // valgrind
 
   return 0;
 }
