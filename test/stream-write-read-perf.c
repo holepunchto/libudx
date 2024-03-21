@@ -15,8 +15,6 @@ udx_stream_t astream;
 udx_socket_t bsock;
 udx_stream_t bstream;
 
-udx_stream_write_t req;
-
 struct {
   uint64_t size_bytes;
 } options;
@@ -83,6 +81,8 @@ int
 main () {
   int e;
 
+  udx_stream_write_t *req = malloc(udx_stream_write_sizeof(1));
+
   uv_loop_init(&loop);
 
   e = udx_init(&loop, &udx);
@@ -132,15 +132,15 @@ main () {
   printf("writing data\n");
 
   uv_buf_t buf = uv_buf_init(data, options.size_bytes);
-  udx_stream_write(&req, &bstream, &buf, 1, on_ack);
+  udx_stream_write(req, &bstream, &buf, 1, on_ack);
 
   e = uv_run(&loop, UV_RUN_DEFAULT);
   assert(e == 0 && "UV_RUN");
 
   uv_loop_close(&loop);
 
-  // just for valgrind
-  free(data);
+  free(data); // valgrind
+  free(req);  // valgrind
   printf("readhash=%lx writehash=%lx\n", read_hash, write_hash);
   assert(read_hash == write_hash);
   return 0;

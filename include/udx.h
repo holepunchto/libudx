@@ -94,6 +94,7 @@ typedef struct udx_packet_s udx_packet_t;
 typedef struct udx_socket_send_s udx_socket_send_t;
 typedef struct udx_stream_send_s udx_stream_send_t;
 typedef struct udx_stream_write_s udx_stream_write_t;
+typedef struct udx_stream_write_buf_s udx_stream_write_buf_t;
 
 typedef enum {
   UDX_LOOKUP_FAMILY_IPV4 = 1,
@@ -270,30 +271,30 @@ struct udx_packet_s {
   int ttl;
   int is_retransmit;
 
-  udx_stream_t *stream; // pointer to the stream if stream packet
-
   uint8_t transmits;
   bool is_mtu_probe;
   uint16_t size;
   uint64_t time_sent;
 
-  void *ctx;
+  void *ctx; // stream_send_t | socket_send_t | stream_t
 
   struct sockaddr_storage dest;
   int dest_len;
 
   uint32_t fifo_gc; // for removing from inflight / retransmit queue
-  // udx_packet_t *prev; // alternative for inflight / retransmit queues
-  // udx_packet_t *next; // alternative for inflight / retransmit queues
 
   // just alloc it in place here, easier to manage
   char header[UDX_HEADER_SIZE];
-  unsigned int bufs_len;
-  uv_buf_t bufs[3];
+  unsigned short nbufs;
+
+  // inefficient - only relevant for stream_t packets
+  unsigned short nwbufs;
+  udx_stream_write_buf_t **wbufs;
 };
 
 struct udx_socket_send_s {
   udx_packet_t pkt;
+  uv_buf_t bufs[1]; // buf_t[] must be after packet_t
   udx_socket_t *socket;
 
   udx_socket_send_cb on_send;
@@ -301,23 +302,37 @@ struct udx_socket_send_s {
   void *data;
 };
 
-struct udx_stream_write_s {
-  // immutable, original write
+struct udx_stream_write_buf_s {
+  // immutable original buf
   uv_buf_t buf;
 
-  size_t bytes_acked;
+  // 1. remove from write_queue when bytes_inflight + bytes_acked == buf.len
+  // 2. free when bytes_acked == buf.len
   size_t bytes_inflight;
+  size_t bytes_acked;
 
+  udx_stream_write_t *write;
+
+  bool is_write_end;
+};
+
+struct udx_stream_write_s {
+  size_t size;
+  size_t bytes_acked;
   bool is_write_end;
 
   udx_stream_t *stream;
   udx_stream_ack_cb on_ack;
 
   void *data;
+
+  unsigned int nwbufs;
+  udx_stream_write_buf_t wbuf[];
 };
 
 struct udx_stream_send_s {
   udx_packet_t pkt;
+  uv_buf_t bufs[3]; // buf_t[] must be after packet_t
   udx_stream_t *stream;
 
   udx_stream_send_cb on_send;
@@ -448,6 +463,9 @@ udx_stream_send (udx_stream_send_t *req, udx_stream_t *stream, const uv_buf_t bu
 
 int
 udx_stream_write_resume (udx_stream_t *stream, udx_stream_drain_cb drain_cb);
+
+int
+udx_stream_write_sizeof (int nwbufs);
 
 int
 udx_stream_write (udx_stream_write_t *req, udx_stream_t *stream, const uv_buf_t bufs[], unsigned int bufs_len, udx_stream_ack_cb ack_cb);
