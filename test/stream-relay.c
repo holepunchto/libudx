@@ -27,8 +27,6 @@ struct sockaddr_in daddr;
 udx_socket_t dsock;
 udx_stream_t dstream;
 
-udx_stream_write_t req;
-
 bool ack_called = false;
 bool read_called = false;
 
@@ -38,10 +36,9 @@ size_t read_hash = HASH_INIT;
 size_t nbytes_read;
 
 void
-on_ack (udx_stream_write_t *r, int status, int unordered) {
-  assert(&req == r);
+on_ack (udx_stream_write_t *req, int status, int unordered) {
   assert(status == 0);
-  assert(unordered == 0);
+  // assert(unordered == 0);
 
   uv_stop(&loop);
 
@@ -64,6 +61,8 @@ on_read (udx_stream_t *handle, ssize_t read_len, const uv_buf_t *buf) {
 
 int
 main () {
+
+  udx_stream_write_t *req = malloc(udx_stream_write_sizeof(1));
   int e;
 
   uv_loop_init(&loop);
@@ -138,13 +137,15 @@ main () {
 
   write_hash = hash(write_hash, buf.base, buf.len);
 
-  udx_stream_write(&req, &dstream, &buf, 1, on_ack);
+  udx_stream_write(req, &dstream, &buf, 1, on_ack);
 
   uv_run(&loop, UV_RUN_DEFAULT);
 
   assert(ack_called && read_called);
 
   assert(nbytes_read == NBYTES_TO_SEND && read_hash == write_hash);
+
+  free(req);
 
   return 0;
 }

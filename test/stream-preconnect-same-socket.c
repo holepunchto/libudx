@@ -1,8 +1,8 @@
+#include "../include/udx.h"
 #include <assert.h>
 #include <stdbool.h>
+#include <stdlib.h>
 #include <string.h>
-
-#include "../include/udx.h"
 
 uv_loop_t loop;
 udx_t udx;
@@ -12,14 +12,14 @@ udx_socket_t sock;
 udx_stream_t astream;
 udx_stream_t bstream;
 
-udx_stream_write_t req;
+udx_stream_write_t *req;
 
 bool ack_called = false;
 bool read_called = false;
 
 void
 on_ack (udx_stream_write_t *r, int status, int unordered) {
-  assert(&req == r);
+  assert(req == r);
   assert(status == 0);
   assert(unordered == 0);
 
@@ -43,6 +43,8 @@ on_read (udx_stream_t *handle, ssize_t read_len, const uv_buf_t *buf) {
 int
 main () {
   int e;
+
+  req = malloc(udx_stream_write_sizeof(1));
 
   uv_loop_init(&loop);
 
@@ -69,11 +71,13 @@ main () {
   assert(e == 0);
 
   uv_buf_t buf = uv_buf_init("hello", 5);
-  udx_stream_write(&req, &bstream, &buf, 1, on_ack);
+  udx_stream_write(req, &bstream, &buf, 1, on_ack);
 
   uv_run(&loop, UV_RUN_DEFAULT);
 
   assert(ack_called && read_called);
+
+  free(req);
 
   return 0;
 }
