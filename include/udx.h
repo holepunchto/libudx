@@ -91,6 +91,13 @@ typedef struct udx_socket_s udx_socket_t;
 typedef struct udx_stream_s udx_stream_t;
 typedef struct udx_packet_s udx_packet_t;
 
+typedef struct {
+  uint32_t len; // must be first to align next/prev correctly.
+
+  udx_packet_t *prev;
+  udx_packet_t *next;
+} udx_queue_t;
+
 typedef struct udx_socket_send_s udx_socket_send_t;
 typedef struct udx_stream_send_s udx_stream_send_t;
 typedef struct udx_stream_write_s udx_stream_write_t;
@@ -124,12 +131,10 @@ typedef void (*udx_interface_event_cb)(udx_interface_event_t *handle, int status
 typedef void (*udx_interface_event_close_cb)(udx_interface_event_t *handle);
 
 struct udx_s {
-  uv_timer_t timer;
   uv_loop_t *loop;
 
   uint32_t refs;
   uint32_t sockets;
-  udx_socket_t *timer_closed_by;
 
   uint32_t streams_len;
   uint32_t streams_max_len;
@@ -160,18 +165,10 @@ struct udx_socket_s {
   udx_socket_close_cb on_close;
 };
 
-typedef struct udx_cong_s {
-  uint32_t K;
-  uint32_t ack_cnt;
-  uint32_t origin_point;
-  uint32_t delay_min;
-  uint32_t cnt;
-  uint64_t last_time;
-  uint64_t start_time;
-  uint32_t last_max_cwnd;
-  uint32_t last_cwnd;
-  uint32_t tcp_cwnd;
-} udx_cong_t;
+// split open into SLOW_START / CONGESTION_AVOIDANCE
+#define UDX_CA_OPEN     1
+#define UDX_CA_RECOVERY 2
+#define UDX_CA_LOSS     3
 
 struct udx_stream_s {
   uint32_t local_id; // must be first entry, so its compat with the cirbuf
@@ -181,14 +178,14 @@ struct udx_stream_s {
   int status;
   int write_wanted;
   int out_of_order;
-  int recovery; // number of packets to send before recovery finished
   int deferred_ack;
 
+  uint8_t ca_state;
+  uint32_t high_seq; // seq at time of congestion, marks end of recovery
   bool hit_high_watermark;
   size_t writes_queued_bytes;
 
   bool reordering_seen;
-  int retransmitting;
 
   udx_t *udx;
   udx_socket_t *socket;
@@ -220,9 +217,9 @@ struct udx_stream_s {
   int mtu_max;        // min(UDX_MTU_MAX, get_link_mtu(remote_addr))
   uint16_t mtu;
 
-  uint32_t seq;
+  uint32_t seq; // tcp SND.NXT
   uint32_t ack;
-  uint32_t remote_acked;
+  uint32_t remote_acked; // tcp SND.UNA
   uint32_t remote_ended;
 
   uint32_t srtt;
@@ -232,44 +229,49 @@ struct udx_stream_s {
   // rack data...
   uint32_t rack_rtt_min;
   uint32_t rack_rtt;
-  uint64_t rack_time_sent;
-  uint32_t rack_next_seq;
+  uint64_t rack_time_sent; // RACK.xmit_ts, pkt->time_sent of RACK.segment
+  uint32_t rack_next_seq;  // RACK.end_seq, pkt->seq of RACK.segment
   uint32_t rack_fack;
 
-  uint32_t pkts_inflight; // packets inflight to the other peer
   uint32_t pkts_buffered; // how many (data) packets received but not processed (out of order)?
 
-  // timestamps...
-  uint64_t rto_timeout;
-  uint64_t rack_timeout;
+  int nrefs;
+  uv_timer_t rto_timer;
+  uv_timer_t rack_timer;
 
   size_t inflight;
 
-  uint32_t sacks;
+  uint32_t sacks; // RACK.segs_sacked
   uint32_t ssthresh;
   uint32_t cwnd;
   uint32_t cwnd_cnt;
   uint32_t rwnd;
 
   // congestion state
-  udx_cong_t cong;
 
   udx_fifo_t write_queue; // udx_stream_write_t
   udx_cirbuf_t outgoing;
   udx_cirbuf_t incoming;
 
-  udx_fifo_t retransmit_queue; // udx_packet_t
+  udx_queue_t inflight_queue;
+  udx_queue_t retransmit_queue;
 
   udx_fifo_t unordered;
+
+  int rc;
 };
 
 struct udx_packet_s {
   uint32_t seq; // must be the first entry, so its compat with the cirbuf
 
+  udx_packet_t *prev;
+  udx_packet_t *next;
+
   int status;
   int type;
   int ttl;
-  int is_retransmit;
+  uint8_t is_retransmit;
+  bool lost; // rack lost
 
   uint8_t transmits;
   bool is_mtu_probe;

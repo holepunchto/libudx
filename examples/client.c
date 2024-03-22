@@ -62,7 +62,10 @@ on_send (udx_socket_send_t *r, int status) {
 
 int
 main (int argc, char **argv) {
-  if (argc < 2) return 1;
+  if (argc < 2) {
+    fprintf(stderr, "usage: ./client ip\n");
+    return 1;
+  }
 
   uv_ip4_addr(argv[1], 18081, &dest_addr);
 

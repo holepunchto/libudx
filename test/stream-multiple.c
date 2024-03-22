@@ -44,6 +44,7 @@ all_acked () {
 
 void
 on_ack (udx_stream_write_t *r, int status, int unordered) {
+  assert(status == 0);
 
   struct sender *s = &sender[r->stream->local_id];
   s->ack = true;
