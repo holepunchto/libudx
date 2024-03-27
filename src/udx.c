@@ -855,7 +855,10 @@ close_maybe (udx_stream_t *stream, int err) {
   for (uint32_t i = 0; i < relaying.size; i++) {
     udx_stream_t *stream = (udx_stream_t *) relaying.values[i];
 
-    if (stream) stream->relay_to = NULL;
+    if (stream) {
+      stream->relay_to = NULL;
+      udx_stream_destroy(stream);
+    }
   }
 
   udx__cirbuf_destroy(&stream->relaying_streams);
