@@ -774,7 +774,10 @@ close_stream (udx_stream_t *stream, int err) {
   for (uint32_t i = 0; i < relaying.size; i++) {
     udx_stream_t *stream = (udx_stream_t *) relaying.values[i];
 
-    if (stream) stream->relay_to = NULL;
+    if (stream) {
+      stream->relay_to = NULL;
+      udx_stream_destroy(stream);
+    }
   }
 
   udx__cirbuf_destroy(&stream->relaying_streams);
@@ -1946,7 +1949,6 @@ rack_detect_loss_and_arm_timer (uv_timer_t *timer) {
   uint32_t timeout = rack_detect_loss(stream);
 
   if (timeout > 0) {
-    __builtin_trap();
     debug_printf("rack timeout=%u\n", timeout);
     uv_timer_start(&stream->rack_timer, rack_detect_loss_and_arm_timer, timeout, 0);
   }
