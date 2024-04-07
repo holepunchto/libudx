@@ -67,15 +67,11 @@ debug_print_outgoing (udx_stream_t *stream) {
         continue;
       }
 
-      if (pkt->status == UDX_PACKET_STATE_INFLIGHT) {
-        debug_printf("I");
-        continue;
-      }
-      if (pkt->status == UDX_PACKET_STATE_RETRANSMIT) {
+      if (pkt->lost) {
         debug_printf("R");
-        continue;
+      } else {
+        debug_printf("I");
       }
-      assert(false && "should only be inflight or retransmitting");
     }
     debug_printf("\n");
   }
