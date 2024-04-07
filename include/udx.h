@@ -64,9 +64,10 @@ extern "C" {
 #define UDX_HEADER_MESSAGE 0b01000
 #define UDX_HEADER_DESTROY 0b10000
 
-#define UDX_STREAM_WRITE_WANT_DATA    0b001
-#define UDX_STREAM_WRITE_WANT_STATE   0b010
-#define UDX_STREAM_WRITE_WANT_DESTROY 0b100
+#define UDX_STREAM_WRITE_WANT_DATA    0b0001
+#define UDX_STREAM_WRITE_WANT_STATE   0b0010
+#define UDX_STREAM_WRITE_WANT_TLP     0b0100
+#define UDX_STREAM_WRITE_WANT_DESTROY 0b1000
 
 typedef struct {
   uint32_t seq;
@@ -233,11 +234,19 @@ struct udx_stream_s {
   uint32_t rack_next_seq;  // RACK.end_seq, pkt->seq of RACK.segment
   uint32_t rack_fack;
 
+  // tlp
+  bool tlp_is_retrans;  // the probe in-flight was a retransmission
+  bool tlp_in_flight;   // if set, tlp_end_seq indicates the seqno
+  bool tlp_permitted;   // if set, srtt has been updated since the last tlp.
+  uint32_t tlp_end_seq; // seq at time of tlp sent. invalid if tlp_inflight is not set
+
   uint32_t pkts_buffered; // how many (data) packets received but not processed (out of order)?
 
+  // todo: use one timer and a state variable for the action to take
   int nrefs;
   uv_timer_t rto_timer;
-  uv_timer_t rack_timer;
+  uv_timer_t rack_reo_timer;
+  uv_timer_t tlp_timer;
 
   size_t inflight;
 
@@ -267,11 +276,12 @@ struct udx_packet_s {
   udx_packet_t *prev;
   udx_packet_t *next;
 
-  int status;
+  bool lost;
+
   int type;
   int ttl;
   uint8_t is_retransmit;
-  bool lost; // rack lost
+  bool is_tlp;
 
   uint8_t transmits;
   bool is_mtu_probe;

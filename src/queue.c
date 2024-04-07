@@ -1,4 +1,5 @@
 #include "../include/udx.h"
+#include "assert.h"
 #include "queue.h"
 
 void
@@ -41,6 +42,7 @@ udx__queue_tail (udx_queue_t *q, udx_packet_t *pkt) { // todo: queue_push
 
 void
 udx__queue_unlink (udx_queue_t *q, udx_packet_t *pkt) {
+  assert(q->len != 0);
   udx_packet_t *next;
   udx_packet_t *prev;
 
