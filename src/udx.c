@@ -756,7 +756,7 @@ udx__shift_packet (udx_socket_t *socket) {
 
     bool is_retransmit = false;
 
-    for (udx_packet_t *p = stream->retransmit_queue.next; p != &stream->retransmit_queue; p = p->next) {
+    for (udx_packet_t *p = stream->retransmit_queue.next; p != (udx_packet_t *) &stream->retransmit_queue; p = p->next) {
       if (p == pkt) {
         is_retransmit = true;
         break;
@@ -1462,7 +1462,6 @@ process_packet (udx_socket_t *socket, char *buf, ssize_t buf_len, struct sockadd
     if (a == 1) {
       delivered++;
     }
-
     if (a == 0 || a == 1) continue;
     if (a == 2) { // it ended, so ack that and trigger close
       // TODO: make this work as well, if the ack packet is lost, ie
