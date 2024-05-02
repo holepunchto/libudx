@@ -104,6 +104,8 @@ udx__on_writable (udx_socket_t *socket) {
 #ifdef UDX_PLATFORM_HAS_SENDMMSG
   bool finished = false;
 
+  assert((socket->status & UDX_SOCKET_CLOSING_HANDLES) == 0);
+
   while (!finished) {
     udx_packet_t *batch[UDX_SENDMMSG_BATCH_SIZE];
     struct mmsghdr h[UDX_SENDMMSG_BATCH_SIZE];
@@ -180,7 +182,7 @@ udx__on_writable (udx_socket_t *socket) {
       udx__confirm_packet(batch[i]);
     }
 
-    if (rc == UV_EAGAIN) {
+    if (rc == UV_EAGAIN || socket->status & UDX_SOCKET_CLOSING_HANDLES) {
       finished = true;
     }
   }
@@ -209,6 +211,9 @@ udx__on_writable (udx_socket_t *socket) {
     // todo: set in confirm packet with uv_now()
     pkt->time_sent = uv_now(socket->udx->loop);
     udx__confirm_packet(pkt);
+    if (socket->status & UDX_SOCKET_CLOSING_HANDLES) {
+      break;
+    }
   }
 #endif
 }

@@ -1598,7 +1598,7 @@ on_uv_poll (uv_poll_t *handle, int status, int events) {
     buf.base = (char *) &b;
     buf.len = 2048;
 
-    while ((size = udx__recvmsg(socket, &buf, (struct sockaddr *) &addr, addr_len)) >= 0) {
+    while (!(socket->status & UDX_SOCKET_CLOSING_HANDLES) && (size = udx__recvmsg(socket, &buf, (struct sockaddr *) &addr, addr_len)) >= 0) {
       if (!process_packet(socket, b, size, (struct sockaddr *) &addr) && socket->on_recv != NULL) {
         buf.len = size;
 
@@ -1613,7 +1613,7 @@ on_uv_poll (uv_poll_t *handle, int status, int events) {
     }
   }
 
-  if (events & UV_WRITABLE) {
+  if (events & UV_WRITABLE && !(socket->status & UDX_SOCKET_CLOSING_HANDLES)) {
     if (events & UV_READABLE) {
       // compensate for potentially long-running read callbacks
       uv_update_time(handle->loop);
