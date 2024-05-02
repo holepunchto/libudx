@@ -85,6 +85,7 @@ udx__recvmsg (udx_socket_t *socket, uv_buf_t *buf, struct sockaddr *addr, int ad
 
 void
 udx__on_writable (udx_socket_t *socket) {
+  assert((socket->status & UDX_SOCKET_CLOSING_HANDLES) == 0);
   while (true) {
     udx_packet_t *pkt = udx__shift_packet(socket);
     if (pkt == NULL) break;
@@ -108,5 +109,8 @@ udx__on_writable (udx_socket_t *socket) {
     }
     pkt->time_sent = uv_now(socket->udx->loop);
     udx__confirm_packet(pkt);
+    if (socket->status & UDX_SOCKET_CLOSING_HANDLES) {
+      break;
+    }
   }
 }
