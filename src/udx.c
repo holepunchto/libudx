@@ -860,6 +860,8 @@ close_maybe (udx_stream_t *stream, int err) {
   if ((stream->status & UDX_STREAM_ALL_ENDED) != UDX_STREAM_ALL_ENDED && !(stream->status & UDX_STREAM_ALL_DESTROYED)) return 0;
   // if we already destroyed, bail.
   if (stream->status & UDX_STREAM_CLOSED) return 0;
+  // do not close if no error and we have a STATE queued
+  if (err == 0 && stream->write_wanted & UDX_STREAM_WRITE_WANT_STATE) return 0;
 
   stream->status |= UDX_STREAM_CLOSED;
   stream->status &= ~UDX_STREAM_CONNECTED;
