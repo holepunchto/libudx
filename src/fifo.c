@@ -74,15 +74,16 @@ udx__fifo_remove (udx_fifo_t *f, void *data, uint32_t pos_hint) {
   // check if the pos_hint is correct
   if (pos_hint >= f->btm && pos_hint < (f->btm + f->len) && f->values[pos_hint] == data) {
     f->values[pos_hint] = NULL;
-    return;
-  }
-
-  // hint was wrong, do a linear sweep
-  for (uint32_t i = 0; i < f->len; i++) {
-    uint32_t j = (f->btm + i) & f->mask;
-    if (f->values[j] == data) {
-      f->values[j] = NULL;
-      return;
+  } else {
+    // hint was wrong, do a linear sweep
+    for (uint32_t i = 0; i < f->len; i++) {
+      uint32_t j = (f->btm + i) & f->mask;
+      if (f->values[j] == data) {
+        f->values[j] = NULL;
+        break;
+      }
     }
   }
+
+  while (f->len > 0 && f->values[f->btm] == NULL) udx__fifo_shift(f);
 }
