@@ -47,6 +47,7 @@
 #define UDX_HIGH_WATERMARK 262144
 
 #define UDX_MAX_COMBINED_WRITES 1000
+#define UDX_TLP_MAX_ACK_DELAY   2
 
 typedef struct {
   uint32_t seq; // must be the first entry, so its compat with the cirbuf
@@ -496,6 +497,7 @@ init_stream_packet (udx_packet_t *pkt, int type, udx_stream_t *stream, const uv_
   pkt->dest_len = stream->remote_addr_len;
   pkt->ctx = stream;
   pkt->is_mtu_probe = false;
+  pkt->is_tlp = false;
   pkt->lost = false;
 
   uv_buf_t *bufs = (uv_buf_t *) (pkt + 1);
@@ -714,7 +716,9 @@ udx__shift_packet (udx_socket_t *socket) {
     }
   }
 
-  if (!(stream->status & UDX_STREAM_DEAD) && stream->write_queue.len > 0 && stream->pkts_inflight < stream->cwnd) {
+  if (!(stream->status & UDX_STREAM_DEAD) && stream->write_queue.len > 0 && (stream->pkts_inflight < stream->cwnd || stream->write_wanted & UDX_STREAM_WRITE_WANT_TLP)) {
+
+    bool packet_will_be_tlp = stream->write_wanted & UDX_STREAM_WRITE_WANT_TLP;
 
     // header_flag will be either
     // DATA     - packet has payload and all data written with udx_stream_write()
@@ -797,7 +801,36 @@ udx__shift_packet (udx_socket_t *socket) {
     assert(pkt->size > 0 && pkt->size < 1500);
     stream->inflight += pkt->size;
 
+    if (packet_will_be_tlp) {
+      stream->write_wanted &= ~UDX_STREAM_WRITE_WANT_TLP;
+      stream->tlp_is_retrans = false;
+      pkt->is_tlp = true;
+    }
+
     return pkt;
+  }
+
+  // if we don't have a new packet to send to satisfy TLP, re-transmit an old one
+
+  if (stream->write_wanted & UDX_STREAM_WRITE_WANT_TLP && stream->write_queue.len == 0) {
+    // rack 7.3
+    stream->write_wanted &= ~UDX_STREAM_WRITE_WANT_TLP;
+
+    udx_packet_t *pkt = (udx_packet_t *) udx__cirbuf_get(&stream->outgoing, stream->seq - 1);
+
+    debug_printf("tlp: retransmitting old data");
+
+    if (!pkt) {
+      debug_printf("... not available\n");
+      return NULL;
+    }
+    debug_printf("\n");
+
+    // packet may not actually be in the retransmit queue, but that's OK
+    udx__fifo_remove(&stream->retransmit_queue, pkt, pkt->fifo_gc);
+
+    stream->tlp_is_retrans = true;
+    pkt->is_tlp = true;
   }
 
   return NULL;
@@ -871,15 +904,23 @@ close_maybe (udx_stream_t *stream, int err) {
 
   uv_timer_stop(&stream->rto_timer);
   uv_timer_stop(&stream->rack_reo_timer);
+  uv_timer_stop(&stream->tlp_timer);
 
   uv_close((uv_handle_t *) &stream->rto_timer, _close_maybe);
   uv_close((uv_handle_t *) &stream->rack_reo_timer, _close_maybe);
+  uv_close((uv_handle_t *) &stream->tlp_timer, _close_maybe);
 
   return 1;
 }
 
 static void
 udx_rto_timeout (uv_timer_t *handle);
+
+static void
+udx_tlp_timeout (uv_timer_t *handle);
+
+static void
+schedule_loss_probe (udx_stream_t *stream);
 
 void
 udx__confirm_packet (udx_packet_t *pkt) {
@@ -898,6 +939,17 @@ udx__confirm_packet (udx_packet_t *pkt) {
       assert(stream->rto >= 1);
       assert(!(stream->status & UDX_STREAM_CLOSED));
       uv_timer_start(&stream->rto_timer, udx_rto_timeout, stream->rto, 0);
+    }
+
+    // rack 7.2 rearm tlp timer
+
+    if (!pkt->is_tlp && stream->ca_state == UDX_CA_OPEN && stream->sacks == 0) {
+      schedule_loss_probe(stream);
+    }
+
+    // rack 7.3
+    if (pkt->is_tlp) {
+      stream->tlp_end_seq = pkt->seq;
     }
 
     // if (pkt->transmits > 1) {
@@ -946,15 +998,24 @@ udx__unshift_packet (udx_packet_t *pkt, udx_socket_t *socket) {
       stream->seq--;
     }
 
+    if (pkt->is_tlp) {
+      stream->write_wanted |= UDX_STREAM_WRITE_WANT_TLP;
+    }
+
     stream->pkts_inflight--;
     stream->inflight -= pkt->size;
 
     // todo: optimize: put rollback writes onto the retransmit queue
     // or a 'wait_queue' instead of freeing them
 
+    // packet came from retransmit queue, return it.
     if (pkt->lost) {
-      // return to the retransmit queue
-      udx__fifo_undo(&stream->retransmit_queue);
+      if (!pkt->is_tlp) {
+        udx__fifo_undo(&stream->retransmit_queue);
+      } else {
+        // a tlp packet is not necessarily from the start of the retransmit queue
+        pkt->fifo_gc = udx__fifo_push(&stream->retransmit_queue, pkt);
+      }
     } else {
       assert(pkt->transmits == 0);
       // if the packet was the one that shifted a write, undo it
@@ -1017,12 +1078,53 @@ rack_update_reo_wnd (udx_stream_t *stream) {
   // TODO: add the DSACK logic also (skipped for now as we didnt impl and only recommended...)
 
   if (!stream->reordering_seen) {
-    if (stream->recovery) return 0;
+    if (stream->ca_state == UDX_CA_RECOVERY || stream->ca_state == UDX_CA_LOSS) return 0;
     if (stream->sacks >= 3) return 0;
   }
 
   uint32_t r = stream->rack_rtt_min / 4;
   return r < stream->srtt ? r : stream->srtt;
+}
+
+static void
+udx_tlp_timeout (uv_timer_t *timer) {
+  // rack 7.3
+  udx_stream_t *stream = timer->data;
+
+  assert(stream->status & UDX_STREAM_CONNECTED);
+  assert(stream->remote_acked != stream->seq);
+
+  // todo: set WANT_TLP, then defer these checks to the write event?
+  if (stream->tlp_in_flight || !stream->tlp_permitted) {
+    schedule_loss_probe(stream);
+    return;
+  }
+
+  stream->write_wanted |= UDX_STREAM_WRITE_WANT_TLP;
+  update_poll(stream->socket);
+}
+
+// schedule or re-schedule TLP. fired on either
+// 1. new data transmission
+// 2. cumulative ack while not in recovery
+static void
+schedule_loss_probe (udx_stream_t *stream) {
+  // rack 7.2
+  uint32_t pto = 1000;
+
+  if (stream->srtt) {
+    pto = stream->srtt * 2;
+    if (stream->pkts_inflight == 1) {
+      pto += UDX_TLP_MAX_ACK_DELAY;
+    }
+  }
+
+  // clamp pto
+  if (uv_timer_get_due_in(&stream->rto_timer) < pto) {
+    pto = uv_timer_get_due_in(&stream->rto_timer);
+  }
+
+  uv_timer_start(&stream->tlp_timer, udx_tlp_timeout, pto, 0);
 }
 
 static uint32_t
@@ -1069,19 +1171,20 @@ rack_detect_loss (udx_stream_t *stream) {
     }
   }
 
-  if (resending > mtu_probes_lost) {
+  if (resending > mtu_probes_lost && stream->ca_state == UDX_CA_OPEN) {
     debug_printf("rack: rid=%u lost=%d mtu_probe_lost=%d\n", stream->remote_id, resending, mtu_probes_lost);
-    if (stream->recovery == 0) {
-      // debug_print_outgoing(stream);
+    // debug_print_outgoing(stream);
 
-      // recover until the full window is acked
-      stream->recovery = seq_diff(stream->seq, stream->remote_acked);
+    // recover until the full window is acked
+    stream->ca_state = UDX_CA_RECOVERY;
+    stream->high_seq = stream->seq;
+    stream->tlp_in_flight = false;
+    stream->tlp_is_retrans = false;
 
-      // only reduce congestion window if more than just the mtu probe was lost
-      reduce_cwnd(stream, false);
+    // only reduce congestion window if more than just the mtu probe was lost
+    reduce_cwnd(stream, false);
 
-      debug_printf("rack: fast recovery rid=%u start=[%u:%u] (%u pkts) inflight=%zu cwnd=%u srtt=%u\n", stream->remote_id, stream->remote_acked, stream->seq, stream->recovery, stream->inflight, stream->cwnd, stream->srtt);
-    }
+    debug_printf("rack: fast recovery rid=%u start=[%u:%u] (%u pkts) inflight=%zu cwnd=%u srtt=%u\n", stream->remote_id, stream->remote_acked, stream->seq, stream->seq - stream->remote_acked, stream->inflight, stream->cwnd, stream->srtt);
   }
 
   update_poll(stream->socket);
@@ -1107,9 +1210,10 @@ udx_rto_timeout (uv_timer_t *timer) {
   assert(stream->remote_acked != stream->seq);
 
   // exit fast recovery if we are in it
-  // stream->high_seq = stream->seq;
-  // stream->recovery = seq_diff(stream->seq, stream->remote_acked);
-  stream->recovery = 0;
+  stream->high_seq = stream->seq;
+  stream->ca_state = UDX_CA_LOSS;
+  stream->tlp_in_flight = false;
+  stream->tlp_is_retrans = false;
 
   reduce_cwnd(stream, true);
 
@@ -1172,7 +1276,7 @@ ack_update (udx_stream_t *stream, uint32_t acked, bool is_limited) {
   // The delay_min check here, was added due to massive latency increase (ie multiple seconds) due to router buffering
   // Perhaps research other approaches for this, but since delay_min is adjusted based on congestion this seems OK but
   // but surely better ways exists for this
-  if (is_limited || stream->recovery || (c->delay_min > 0 && stream->srtt > c->delay_min * 4)) {
+  if (is_limited || stream->ca_state != UDX_CA_OPEN || (c->delay_min > 0 && stream->srtt > c->delay_min * 4)) {
     c->start_time = 0;
     return;
   }
@@ -1260,6 +1364,8 @@ ack_packet (udx_stream_t *stream, uint32_t seq, int sack) {
       // SRTT <- (1 - alpha) * SRTT + alpha * R' where alpha is 1/8
       stream->srtt = (7 * stream->srtt + rtt) / 8;
     }
+
+    stream->tlp_permitted = true;
 
     // RTO <- SRTT + max (G, K*RTTVAR) where K is 4 maxed with 1s
     stream->rto = max_uint32(stream->srtt + 4 * stream->rttvar, 1000);
@@ -1423,6 +1529,20 @@ relay_packet (udx_stream_t *stream, char *buf, ssize_t buf_len, int type, uint8_
   return 1;
 }
 
+static void
+tlp_process_ack (udx_stream_t *stream, uint32_t ack) {
+  if (seq_compare(ack, stream->tlp_end_seq) < 0) {
+    return;
+  }
+
+  if (!stream->tlp_is_retrans) {
+    stream->tlp_in_flight = false;
+  } else if (seq_compare(ack, stream->tlp_end_seq) > 0) {
+    stream->tlp_in_flight = false;
+    reduce_cwnd(stream, false);
+  }
+}
+
 static int
 process_packet (udx_socket_t *socket, char *buf, ssize_t buf_len, struct sockaddr *addr) {
 
@@ -1532,18 +1652,33 @@ process_packet (udx_socket_t *socket, char *buf, ssize_t buf_len, struct sockadd
     }
   }
 
+  // rack 7.4.2
+
+  if (stream->tlp_in_flight) {
+    tlp_process_ack(stream, ack);
+  }
+
   int32_t len = seq_diff(ack, stream->remote_acked);
-  bool is_limited = stream->recovery;
+  bool is_limited = stream->ca_state == UDX_CA_RECOVERY || stream->ca_state == UDX_CA_LOSS;
 
   for (int32_t j = 0; j < len; j++) {
-    if (stream->recovery > 0 && --(stream->recovery) == 0) {
-      // The end of fast recovery, adjust according to the spec (unsure if we need this as we do not modify cwnd during recovery but oh well...)
-      if (stream->ssthresh < stream->cwnd) stream->cwnd = stream->ssthresh;
+    uint32_t seq = stream->remote_acked++;
 
-      debug_printf("rack: fast recovery ended rid=%u inflight=%zu, cwnd=%u, acked=%u, seq=%u\n", stream->remote_id, stream->inflight, stream->cwnd, stream->remote_acked + 1, stream->seq);
+    if (stream->ca_state == UDX_CA_RECOVERY || stream->ca_state == UDX_CA_LOSS) {
+      if (seq == stream->high_seq) {
+        if (stream->ca_state == UDX_CA_RECOVERY) {
+          // The end of fast recovery, adjust according to the spec
+          if (stream->ssthresh < stream->cwnd) stream->cwnd = stream->ssthresh;
+
+          debug_printf("rack: fast recovery ended rid=%u inflight=%zu, cwnd=%u, acked=%u, seq=%u\n", stream->remote_id, stream->inflight, stream->cwnd, stream->remote_acked + 1, stream->seq);
+        } else {
+          debug_printf("rto: loss ended rid=%u\n", stream->remote_id);
+        }
+        stream->ca_state = UDX_CA_OPEN;
+      }
     }
 
-    int a = ack_packet(stream, stream->remote_acked++, 0);
+    int a = ack_packet(stream, seq, 0);
     if (a == 1) {
       delivered++;
     }
@@ -1568,10 +1703,15 @@ process_packet (udx_socket_t *socket, char *buf, ssize_t buf_len, struct sockadd
   }
 
   if (delivered > 0) {
+    // rack 7.2
+    if (stream->ca_state == UDX_CA_OPEN && !stream->sacks) {
+      schedule_loss_probe(stream);
+    }
 
     if (stream->remote_acked == stream->seq) {
       assert(stream->pkts_inflight == 0 && stream->retransmit_queue.len == 0);
       uv_timer_stop(&stream->rto_timer);
+      uv_timer_stop(&stream->tlp_timer);
     } else {
       assert(!(stream->status & UDX_STREAM_CLOSED));
       uv_timer_start(&stream->rto_timer, udx_rto_timeout, stream->rto, 0);
@@ -1926,7 +2066,9 @@ udx_stream_init (udx_t *udx, udx_stream_t *stream, uint32_t local_id, udx_stream
   stream->status = 0;
   stream->write_wanted = 0;
   stream->out_of_order = 0;
-  stream->recovery = 0;
+
+  stream->ca_state = UDX_CA_OPEN;
+
   stream->socket = NULL;
   stream->relayed = false;
   stream->relay_to = NULL;
@@ -1966,11 +2108,19 @@ udx_stream_init (udx_t *udx, udx_stream_t *stream, uint32_t local_id, udx_stream
   stream->rack_next_seq = 0;
   stream->rack_fack = 0;
 
+  stream->tlp_in_flight = false;
+  stream->tlp_end_seq = 0;
+  stream->tlp_is_retrans = false;
+
   memset(&stream->rack_reo_timer, 0, sizeof(uv_timer_t));
   uv_timer_init(udx->loop, &stream->rack_reo_timer);
   stream->rack_reo_timer.data = stream;
 
-  stream->nrefs = 2;
+  memset(&stream->tlp_timer, 0, sizeof(uv_timer_t));
+  uv_timer_init(udx->loop, &stream->tlp_timer);
+  stream->tlp_timer.data = stream;
+
+  stream->nrefs = 3;
   stream->rc = UV_UNKNOWN; // return code for stream_close, UV_UNKNOWN is a sentinel value
 
   stream->deferred_ack = 0;

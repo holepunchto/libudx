@@ -58,9 +58,10 @@ extern "C" {
 #define UDX_HEADER_MESSAGE 0b01000
 #define UDX_HEADER_DESTROY 0b10000
 
-#define UDX_STREAM_WRITE_WANT_DATA    0b001
-#define UDX_STREAM_WRITE_WANT_STATE   0b010
-#define UDX_STREAM_WRITE_WANT_DESTROY 0b100
+#define UDX_STREAM_WRITE_WANT_DATA    0b0001
+#define UDX_STREAM_WRITE_WANT_STATE   0b0010
+#define UDX_STREAM_WRITE_WANT_TLP     0b0100
+#define UDX_STREAM_WRITE_WANT_DESTROY 0b1000
 
 typedef struct {
   uint32_t seq;
@@ -165,6 +166,10 @@ typedef struct udx_cong_s {
   uint32_t tcp_cwnd;
 } udx_cong_t;
 
+#define UDX_CA_OPEN     1
+#define UDX_CA_RECOVERY 2
+#define UDX_CA_LOSS     3
+
 struct udx_stream_s {
   uint32_t local_id; // must be first entry, so its compat with the cirbuf
   uint32_t remote_id;
@@ -173,9 +178,10 @@ struct udx_stream_s {
   int status;
   int write_wanted;
   int out_of_order;
-  int recovery; // number of packets to send before recovery finished
   int deferred_ack;
 
+  uint8_t ca_state;
+  uint32_t high_seq; // seq at time of congestion, marks end of recovery
   bool hit_high_watermark;
   size_t writes_queued_bytes;
 
@@ -230,10 +236,17 @@ struct udx_stream_s {
   uint32_t pkts_inflight; // packets inflight to the other peer
   uint32_t pkts_buffered; // how many (data) packets received but not processed (out of order)?
 
+  // tlp
+  bool tlp_is_retrans;  // the probe in-flight was a retransmission
+  bool tlp_in_flight;   // if set, tlp_end_seq indicates the seqno
+  bool tlp_permitted;   // if set, srtt has been updated since the last tlp
+  uint32_t tlp_end_seq; // seq at time of tlp sent. invalid if tlp_inflight is not set
+
   // optimize: use one timer and a action (RTO, RACK_REO, TLP) variable
   int nrefs;
   uv_timer_t rto_timer;
   uv_timer_t rack_reo_timer;
+  uv_timer_t tlp_timer;
 
   size_t inflight;
 
@@ -265,6 +278,7 @@ struct udx_packet_s {
 
   bool lost;
   bool retransmitted;
+  bool is_tlp;
   uint8_t transmits;
   bool is_mtu_probe;
   uint16_t size;
