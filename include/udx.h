@@ -25,8 +25,6 @@ extern "C" {
 #define UDX_MTU_STATE_ERROR           3
 #define UDX_MTU_STATE_SEARCH_COMPLETE 4
 
-#define UDX_CLOCK_GRANULARITY_MS 20
-
 #define UDX_MAGIC_BYTE 255
 #define UDX_VERSION    1
 
@@ -46,10 +44,6 @@ extern "C" {
 #define UDX_STREAM_DESTROYED        0b00100000000
 #define UDX_STREAM_DESTROYED_REMOTE 0b01000000000
 #define UDX_STREAM_CLOSED           0b10000000000
-
-#define UDX_PACKET_STATE_UNCOMMITTED 0
-#define UDX_PACKET_STATE_INFLIGHT    1
-#define UDX_PACKET_STATE_RETRANSMIT  2
 
 #define UDX_PACKET_TYPE_STREAM_RELAY   0b00000
 #define UDX_PACKET_TYPE_STREAM_STATE   0b00001
@@ -124,12 +118,10 @@ typedef void (*udx_interface_event_cb)(udx_interface_event_t *handle, int status
 typedef void (*udx_interface_event_close_cb)(udx_interface_event_t *handle);
 
 struct udx_s {
-  uv_timer_t timer;
   uv_loop_t *loop;
 
   uint32_t refs;
   uint32_t sockets;
-  udx_socket_t *timer_closed_by;
 
   uint32_t streams_len;
   uint32_t streams_max_len;
@@ -188,7 +180,6 @@ struct udx_stream_s {
   size_t writes_queued_bytes;
 
   bool reordering_seen;
-  int retransmitting;
 
   udx_t *udx;
   udx_socket_t *socket;
@@ -239,9 +230,10 @@ struct udx_stream_s {
   uint32_t pkts_inflight; // packets inflight to the other peer
   uint32_t pkts_buffered; // how many (data) packets received but not processed (out of order)?
 
-  // timestamps...
-  uint64_t rto_timeout;
-  uint64_t rack_timeout;
+  // optimize: use one timer and a action (RTO, RACK_REO, TLP) variable
+  int nrefs;
+  uv_timer_t rto_timer;
+  uv_timer_t rack_reo_timer;
 
   size_t inflight;
 
@@ -261,16 +253,18 @@ struct udx_stream_s {
   udx_fifo_t retransmit_queue; // udx_packet_t
 
   udx_fifo_t unordered;
+
+  int rc;
 };
 
 struct udx_packet_s {
   uint32_t seq; // must be the first entry, so its compat with the cirbuf
 
-  int status;
   int type;
   int ttl;
-  int is_retransmit;
 
+  bool lost;
+  bool retransmitted;
   uint8_t transmits;
   bool is_mtu_probe;
   uint16_t size;
