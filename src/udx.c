@@ -950,6 +950,7 @@ udx__confirm_packet (udx_packet_t *pkt) {
     // rack 7.3
     if (pkt->is_tlp) {
       stream->tlp_end_seq = pkt->seq;
+      debug_printf("tlp: sent seq=%u\n", stream->tlp_end_seq);
     }
 
     // if (pkt->transmits > 1) {
@@ -1094,7 +1095,6 @@ udx_tlp_timeout (uv_timer_t *timer) {
   assert(stream->status & UDX_STREAM_CONNECTED);
   assert(stream->remote_acked != stream->seq);
 
-  // todo: set WANT_TLP, then defer these checks to the write event?
   if (stream->tlp_in_flight || !stream->tlp_permitted) {
     schedule_loss_probe(stream);
     return;
@@ -1178,6 +1178,7 @@ rack_detect_loss (udx_stream_t *stream) {
     // recover until the full window is acked
     stream->ca_state = UDX_CA_RECOVERY;
     stream->high_seq = stream->seq;
+    // rack 7.1 TLP_init
     stream->tlp_in_flight = false;
     stream->tlp_is_retrans = false;
 
@@ -1212,6 +1213,8 @@ udx_rto_timeout (uv_timer_t *timer) {
   // exit fast recovery if we are in it
   stream->high_seq = stream->seq;
   stream->ca_state = UDX_CA_LOSS;
+
+  // rack 7.1 TLP_init
   stream->tlp_in_flight = false;
   stream->tlp_is_retrans = false;
 
@@ -1529,17 +1532,17 @@ relay_packet (udx_stream_t *stream, char *buf, ssize_t buf_len, int type, uint8_
   return 1;
 }
 
+// rack 7.4.2
 static void
-tlp_process_ack (udx_stream_t *stream, uint32_t ack) {
-  if (seq_compare(ack, stream->tlp_end_seq) < 0) {
-    return;
-  }
-
-  if (!stream->tlp_is_retrans) {
-    stream->tlp_in_flight = false;
-  } else if (seq_compare(ack, stream->tlp_end_seq) > 0) {
-    stream->tlp_in_flight = false;
-    reduce_cwnd(stream, false);
+detect_loss_repaired_by_loss_probe (udx_stream_t *stream, uint32_t ack) {
+  if (stream->tlp_in_flight && seq_compare(ack, stream->tlp_end_seq) >= 0) {
+    if (!stream->tlp_is_retrans) {
+      stream->tlp_in_flight = false;
+    } else if (seq_compare(ack, stream->tlp_end_seq) > 0) {
+      debug_printf("tlp: loss probe retransmission masked lost packet, invoking congestion control\n");
+      stream->tlp_in_flight = false;
+      reduce_cwnd(stream, false);
+    }
   }
 }
 
@@ -1653,9 +1656,8 @@ process_packet (udx_socket_t *socket, char *buf, ssize_t buf_len, struct sockadd
   }
 
   // rack 7.4.2
-
   if (stream->tlp_in_flight) {
-    tlp_process_ack(stream, ack);
+    detect_loss_repaired_by_loss_probe(stream, ack);
   }
 
   int32_t len = seq_diff(ack, stream->remote_acked);
@@ -1700,13 +1702,14 @@ process_packet (udx_socket_t *socket, char *buf, ssize_t buf_len, struct sockadd
 
   if (len > 0) {
     ack_update(stream, len, is_limited);
-  }
 
-  if (delivered > 0) {
     // rack 7.2
     if (stream->ca_state == UDX_CA_OPEN && !stream->sacks) {
       schedule_loss_probe(stream);
     }
+  }
+
+  if (delivered > 0) {
 
     if (stream->remote_acked == stream->seq) {
       assert(stream->pkts_inflight == 0 && stream->retransmit_queue.len == 0);
