@@ -949,8 +949,9 @@ udx__confirm_packet (udx_packet_t *pkt) {
 
     // rack 7.3
     if (pkt->is_tlp) {
+      stream->tlp_in_flight = true;
       stream->tlp_end_seq = pkt->seq;
-      debug_printf("tlp: sent seq=%u\n", stream->tlp_end_seq);
+      debug_printf("tlp: sent seq=%u %s\n", stream->tlp_end_seq, stream->tlp_is_retrans ? " retransmission" : "");
     }
 
     // if (pkt->transmits > 1) {
