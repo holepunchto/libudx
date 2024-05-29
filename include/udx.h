@@ -118,6 +118,14 @@ typedef void (*udx_lookup_cb)(udx_lookup_t *handle, int status, const struct soc
 typedef void (*udx_interface_event_cb)(udx_interface_event_t *handle, int status);
 typedef void (*udx_interface_event_close_cb)(udx_interface_event_t *handle);
 
+typedef struct {
+  uint64_t bytes;
+  uint64_t bandwidth; /* bytes/sec */
+
+  uint64_t interval_end_ms;
+  uint64_t interval_bytes;
+} udx_bandwidth_t;
+
 struct udx_s {
   uv_loop_t *loop;
 
@@ -129,6 +137,12 @@ struct udx_s {
   udx_stream_t **streams;
 
   udx_cirbuf_t streams_by_id;
+
+  udx_bandwidth_t bw_in;
+  udx_bandwidth_t bw_out;
+
+  uint64_t packets_in;
+  uint64_t packets_out;
 };
 
 struct udx_socket_s {
@@ -151,6 +165,12 @@ struct udx_socket_s {
 
   udx_socket_recv_cb on_recv;
   udx_socket_close_cb on_close;
+
+  udx_bandwidth_t bw_in;
+  udx_bandwidth_t bw_out;
+
+  uint64_t packets_in;
+  uint64_t packets_out;
 };
 
 typedef struct udx_cong_s {
@@ -267,6 +287,11 @@ struct udx_stream_s {
 
   udx_fifo_t unordered;
 
+  udx_bandwidth_t bw_in;
+  udx_bandwidth_t bw_out;
+
+  uint64_t packets_in;
+  uint64_t packets_out;
   int rc;
 };
 

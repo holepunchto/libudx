@@ -49,6 +49,8 @@
 #define UDX_MAX_COMBINED_WRITES 1000
 #define UDX_TLP_MAX_ACK_DELAY   2
 
+#define UDX_BANDWIDTH_INTERVAL_SECS 10
+
 typedef struct {
   uint32_t seq; // must be the first entry, so its compat with the cirbuf
 
@@ -922,6 +924,61 @@ udx_tlp_timeout (uv_timer_t *handle);
 static void
 schedule_loss_probe (udx_stream_t *stream);
 
+static void
+update_bandwidth (udx_bandwidth_t *bw, uint32_t bytes, uint64_t now) {
+  if (now > bw->interval_end_ms) {
+    if (now > bw->interval_end_ms + UDX_BANDWIDTH_INTERVAL_SECS * 1000) {
+      bw->bandwidth = 0;
+    } else {
+      bw->bandwidth = bw->interval_bytes / UDX_BANDWIDTH_INTERVAL_SECS;
+    }
+    bw->interval_bytes = 0;
+    bw->interval_end_ms = now + UDX_BANDWIDTH_INTERVAL_SECS * 1000;
+  }
+
+  bw->bytes += bytes;
+  bw->interval_bytes += bytes;
+}
+
+static void
+stats_on_send (udx_packet_t *pkt) {
+  udx_socket_t *socket = NULL;
+  udx_t *udx = NULL;
+  udx_stream_t *stream = NULL;
+
+  switch (pkt->type) {
+  case UDX_PACKET_TYPE_STREAM_RELAY:
+  case UDX_PACKET_TYPE_STREAM_STATE:
+  case UDX_PACKET_TYPE_STREAM_WRITE:
+  case UDX_PACKET_TYPE_STREAM_DESTROY:
+    stream = pkt->ctx;
+    update_bandwidth(&stream->bw_out, pkt->size, uv_now(stream->udx->loop));
+    stream->packets_out += 1;
+    socket = stream->socket;
+    break;
+  case UDX_PACKET_TYPE_STREAM_SEND:
+    udx_stream_send_t *stream_send = pkt->ctx;
+    stream = stream_send->stream;
+    update_bandwidth(&stream->bw_out, pkt->size, uv_now(stream->udx->loop));
+    stream->packets_out += 1;
+    socket = stream->socket;
+    break;
+  case UDX_PACKET_TYPE_SOCKET_SEND:
+    udx_socket_send_t *socket_send = pkt->ctx;
+    socket = socket_send->socket;
+    break;
+  }
+
+  assert(socket != NULL);
+  udx = socket->udx;
+
+  update_bandwidth(&socket->bw_out, pkt->size, uv_now(udx->loop));
+  socket->packets_out += 1;
+
+  update_bandwidth(&udx->bw_out, pkt->size, uv_now(udx->loop));
+  udx->packets_out += 1;
+}
+
 void
 udx__confirm_packet (udx_packet_t *pkt) {
   if (pkt->transmits > 0) {
@@ -929,6 +986,8 @@ udx__confirm_packet (udx_packet_t *pkt) {
   }
   pkt->transmits++;
   pkt->lost = false;
+
+  stats_on_send(pkt);
 
   int type = pkt->type;
 
@@ -1550,6 +1609,14 @@ detect_loss_repaired_by_loss_probe (udx_stream_t *stream, uint32_t ack) {
 static int
 process_packet (udx_socket_t *socket, char *buf, ssize_t buf_len, struct sockaddr *addr) {
 
+  uint64_t time_ms = uv_now(socket->udx->loop);
+
+  update_bandwidth(&socket->bw_in, buf_len, time_ms);
+  socket->packets_in += 1;
+
+  update_bandwidth(&socket->udx->bw_in, buf_len, time_ms);
+  socket->udx->packets_in += 1;
+
   if (buf_len < UDX_HEADER_SIZE) return 0;
 
   uint8_t *b = (uint8_t *) buf;
@@ -1569,6 +1636,9 @@ process_packet (udx_socket_t *socket, char *buf, ssize_t buf_len, struct sockadd
   udx_stream_t *stream = (udx_stream_t *) udx__cirbuf_get(socket->streams_by_id, local_id);
 
   if (stream == NULL || stream->status & UDX_STREAM_DEAD) return 0;
+
+  update_bandwidth(&stream->bw_in, buf_len, time_ms);
+  stream->packets_in += 1;
 
   uint32_t delivered = 0;
 
