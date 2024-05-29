@@ -945,6 +945,8 @@ stats_on_send (udx_packet_t *pkt) {
   udx_socket_t *socket = NULL;
   udx_t *udx = NULL;
   udx_stream_t *stream = NULL;
+  udx_stream_send_t *stream_send = NULL;
+  udx_socket_send_t *socket_send = NULL;
 
   switch (pkt->type) {
   case UDX_PACKET_TYPE_STREAM_RELAY:
@@ -957,14 +959,14 @@ stats_on_send (udx_packet_t *pkt) {
     socket = stream->socket;
     break;
   case UDX_PACKET_TYPE_STREAM_SEND:
-    udx_stream_send_t *stream_send = pkt->ctx;
+    stream_send = pkt->ctx;
     stream = stream_send->stream;
     update_bandwidth(&stream->bw_out, pkt->size, uv_now(stream->udx->loop));
     stream->packets_out += 1;
     socket = stream->socket;
     break;
   case UDX_PACKET_TYPE_SOCKET_SEND:
-    udx_socket_send_t *socket_send = pkt->ctx;
+    socket_send = pkt->ctx;
     socket = socket_send->socket;
     break;
   }
