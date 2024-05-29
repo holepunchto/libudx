@@ -1913,6 +1913,12 @@ udx_init (uv_loop_t *loop, udx_t *udx) {
   udx->streams_max_len = 0;
   udx->streams = NULL;
 
+  memset(&udx->bw_in, 0, sizeof(udx->bw_in));
+  memset(&udx->bw_out, 0, sizeof(udx->bw_out));
+
+  udx->packets_in = 0;
+  udx->packets_out = 0;
+
   udx->loop = loop;
 
   return 0;
@@ -1935,6 +1941,12 @@ udx_socket_init (udx_t *udx, udx_socket_t *socket) {
 
   socket->on_recv = NULL;
   socket->on_close = NULL;
+
+  memset(&socket->bw_in, 0, sizeof(socket->bw_in));
+  memset(&socket->bw_out, 0, sizeof(socket->bw_out));
+
+  socket->packets_in = 0;
+  socket->packets_out = 0;
 
   udx__fifo_init(&(socket->send_queue), 16);
 
@@ -2217,6 +2229,11 @@ udx_stream_init (udx_t *udx, udx_stream_t *stream, uint32_t local_id, udx_stream
 
   // Clear congestion state
   memset(&(stream->cong), 0, sizeof(udx_cong_t));
+
+  stream->packets_in = 0;
+  stream->packets_out = 0;
+  memset(&stream->bw_in, 0, sizeof(stream->bw_in));
+  memset(&stream->bw_out, 0, sizeof(stream->bw_out));
 
   udx__cirbuf_init(&(stream->relaying_streams), 2);
 
