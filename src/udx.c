@@ -1015,9 +1015,10 @@ udx__confirm_packet (udx_packet_t *pkt) {
       debug_printf("tlp: sent seq=%u %s\n", stream->tlp_end_seq, stream->tlp_is_retrans ? " retransmission" : "");
     }
 
-    // if (pkt->transmits > 1) {
-    //   debug_printf("retransmit: seq=%u tmit=%d\n", pkt->seq, pkt->transmits);
-    // }
+    if (pkt->transmits > 1) {
+      debug_printf("retransmit: seq=%u tmit=%d\n", pkt->seq, pkt->transmits);
+      stream->retransmit_count++;
+    }
 
     udx__cirbuf_set(&stream->outgoing, (udx_cirbuf_val_t *) pkt);
 
@@ -1237,6 +1238,8 @@ rack_detect_loss (udx_stream_t *stream) {
     debug_printf("rack: rid=%u lost=%d mtu_probe_lost=%d\n", stream->remote_id, resending, mtu_probes_lost);
     // debug_print_outgoing(stream);
 
+    stream->fast_recovery_count++;
+
     // recover until the full window is acked
     stream->ca_state = UDX_CA_RECOVERY;
     stream->high_seq = stream->seq;
@@ -1274,6 +1277,7 @@ udx_rto_timeout (uv_timer_t *timer) {
 
   // exit fast recovery if we are in it
   stream->high_seq = stream->seq;
+  stream->rto_count++;
   stream->ca_state = UDX_CA_LOSS;
 
   // rack 7.1 TLP_init
@@ -2163,6 +2167,9 @@ udx_stream_init (udx_t *udx, udx_stream_t *stream, uint32_t local_id, udx_stream
   stream->udx = udx;
 
   stream->reordering_seen = false;
+  stream->rto_count = 0;
+  stream->fast_recovery_count = 0;
+  stream->retransmit_count = 0;
 
   stream->hit_high_watermark = false;
   stream->writes_queued_bytes = 0;

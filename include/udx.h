@@ -203,6 +203,9 @@ struct udx_stream_s {
   uint8_t ca_state;
   uint32_t high_seq; // seq at time of congestion, marks end of recovery
   bool hit_high_watermark;
+  uint16_t rto_count;
+  uint16_t fast_recovery_count;
+  uint16_t retransmit_count;
   size_t writes_queued_bytes;
 
   bool reordering_seen;

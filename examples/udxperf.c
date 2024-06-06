@@ -64,6 +64,7 @@
 
 static bool is_server;
 static bool is_client;
+static bool extra_wanted;
 char *addr_string;
 static struct sockaddr_in laddr;
 static struct sockaddr_in raddr;
@@ -273,7 +274,11 @@ print_interval (udxperf_client_t *client, uint64_t bytes, uint64_t start, uint64
   byte_snprintf(bps_buf, sizeof bps_buf, bytes / time_sec, 'a');
   bps_buf[19] = '\0';
 
-  printf("[%3d] %6.4f-%6.4f sec %s %s/sec\n", stream->local_id, (start - client->start_time) / 1000.0, (end - client->start_time) / 1000.0, bytes_buf, bps_buf);
+  printf("[%3d] %6.4f-%6.4f sec %s %s/sec", stream->local_id, (start - client->start_time) / 1000.0, (end - client->start_time) / 1000.0, bytes_buf, bps_buf, stream->cwnd);
+  if (is_client && extra_wanted) {
+    printf(" cwnd=%d ssthresh=%d fast_recovery_count=%d rto_count=%d rtx_count=%d", stream->cwnd, stream->ssthresh, stream->fast_recovery_count, stream->rto_count, stream->retransmit_count);
+  }
+  printf("\n");
 }
 
 static void
@@ -520,6 +525,7 @@ typedef enum {
   SW_T,
   SW_I,
   SW_P,
+  SW_X,
 } switch_type_t;
 
 int
@@ -546,6 +552,9 @@ main (int argc, char **argv) {
       case 's':
         is_server = true;
         time_ms = -1L;
+        break;
+      case 'x':
+        extra_wanted = true;
         break;
       default:
         printf("unrecognized switch '%s'\n", argv[i]);
