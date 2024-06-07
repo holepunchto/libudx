@@ -296,7 +296,7 @@ server_on_read (udx_stream_t *stream, ssize_t read_len, const uv_buf_t *buf) {
   c->end_time = uv_now(&loop);
 
   if (read_len == UV_EOF) {
-    print_interval(c, stream->bw_in.bytes, c->start_time, c->end_time);
+    print_interval(c, stream->bytes_in, c->start_time, c->end_time);
     c->ended = true;
     if (interval_ms) {
       uv_timer_stop(&c->report_timer);
@@ -315,11 +315,11 @@ server_report_interval (uv_timer_t *timer) {
   uint64_t now = uv_now(&loop);
 
   if (c->time_last_report) {
-    print_interval(c, stream->bw_in.bytes - c->bytes_last_report, c->time_last_report, now);
+    print_interval(c, stream->bytes_in - c->bytes_last_report, c->time_last_report, now);
   }
 
   c->time_last_report = now;
-  c->bytes_last_report = stream->bw_in.bytes;
+  c->bytes_last_report = stream->bytes_in;
 }
 
 static void
@@ -419,7 +419,7 @@ finish_timer_cb (uv_timer_t *timer) {
 
   udx_stream_write_end(req, stream, NULL, 0, write_end_cb);
 
-  print_interval(c, stream->bw_out.bytes, c->start_time, c->end_time);
+  print_interval(c, stream->bytes_out, c->start_time, c->end_time);
 
   if (interval_ms) {
     uv_timer_stop(&c->report_timer);
@@ -435,11 +435,11 @@ client_report_interval (uv_timer_t *timer) {
   uint64_t now = uv_now(&loop);
 
   if (c->time_last_report) {
-    print_interval(c, stream->bw_out.bytes - c->bytes_last_report, c->time_last_report, now);
+    print_interval(c, stream->bytes_out - c->bytes_last_report, c->time_last_report, now);
   }
 
   c->time_last_report = now;
-  c->bytes_last_report = stream->bw_out.bytes;
+  c->bytes_last_report = stream->bytes_out;
 }
 
 static void

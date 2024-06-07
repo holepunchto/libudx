@@ -144,9 +144,9 @@ main () {
   printf("readhash=%lx writehash=%lx\n", read_hash, write_hash);
   assert(read_hash == write_hash);
 
-  printf("stats: udx:      bytes_in=%lu bw_in=%lu/sec packets_in=%lu bytes_out=%lu bw_out=%lu/sec packets_out=%lu\n", udx.bw_in.bytes, udx.bw_in.bandwidth, udx.packets_in, udx.bw_out.bytes, udx.bw_out.bandwidth, udx.packets_out);
-  printf("stats: stream a: bytes_in=%lu bw_in=%lu/sec packets_in=%lu bytes_out=%lu bw_out=%lu/sec packets_out=%lu\n", astream.bw_in.bytes, astream.bw_in.bandwidth, astream.packets_in, astream.bw_out.bytes, astream.bw_out.bandwidth, astream.packets_out);
-  printf("stats: stream b: bytes_in=%lu bw_in=%lu/sec packets_in=%lu bytes_out=%lu bw_out=%lu/sec packets_out=%lu\n", bstream.bw_in.bytes, bstream.bw_in.bandwidth, bstream.packets_in, bstream.bw_out.bytes, bstream.bw_out.bandwidth, bstream.packets_out);
+  printf("stats: udx:      bytes_in=%lu packets_in=%lu bytes_out=%lu packets_out=%lu\n", udx.bytes_in, udx.packets_in, udx.bytes_out, udx.packets_out);
+  printf("stats: stream a: bytes_in=%lu packets_in=%lu bytes_out=%lu packets_out=%lu\n", astream.bytes_in, astream.packets_in, astream.bytes_out, astream.packets_out);
+  printf("stats: stream b: bytes_in=%lu packets_in=%lu bytes_out=%lu packets_out=%lu\n", bstream.bytes_in, bstream.packets_in, bstream.bytes_out, bstream.packets_out);
 
   return 0;
 }

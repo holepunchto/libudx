@@ -924,63 +924,6 @@ udx_tlp_timeout (uv_timer_t *handle);
 static void
 schedule_loss_probe (udx_stream_t *stream);
 
-static void
-update_bandwidth (udx_bandwidth_t *bw, uint32_t bytes, uint64_t now) {
-  if (now > bw->interval_end_ms) {
-    if (now > bw->interval_end_ms + UDX_BANDWIDTH_INTERVAL_SECS * 1000) {
-      bw->bandwidth = 0;
-    } else {
-      bw->bandwidth = bw->interval_bytes / UDX_BANDWIDTH_INTERVAL_SECS;
-    }
-    bw->interval_bytes = 0;
-    bw->interval_end_ms = now + UDX_BANDWIDTH_INTERVAL_SECS * 1000;
-  }
-
-  bw->bytes += bytes;
-  bw->interval_bytes += bytes;
-}
-
-static void
-stats_on_send (udx_packet_t *pkt) {
-  udx_socket_t *socket = NULL;
-  udx_t *udx = NULL;
-  udx_stream_t *stream = NULL;
-  udx_stream_send_t *stream_send = NULL;
-  udx_socket_send_t *socket_send = NULL;
-
-  switch (pkt->type) {
-  case UDX_PACKET_TYPE_STREAM_RELAY:
-  case UDX_PACKET_TYPE_STREAM_STATE:
-  case UDX_PACKET_TYPE_STREAM_WRITE:
-  case UDX_PACKET_TYPE_STREAM_DESTROY:
-    stream = pkt->ctx;
-    update_bandwidth(&stream->bw_out, pkt->size, uv_now(stream->udx->loop));
-    stream->packets_out += 1;
-    socket = stream->socket;
-    break;
-  case UDX_PACKET_TYPE_STREAM_SEND:
-    stream_send = pkt->ctx;
-    stream = stream_send->stream;
-    update_bandwidth(&stream->bw_out, pkt->size, uv_now(stream->udx->loop));
-    stream->packets_out += 1;
-    socket = stream->socket;
-    break;
-  case UDX_PACKET_TYPE_SOCKET_SEND:
-    socket_send = pkt->ctx;
-    socket = socket_send->socket;
-    break;
-  }
-
-  assert(socket != NULL);
-  udx = socket->udx;
-
-  update_bandwidth(&socket->bw_out, pkt->size, uv_now(udx->loop));
-  socket->packets_out += 1;
-
-  update_bandwidth(&udx->bw_out, pkt->size, uv_now(udx->loop));
-  udx->packets_out += 1;
-}
-
 void
 udx__confirm_packet (udx_packet_t *pkt) {
   if (pkt->transmits > 0) {
@@ -989,11 +932,39 @@ udx__confirm_packet (udx_packet_t *pkt) {
   pkt->transmits++;
   pkt->lost = false;
 
-  stats_on_send(pkt);
-
   int type = pkt->type;
 
-  if (pkt->type == UDX_PACKET_TYPE_STREAM_WRITE) {
+  udx_socket_t *socket = NULL;
+
+  if (type == UDX_PACKET_TYPE_STREAM_RELAY || type == UDX_PACKET_TYPE_STREAM_STATE || type == UDX_PACKET_TYPE_STREAM_WRITE || type == UDX_PACKET_TYPE_STREAM_DESTROY) {
+    udx_stream_t *stream = pkt->ctx;
+    stream->bytes_out += pkt->size;
+    stream->packets_out++;
+    socket = stream->socket;
+  }
+
+  if (type == UDX_PACKET_TYPE_STREAM_SEND) {
+    udx_stream_send_t *send = pkt->ctx;
+    udx_stream_t *stream = send->stream;
+    stream->bytes_out += pkt->size;
+    stream->packets_out++;
+    socket = stream->socket;
+  }
+
+  if (type == UDX_PACKET_TYPE_SOCKET_SEND) {
+    udx_socket_send_t *send = pkt->ctx;
+    socket = send->socket;
+  }
+
+  assert(socket != NULL);
+
+  socket->bytes_out += pkt->size;
+  socket->packets_out++;
+
+  socket->udx->bytes_out += pkt->size;
+  socket->udx->packets_out++;
+
+  if (type == UDX_PACKET_TYPE_STREAM_WRITE) {
     udx_stream_t *stream = pkt->ctx;
 
     if (!uv_is_active((uv_handle_t *) &stream->rto_timer)) {
@@ -1025,7 +996,7 @@ udx__confirm_packet (udx_packet_t *pkt) {
     assert(seq_compare(stream->seq, pkt->seq) > 0);
   }
 
-  if (pkt->type == UDX_PACKET_TYPE_STREAM_STATE) {
+  if (type == UDX_PACKET_TYPE_STREAM_STATE) {
     udx_stream_t *stream = pkt->ctx;
     if (stream->status & UDX_STREAM_ENDED_REMOTE) {
       close_maybe(stream, 0);
@@ -1615,12 +1586,10 @@ detect_loss_repaired_by_loss_probe (udx_stream_t *stream, uint32_t ack) {
 static int
 process_packet (udx_socket_t *socket, char *buf, ssize_t buf_len, struct sockaddr *addr) {
 
-  uint64_t time_ms = uv_now(socket->udx->loop);
-
-  update_bandwidth(&socket->bw_in, buf_len, time_ms);
+  socket->bytes_in += buf_len;
   socket->packets_in += 1;
 
-  update_bandwidth(&socket->udx->bw_in, buf_len, time_ms);
+  socket->udx->bytes_in += buf_len;
   socket->udx->packets_in += 1;
 
   if (buf_len < UDX_HEADER_SIZE) return 0;
@@ -1643,7 +1612,7 @@ process_packet (udx_socket_t *socket, char *buf, ssize_t buf_len, struct sockadd
 
   if (stream == NULL || stream->status & UDX_STREAM_DEAD) return 0;
 
-  update_bandwidth(&stream->bw_in, buf_len, time_ms);
+  stream->bytes_in += buf_len;
   stream->packets_in += 1;
 
   uint32_t delivered = 0;
@@ -1919,9 +1888,8 @@ udx_init (uv_loop_t *loop, udx_t *udx) {
   udx->streams_max_len = 0;
   udx->streams = NULL;
 
-  memset(&udx->bw_in, 0, sizeof(udx->bw_in));
-  memset(&udx->bw_out, 0, sizeof(udx->bw_out));
-
+  udx->bytes_in = 0;
+  udx->bytes_out = 0;
   udx->packets_in = 0;
   udx->packets_out = 0;
 
@@ -1948,9 +1916,8 @@ udx_socket_init (udx_t *udx, udx_socket_t *socket) {
   socket->on_recv = NULL;
   socket->on_close = NULL;
 
-  memset(&socket->bw_in, 0, sizeof(socket->bw_in));
-  memset(&socket->bw_out, 0, sizeof(socket->bw_out));
-
+  socket->bytes_in = 0;
+  socket->bytes_out = 0;
   socket->packets_in = 0;
   socket->packets_out = 0;
 
@@ -2239,10 +2206,10 @@ udx_stream_init (udx_t *udx, udx_stream_t *stream, uint32_t local_id, udx_stream
   // Clear congestion state
   memset(&(stream->cong), 0, sizeof(udx_cong_t));
 
+  stream->bytes_in = 0;
+  stream->bytes_out = 0;
   stream->packets_in = 0;
   stream->packets_out = 0;
-  memset(&stream->bw_in, 0, sizeof(stream->bw_in));
-  memset(&stream->bw_out, 0, sizeof(stream->bw_out));
 
   udx__cirbuf_init(&(stream->relaying_streams), 2);
 
