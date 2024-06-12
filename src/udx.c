@@ -49,6 +49,8 @@
 #define UDX_MAX_COMBINED_WRITES 1000
 #define UDX_TLP_MAX_ACK_DELAY   2
 
+#define UDX_BANDWIDTH_INTERVAL_SECS 10
+
 typedef struct {
   uint32_t seq; // must be the first entry, so its compat with the cirbuf
 
@@ -932,7 +934,37 @@ udx__confirm_packet (udx_packet_t *pkt) {
 
   int type = pkt->type;
 
-  if (pkt->type == UDX_PACKET_TYPE_STREAM_WRITE) {
+  udx_socket_t *socket = NULL;
+
+  if (type == UDX_PACKET_TYPE_STREAM_RELAY || type == UDX_PACKET_TYPE_STREAM_STATE || type == UDX_PACKET_TYPE_STREAM_WRITE || type == UDX_PACKET_TYPE_STREAM_DESTROY) {
+    udx_stream_t *stream = pkt->ctx;
+    stream->bytes_out += pkt->size;
+    stream->packets_out++;
+    socket = stream->socket;
+  }
+
+  if (type == UDX_PACKET_TYPE_STREAM_SEND) {
+    udx_stream_send_t *send = pkt->ctx;
+    udx_stream_t *stream = send->stream;
+    stream->bytes_out += pkt->size;
+    stream->packets_out++;
+    socket = stream->socket;
+  }
+
+  if (type == UDX_PACKET_TYPE_SOCKET_SEND) {
+    udx_socket_send_t *send = pkt->ctx;
+    socket = send->socket;
+  }
+
+  assert(socket != NULL);
+
+  socket->bytes_out += pkt->size;
+  socket->packets_out++;
+
+  socket->udx->bytes_out += pkt->size;
+  socket->udx->packets_out++;
+
+  if (type == UDX_PACKET_TYPE_STREAM_WRITE) {
     udx_stream_t *stream = pkt->ctx;
 
     if (!uv_is_active((uv_handle_t *) &stream->rto_timer)) {
@@ -954,16 +986,17 @@ udx__confirm_packet (udx_packet_t *pkt) {
       debug_printf("tlp: sent seq=%u %s\n", stream->tlp_end_seq, stream->tlp_is_retrans ? " retransmission" : "");
     }
 
-    // if (pkt->transmits > 1) {
-    //   debug_printf("retransmit: seq=%u tmit=%d\n", pkt->seq, pkt->transmits);
-    // }
+    if (pkt->transmits > 1) {
+      // debug_printf("retransmit: seq=%u tmit=%d\n", pkt->seq, pkt->transmits);
+      stream->retransmit_count++;
+    }
 
     udx__cirbuf_set(&stream->outgoing, (udx_cirbuf_val_t *) pkt);
 
     assert(seq_compare(stream->seq, pkt->seq) > 0);
   }
 
-  if (pkt->type == UDX_PACKET_TYPE_STREAM_STATE) {
+  if (type == UDX_PACKET_TYPE_STREAM_STATE) {
     udx_stream_t *stream = pkt->ctx;
     if (stream->status & UDX_STREAM_ENDED_REMOTE) {
       close_maybe(stream, 0);
@@ -1176,6 +1209,8 @@ rack_detect_loss (udx_stream_t *stream) {
     debug_printf("rack: rid=%u lost=%d mtu_probe_lost=%d\n", stream->remote_id, resending, mtu_probes_lost);
     // debug_print_outgoing(stream);
 
+    stream->fast_recovery_count++;
+
     // recover until the full window is acked
     stream->ca_state = UDX_CA_RECOVERY;
     stream->high_seq = stream->seq;
@@ -1213,6 +1248,7 @@ udx_rto_timeout (uv_timer_t *timer) {
 
   // exit fast recovery if we are in it
   stream->high_seq = stream->seq;
+  stream->rto_count++;
   stream->ca_state = UDX_CA_LOSS;
 
   // rack 7.1 TLP_init
@@ -1550,6 +1586,12 @@ detect_loss_repaired_by_loss_probe (udx_stream_t *stream, uint32_t ack) {
 static int
 process_packet (udx_socket_t *socket, char *buf, ssize_t buf_len, struct sockaddr *addr) {
 
+  socket->bytes_in += buf_len;
+  socket->packets_in += 1;
+
+  socket->udx->bytes_in += buf_len;
+  socket->udx->packets_in += 1;
+
   if (buf_len < UDX_HEADER_SIZE) return 0;
 
   uint8_t *b = (uint8_t *) buf;
@@ -1569,6 +1611,9 @@ process_packet (udx_socket_t *socket, char *buf, ssize_t buf_len, struct sockadd
   udx_stream_t *stream = (udx_stream_t *) udx__cirbuf_get(socket->streams_by_id, local_id);
 
   if (stream == NULL || stream->status & UDX_STREAM_DEAD) return 0;
+
+  stream->bytes_in += buf_len;
+  stream->packets_in += 1;
 
   uint32_t delivered = 0;
 
@@ -1843,6 +1888,11 @@ udx_init (uv_loop_t *loop, udx_t *udx) {
   udx->streams_max_len = 0;
   udx->streams = NULL;
 
+  udx->bytes_in = 0;
+  udx->bytes_out = 0;
+  udx->packets_in = 0;
+  udx->packets_out = 0;
+
   udx->loop = loop;
 
   return 0;
@@ -1865,6 +1915,11 @@ udx_socket_init (udx_t *udx, udx_socket_t *socket) {
 
   socket->on_recv = NULL;
   socket->on_close = NULL;
+
+  socket->bytes_in = 0;
+  socket->bytes_out = 0;
+  socket->packets_in = 0;
+  socket->packets_out = 0;
 
   udx__fifo_init(&(socket->send_queue), 16);
 
@@ -2079,6 +2134,9 @@ udx_stream_init (udx_t *udx, udx_stream_t *stream, uint32_t local_id, udx_stream
   stream->udx = udx;
 
   stream->reordering_seen = false;
+  stream->rto_count = 0;
+  stream->fast_recovery_count = 0;
+  stream->retransmit_count = 0;
 
   stream->hit_high_watermark = false;
   stream->writes_queued_bytes = 0;
@@ -2147,6 +2205,11 @@ udx_stream_init (udx_t *udx, udx_stream_t *stream, uint32_t local_id, udx_stream
 
   // Clear congestion state
   memset(&(stream->cong), 0, sizeof(udx_cong_t));
+
+  stream->bytes_in = 0;
+  stream->bytes_out = 0;
+  stream->packets_in = 0;
+  stream->packets_out = 0;
 
   udx__cirbuf_init(&(stream->relaying_streams), 2);
 

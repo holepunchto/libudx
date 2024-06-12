@@ -129,6 +129,12 @@ struct udx_s {
   udx_stream_t **streams;
 
   udx_cirbuf_t streams_by_id;
+
+  uint64_t bytes_in;
+  uint64_t bytes_out;
+
+  uint64_t packets_in;
+  uint64_t packets_out;
 };
 
 struct udx_socket_s {
@@ -151,6 +157,12 @@ struct udx_socket_s {
 
   udx_socket_recv_cb on_recv;
   udx_socket_close_cb on_close;
+
+  uint64_t bytes_in;
+  uint64_t bytes_out;
+
+  uint64_t packets_in;
+  uint64_t packets_out;
 };
 
 typedef struct udx_cong_s {
@@ -183,6 +195,9 @@ struct udx_stream_s {
   uint8_t ca_state;
   uint32_t high_seq; // seq at time of congestion, marks end of recovery
   bool hit_high_watermark;
+  uint16_t rto_count;
+  uint16_t fast_recovery_count;
+  uint16_t retransmit_count;
   size_t writes_queued_bytes;
 
   bool reordering_seen;
@@ -267,6 +282,11 @@ struct udx_stream_s {
 
   udx_fifo_t unordered;
 
+  uint64_t bytes_in;
+  uint64_t bytes_out;
+
+  uint64_t packets_in;
+  uint64_t packets_out;
   int rc;
 };
 

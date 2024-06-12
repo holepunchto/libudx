@@ -77,6 +77,7 @@ on_a_stream_close () {
   int e = udx_socket_close(&asock, on_a_sock_close);
   assert(e == 0 && "udx_socket_close (receiver, 'a')");
 }
+
 int
 main () {
   int e;
@@ -119,9 +120,8 @@ main () {
   e = udx_stream_read_start(&astream, on_read);
   assert(e == 0);
 
-  printf("generating data ...\n");
-
-  options.size_bytes = 50 * 1024 * 1024L;
+  options.size_bytes = 500 * 1024 * 1024L;
+  printf("generating data ... (%lu bytes)\n", options.size_bytes);
 
   char *data = calloc(options.size_bytes, 1);
 
@@ -143,5 +143,10 @@ main () {
   free(req);  // valgrind
   printf("readhash=%lx writehash=%lx\n", read_hash, write_hash);
   assert(read_hash == write_hash);
+
+  printf("stats: udx:      bytes_in=%lu packets_in=%lu bytes_out=%lu packets_out=%lu\n", udx.bytes_in, udx.packets_in, udx.bytes_out, udx.packets_out);
+  printf("stats: stream a: bytes_in=%lu packets_in=%lu bytes_out=%lu packets_out=%lu\n", astream.bytes_in, astream.packets_in, astream.bytes_out, astream.packets_out);
+  printf("stats: stream b: bytes_in=%lu packets_in=%lu bytes_out=%lu packets_out=%lu\n", bstream.bytes_in, bstream.packets_in, bstream.bytes_out, bstream.packets_out);
+
   return 0;
 }
