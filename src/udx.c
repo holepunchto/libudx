@@ -987,7 +987,7 @@ udx__confirm_packet (udx_packet_t *pkt) {
     }
 
     if (pkt->transmits > 1) {
-      debug_printf("retransmit: seq=%u tmit=%d\n", pkt->seq, pkt->transmits);
+      // debug_printf("retransmit: seq=%u tmit=%d\n", pkt->seq, pkt->transmits);
       stream->retransmit_count++;
     }
 
