@@ -112,6 +112,7 @@ typedef void (*udx_stream_ack_cb)(udx_stream_write_t *req, int status, int unord
 typedef void (*udx_stream_send_cb)(udx_stream_send_t *req, int status);
 typedef void (*udx_stream_recv_cb)(udx_stream_t *stream, ssize_t read_len, const uv_buf_t *buf);
 typedef void (*udx_stream_close_cb)(udx_stream_t *stream, int status);
+typedef void (*udx_stream_finalize_cb)(udx_stream_t *stream);
 
 typedef void (*udx_lookup_cb)(udx_lookup_t *handle, int status, const struct sockaddr *addr, int addr_len);
 
@@ -223,6 +224,7 @@ struct udx_stream_s {
   udx_stream_recv_cb on_recv;
   udx_stream_drain_cb on_drain;
   udx_stream_close_cb on_close;
+  udx_stream_finalize_cb on_finalize;
 
   // mtu. RFC8899 5.1.1 and 5.1.3
   int mtu_state; // MTU_STATE_*
@@ -287,7 +289,6 @@ struct udx_stream_s {
 
   uint64_t packets_in;
   uint64_t packets_out;
-  int rc;
 };
 
 struct udx_packet_s {
@@ -441,7 +442,7 @@ int
 udx_check_timeouts (udx_t *udx);
 
 int
-udx_stream_init (udx_t *udx, udx_stream_t *stream, uint32_t local_id, udx_stream_close_cb close_cb);
+udx_stream_init (udx_t *udx, udx_stream_t *stream, uint32_t local_id, udx_stream_close_cb close_cb, udx_stream_finalize_cb finalize_cb);
 
 int
 udx_stream_get_mtu (udx_stream_t *stream, uint16_t *mtu);

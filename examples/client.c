@@ -55,7 +55,7 @@ on_read (udx_stream_t *handle, ssize_t read_len, const uv_buf_t *buf) {
 
 static void
 on_send (udx_socket_send_t *r, int status) {
-  udx_stream_init(&udx, &stream, client_id, NULL);
+  udx_stream_init(&udx, &stream, client_id, NULL, NULL);
   udx_stream_connect(&stream, &sock, server_id, (struct sockaddr *) &dest_addr);
   udx_stream_read_start(&stream, on_read);
 }

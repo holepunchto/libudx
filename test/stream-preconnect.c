@@ -66,10 +66,10 @@ main () {
   e = udx_socket_bind(&bsock, (struct sockaddr *) &baddr, 0);
   assert(e == 0);
 
-  e = udx_stream_init(&udx, &astream, 1, NULL);
+  e = udx_stream_init(&udx, &astream, 1, NULL, NULL);
   assert(e == 0);
 
-  e = udx_stream_init(&udx, &bstream, 2, NULL);
+  e = udx_stream_init(&udx, &bstream, 2, NULL, NULL);
   assert(e == 0);
 
   e = udx_stream_read_start(&astream, on_read);

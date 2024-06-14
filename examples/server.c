@@ -75,7 +75,7 @@ pump_stream () {
 
   printf("pumping %d bytes to stream to %s...\n", PUMP_BYTES, dst_ip);
 
-  udx_stream_init(&udx, &stream, server_id, on_close);
+  udx_stream_init(&udx, &stream, server_id, on_close, NULL);
   udx_stream_connect(&stream, &sock, client_id, (struct sockaddr *) &dest_addr);
 
   pump_writes();

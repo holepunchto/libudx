@@ -62,10 +62,10 @@ main () {
   e = udx_socket_bind(&asock, (struct sockaddr *) &aaddr, 0);
   assert(e == 0);
 
-  e = udx_stream_init(&udx, &astream, 1, NULL);
+  e = udx_stream_init(&udx, &astream, 1, NULL, NULL);
   assert(e == 0);
 
-  e = udx_stream_init(&udx, &bstream, 2, NULL);
+  e = udx_stream_init(&udx, &bstream, 2, NULL, NULL);
   assert(e == 0);
 
   e = udx_stream_connect(&astream, &asock, 2, (struct sockaddr *) &baddr);

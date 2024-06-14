@@ -843,10 +843,9 @@ _close_maybe (uv_handle_t *timer) {
   udx_stream_t *stream = timer->data;
   if (--stream->nrefs > 0) return;
 
-  if (stream->on_close != NULL) {
-    stream->on_close(stream, stream->rc);
+  if (stream->on_finalize) {
+    stream->on_finalize(stream);
   }
-
   ref_dec(stream->udx);
 }
 
@@ -858,8 +857,6 @@ close_maybe (udx_stream_t *stream, int err) {
   if (stream->status & UDX_STREAM_CLOSED) return 0;
   // do not close if no error and we have a STATE queued
   if (err == 0 && stream->write_wanted & UDX_STREAM_WRITE_WANT_STATE) return 0;
-
-  stream->rc = err;
 
   stream->status |= UDX_STREAM_CLOSED;
   stream->status &= ~UDX_STREAM_CONNECTED;
@@ -911,6 +908,10 @@ close_maybe (udx_stream_t *stream, int err) {
   uv_close((uv_handle_t *) &stream->rto_timer, _close_maybe);
   uv_close((uv_handle_t *) &stream->rack_reo_timer, _close_maybe);
   uv_close((uv_handle_t *) &stream->tlp_timer, _close_maybe);
+
+  if (stream->on_close != NULL) {
+    stream->on_close(stream, err);
+  }
 
   return 1;
 }
@@ -2032,6 +2033,7 @@ udx_socket_send_ttl (udx_socket_send_t *req, udx_socket_t *socket, const uv_buf_
   if (ttl < 0 /* 0 is "default" */ || ttl > 255) return UV_EINVAL;
 
   assert(bufs_len == 1);
+  UDX_UNUSED(bufs_len);
 
   req->socket = socket;
   req->on_send = cb;
@@ -2116,7 +2118,7 @@ udx_socket_close (udx_socket_t *socket, udx_socket_close_cb cb) {
 }
 
 int
-udx_stream_init (udx_t *udx, udx_stream_t *stream, uint32_t local_id, udx_stream_close_cb close_cb) {
+udx_stream_init (udx_t *udx, udx_stream_t *stream, uint32_t local_id, udx_stream_close_cb close_cb, udx_stream_finalize_cb finalize_cb) {
   ref_inc(udx);
 
   stream->local_id = local_id;
@@ -2183,8 +2185,6 @@ udx_stream_init (udx_t *udx, udx_stream_t *stream, uint32_t local_id, udx_stream
   stream->tlp_timer.data = stream;
 
   stream->nrefs = 3;
-  stream->rc = UV_UNKNOWN; // return code for stream_close, UV_UNKNOWN is a sentinel value
-
   stream->deferred_ack = 0;
 
   stream->pkts_inflight = 0;
@@ -2202,6 +2202,7 @@ udx_stream_init (udx_t *udx, udx_stream_t *stream, uint32_t local_id, udx_stream
   stream->on_recv = NULL;
   stream->on_drain = NULL;
   stream->on_close = close_cb;
+  stream->on_finalize = finalize_cb;
 
   // Clear congestion state
   memset(&(stream->cong), 0, sizeof(udx_cong_t));
@@ -2233,8 +2234,6 @@ udx_stream_init (udx_t *udx, udx_stream_t *stream, uint32_t local_id, udx_stream
   // Add the socket to the active set
 
   udx__cirbuf_set(&(udx->streams_by_id), (udx_cirbuf_val_t *) stream);
-
-  stream->rc = 0;
 
   return 0;
 }
