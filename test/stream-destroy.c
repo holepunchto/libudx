@@ -36,7 +36,7 @@ main () {
   assert(e == 0);
 
   udx_stream_t stream;
-  e = udx_stream_init(&udx, &stream, 1, on_close);
+  e = udx_stream_init(&udx, &stream, 1, on_close, NULL);
   assert(e == 0);
 
   e = udx_stream_connect(&stream, &sock, 2, (struct sockaddr *) &addr);

@@ -283,9 +283,11 @@ print_interval (udxperf_client_t *client, uint64_t bytes, uint64_t start, uint64
 
 static void
 server_on_destroy (udx_stream_t *stream, int status) {
-  udxperf_client_t *c = (udxperf_client_t *) stream;
   assert(status == 0);
+}
 
+static void
+server_on_finalize (udx_stream_t *stream) {
   free(stream);
   exit(0);
 }
@@ -342,7 +344,7 @@ server_handshake (udx_socket_t *sock, ssize_t read_len, const uv_buf_t *buf, con
 
   udx_stream_t *stream = &c->stream;
 
-  udx_stream_init(&udx, stream, server_id, server_on_destroy);
+  udx_stream_init(&udx, stream, server_id, server_on_destroy, server_on_finalize);
   udx_stream_connect(stream, sock, client_id, (struct sockaddr *) from);
 
   udx_stream_read_start(stream, server_on_read);
@@ -462,7 +464,7 @@ client_handshake_response (udx_socket_t *sock, ssize_t read_len, const uv_buf_t 
 
   assert(client_id == 1);
 
-  udx_stream_init(&udx, stream, client_id, NULL);
+  udx_stream_init(&udx, stream, client_id, NULL, NULL);
   udx_stream_connect(stream, sock, server_id, (struct sockaddr *) &raddr);
 
   assert(time_ms && "timer must be set");

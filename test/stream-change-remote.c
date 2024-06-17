@@ -122,16 +122,16 @@ main () {
   e = udx_socket_bind(&dsock, (struct sockaddr *) &daddr, 0);
   assert(e == 0);
 
-  e = udx_stream_init(&udx, &astream, 1, NULL);
+  e = udx_stream_init(&udx, &astream, 1, NULL, NULL);
   assert(e == 0);
 
-  e = udx_stream_init(&udx, &bstream, 2, NULL);
+  e = udx_stream_init(&udx, &bstream, 2, NULL, NULL);
   assert(e == 0);
 
-  e = udx_stream_init(&udx, &cstream, 3, NULL);
+  e = udx_stream_init(&udx, &cstream, 3, NULL, NULL);
   assert(e == 0);
 
-  e = udx_stream_init(&udx, &dstream, 4, NULL);
+  e = udx_stream_init(&udx, &dstream, 4, NULL, NULL);
   assert(e == 0);
 
   // a <-> b  <-relay-> c <-> d

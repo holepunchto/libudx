@@ -87,13 +87,13 @@ main () {
     e = udx_socket_bind(&sender[i].usock, (struct sockaddr *) &sender[i].addr, 0);
     assert(e == 0);
     sender[i].write = malloc(udx_stream_write_sizeof(1));
-    e = udx_stream_init(&udx, &sender[i].stream, sender_id, NULL);
+    e = udx_stream_init(&udx, &sender[i].stream, sender_id, NULL, NULL);
 
     udx_socket_init(&udx, &receiver[i].usock);
     uv_ip4_addr("127.0.0.1", 8100 + i, &receiver[i].addr);
     e = udx_socket_bind(&receiver[i].usock, (struct sockaddr *) &receiver[i].addr, 0);
     assert(e == 0);
-    e = udx_stream_init(&udx, &receiver[i].stream, receiver_id, NULL);
+    e = udx_stream_init(&udx, &receiver[i].stream, receiver_id, NULL, NULL);
     assert(e == 0);
 
     e = udx_stream_read_start(&receiver[i].stream, on_read);
