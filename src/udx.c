@@ -900,6 +900,7 @@ close_maybe (udx_stream_t *stream, int err) {
   udx__cirbuf_destroy(&stream->outgoing);
   udx__fifo_destroy(&stream->unordered);
   udx__fifo_destroy(&stream->write_queue);
+  udx__fifo_destroy(&stream->retransmit_queue);
 
   uv_timer_stop(&stream->rto_timer);
   uv_timer_stop(&stream->rack_reo_timer);
