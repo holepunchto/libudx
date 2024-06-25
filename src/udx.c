@@ -1188,7 +1188,6 @@ rack_detect_loss (udx_stream_t *stream) {
 
     if (remaining <= 0) {
       pkt->lost = true;
-      pkt->time_sent = -1;
 
       assert(pkt->size > 0 && pkt->size < 1500);
       stream->inflight -= pkt->size;
