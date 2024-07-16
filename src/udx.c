@@ -1502,11 +1502,14 @@ process_data_packet (udx_stream_t *stream, int type, uint32_t seq, char *data, s
 
     if (stream->on_read != NULL) {
       uv_buf_t buf = uv_buf_init(data, data_len);
-      uint64_t t = uv_hrtime();
+      uint64_t t;
+      if (DEBUG) t = uv_hrtime();
       stream->on_read(stream, data_len, &buf);
-      uint64_t d = uv_hrtime() - t;
-      if (d > UDX_LOG_SLOW_CALLBACK_THRESH_NS) {
-        debug_printf("slow cb: stream->on_read %lu ms", d);
+      if (DEBUG) {
+        uint64_t d = uv_hrtime() - t;
+        if (d > UDX_LOG_SLOW_CALLBACK_THRESH_NS) {
+          debug_printf("slow cb: stream->on_read %lu ms", d);
+        }
       }
     }
     return;
@@ -1676,11 +1679,14 @@ process_packet (udx_socket_t *socket, char *buf, ssize_t buf_len, struct sockadd
   if (type & UDX_HEADER_MESSAGE) {
     if (stream->on_recv != NULL) {
       uv_buf_t b = uv_buf_init(buf, buf_len);
-      uint64_t t = uv_hrtime();
+      uint64_t t;
+      if (DEBUG) t = uv_hrtime();
       stream->on_recv(stream, buf_len, &b);
-      uint64_t d = uv_hrtime() - t;
-      if (d > UDX_LOG_SLOW_CALLBACK_THRESH_NS) {
-        debug_printf("slow cb: stream->on_recv %lu ms", d / 1000000);
+      if (DEBUG) {
+        uint64_t d = uv_hrtime() - t;
+        if (d > UDX_LOG_SLOW_CALLBACK_THRESH_NS) {
+          debug_printf("slow cb: stream->on_recv %lu ms", d / 1000000);
+        }
       }
     }
   }
@@ -1695,11 +1701,14 @@ process_packet (udx_socket_t *socket, char *buf, ssize_t buf_len, struct sockadd
     stream->ack++;
 
     if ((pkt->type & UDX_HEADER_DATA) && stream->on_read != NULL) {
-      uint64_t t = uv_hrtime();
+      uint64_t t;
+      if (DEBUG) t = uv_hrtime();
       stream->on_read(stream, pkt->buf.len, &(pkt->buf));
-      uint64_t d = uv_hrtime() - t;
-      if (d > UDX_LOG_SLOW_CALLBACK_THRESH_NS) {
-        debug_printf("slow cb: stream->on_read (ooo) %lu ms", d / 1000000);
+      if (DEBUG) {
+        uint64_t d = uv_hrtime() - t;
+        if (d > UDX_LOG_SLOW_CALLBACK_THRESH_NS) {
+          debug_printf("slow cb: stream->on_read (ooo) %lu ms", d / 1000000);
+        }
       }
     }
 
@@ -1873,10 +1882,11 @@ on_uv_poll (uv_poll_t *handle, int status, int events) {
           addr_to_v4((struct sockaddr_in6 *) &addr);
         }
 
-        uint64_t t = uv_hrtime();
+        uint64_t t;
+        if (DEBUG) t = uv_hrtime();
         socket->on_recv(socket, size, &buf, (struct sockaddr *) &addr);
-        uint64_t d = uv_hrtime() - t;
-        if (d > UDX_LOG_SLOW_CALLBACK_THRESH_NS) {
+        if (DEBUG) {
+          uint64_t d = uv_hrtime() - t;
           debug_printf("slow: socket->on_recv dt=%lu ms", d / 1000000);
         }
       }
