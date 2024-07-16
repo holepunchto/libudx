@@ -1508,7 +1508,7 @@ process_data_packet (udx_stream_t *stream, int type, uint32_t seq, char *data, s
       if (DEBUG) {
         uint64_t d = uv_hrtime() - t;
         if (d > UDX_LOG_SLOW_CALLBACK_THRESH_NS) {
-          debug_printf("slow cb: stream->on_read %lu ms", d);
+          debug_printf("slow cb: stream->on_read %lu ms", d / 1000000);
         }
       }
     }
