@@ -1887,7 +1887,9 @@ on_uv_poll (uv_poll_t *handle, int status, int events) {
         socket->on_recv(socket, size, &buf, (struct sockaddr *) &addr);
         if (DEBUG) {
           uint64_t d = uv_hrtime() - t;
-          debug_printf("slow: socket->on_recv dt=%lu ms", d / 1000000);
+          if (d > UDX_LOG_SLOW_CALLBACK_THRESH_NS) {
+            debug_printf("slow cb: socket->on_recv dt=%lu ms", d / 1000000);
+          }
         }
       }
 
