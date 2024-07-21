@@ -84,6 +84,7 @@ typedef struct {
 typedef struct udx_s udx_t;
 typedef struct udx_socket_s udx_socket_t;
 typedef struct udx_stream_s udx_stream_t;
+typedef struct udx_queue_node_s udx_queue_node_t;
 typedef struct udx_packet_s udx_packet_t;
 
 typedef struct udx_socket_send_s udx_socket_send_t;
@@ -137,6 +138,16 @@ struct udx_s {
   uint64_t packets_in;
   uint64_t packets_out;
 };
+
+struct udx_queue_node_s {
+  udx_queue_node_t *next;
+  udx_queue_node_t *prev;
+};
+
+typedef struct udx_queue_s {
+  udx_queue_node_t node;
+  uint32_t len;
+} udx_queue_t;
 
 struct udx_socket_s {
   uv_udp_t handle;
@@ -250,7 +261,7 @@ struct udx_stream_s {
   uint32_t rack_next_seq;
   uint32_t rack_fack;
 
-  uint32_t pkts_inflight; // packets inflight to the other peer
+  // uint32_t pkts_inflight; // packets inflight to the other peer. now inflight_queue.len
   uint32_t pkts_buffered; // how many (data) packets received but not processed (out of order)?
 
   // tlp
@@ -280,7 +291,8 @@ struct udx_stream_s {
   udx_cirbuf_t outgoing;
   udx_cirbuf_t incoming;
 
-  udx_fifo_t retransmit_queue; // udx_packet_t
+  udx_queue_t retransmit_queue; // udx_packet_t
+  udx_queue_t inflight_queue;   // udx_packet_t
 
   udx_fifo_t unordered;
 
@@ -293,6 +305,7 @@ struct udx_stream_s {
 
 struct udx_packet_s {
   uint32_t seq; // must be the first entry, so its compat with the cirbuf
+  udx_queue_node_t queue;
 
   int type;
   int ttl;
