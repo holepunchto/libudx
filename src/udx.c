@@ -1097,6 +1097,9 @@ udx__unshift_packet (udx_packet_t *pkt, udx_socket_t *socket) {
   if (pkt->type == UDX_PACKET_TYPE_STREAM_DESTROY) {
     udx_stream_t *stream = pkt->ctx;
 
+    // the socket wasn't ready to send our packet, prepare to try again
+    // 1. reset the UDX_STREAM_WRITE_WANT_DESTROY flag
+    // 2. reset the sequence number so that we don't create a gap in the stream
     if (pkt->seq + 1 == stream->seq) {
       stream->seq--;
     }
