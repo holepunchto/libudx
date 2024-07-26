@@ -1096,6 +1096,14 @@ udx__unshift_packet (udx_packet_t *pkt, udx_socket_t *socket) {
 
   if (pkt->type == UDX_PACKET_TYPE_STREAM_DESTROY) {
     udx_stream_t *stream = pkt->ctx;
+
+    // the socket wasn't ready to send our packet, prepare to try again
+    // 1. reset the UDX_STREAM_WRITE_WANT_DESTROY flag
+    // 2. reset the sequence number so that we don't create a gap in the stream
+    if (pkt->seq + 1 == stream->seq) {
+      stream->seq--;
+    }
+
     stream->write_wanted |= UDX_STREAM_WRITE_WANT_DESTROY;
     free(pkt);
     return;
@@ -1129,7 +1137,10 @@ udx_tlp_timeout (uv_timer_t *timer) {
   udx_stream_t *stream = timer->data;
 
   assert(stream->status & UDX_STREAM_CONNECTED);
-  assert(stream->remote_acked != stream->seq);
+
+  if (stream->remote_acked == stream->seq) {
+    return;
+  }
 
   if (stream->tlp_in_flight || !stream->tlp_permitted) {
     schedule_loss_probe(stream);
@@ -1736,6 +1747,11 @@ process_packet (udx_socket_t *socket, char *buf, ssize_t buf_len, struct sockadd
     if (a == 2) { // it ended, so ack that and trigger close
       // TODO: make this work as well, if the ack packet is lost, ie
       // have some internal (capped) queue of "gracefully closed" streams (TIME_WAIT)
+
+      if (stream->remote_acked == stream->seq) {
+        uv_timer_stop(&stream->rto_timer);
+        uv_timer_stop(&stream->tlp_timer);
+      }
 
       stream->write_wanted |= UDX_STREAM_WRITE_WANT_STATE;
       update_poll(stream->socket);
