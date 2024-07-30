@@ -261,7 +261,6 @@ struct udx_stream_s {
   uint32_t rack_next_seq;
   uint32_t rack_fack;
 
-  // uint32_t pkts_inflight; // packets inflight to the other peer. now inflight_queue.len
   uint32_t pkts_buffered; // how many (data) packets received but not processed (out of order)?
 
   // tlp
