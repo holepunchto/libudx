@@ -1202,6 +1202,10 @@ rack_detect_loss (udx_stream_t *stream) {
 
     // debug_printf("%lu > %lu=%d\n", stream->rack_time_sent, pkt->time_sent, stream->rack_time_sent > pkt->time_sent);
 
+    if (pkt->time_sent > stream->rack_time_sent) {
+      break;
+    }
+
     if (rack_sent_after(stream->rack_time_sent, stream->rack_next_seq, pkt->time_sent, pkt->seq + 1)) {
 
       int64_t remaining = pkt->time_sent + stream->rack_rtt + reo_wnd - now;
@@ -1224,7 +1228,6 @@ rack_detect_loss (udx_stream_t *stream) {
 
       } else if ((uint64_t) remaining > timeout) {
         timeout = remaining;
-        break;
       }
     }
   }
