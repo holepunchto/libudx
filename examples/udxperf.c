@@ -157,8 +157,7 @@ const char *kLabel_Byte[] =
     "MByte",
     "GByte",
     "TByte",
-    "PByte"
-};
+    "PByte"};
 
 /* labels for bit formats [kmg] */
 const char *kLabel_bit[] =
@@ -168,8 +167,7 @@ const char *kLabel_bit[] =
     "Mbit",
     "Gbit",
     "Tbit",
-    "Pbit"
-};
+    "Pbit"};
 
 /* -------------------------------------------------------------------
  * byte_snprintf
@@ -274,7 +272,7 @@ print_interval (udxperf_client_t *client, uint64_t bytes, uint64_t start, uint64
   byte_snprintf(bps_buf, sizeof bps_buf, bytes / time_sec, 'a');
   bps_buf[19] = '\0';
 
-  printf("[%3d] %6.4f-%6.4f sec %s %s/sec", stream->local_id, (start - client->start_time) / 1000.0, (end - client->start_time) / 1000.0, bytes_buf, bps_buf, stream->cwnd);
+  printf("[%3d] %6.4f-%6.4f sec %s %s/sec", stream->local_id, (start - client->start_time) / 1000.0, (end - client->start_time) / 1000.0, bytes_buf, bps_buf);
   if (is_client && extra_wanted) {
     printf(" cwnd=%d ssthresh=%d fast_recovery_count=%d rto_count=%d rtx_count=%d", stream->cwnd, stream->ssthresh, stream->fast_recovery_count, stream->rto_count, stream->retransmit_count);
   }
