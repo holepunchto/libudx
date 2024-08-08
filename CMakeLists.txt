@@ -32,8 +32,6 @@ target_sources(
     src/cirbuf.c
     src/endian.h
     src/endian.c
-    src/fifo.h
-    src/fifo.c
     src/queue.c
     src/queue.h
     src/io.h

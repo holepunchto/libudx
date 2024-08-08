@@ -13,7 +13,6 @@
 #include "cirbuf.h"
 #include "debug.h"
 #include "endian.h"
-#include "fifo.h"
 #include "io.h"
 #include "queue.h"
 
@@ -160,8 +159,6 @@ static void
 trigger_socket_close (udx_socket_t *socket) {
   if (--socket->pending_closes) return;
 
-  udx__fifo_destroy(&(socket->send_queue));
-
   if (socket->on_close != NULL) {
     socket->on_close(socket);
   }
@@ -203,7 +200,7 @@ stream_write_wanted (udx_stream_t *stream) {
     return true;
   }
 
-  return stream->inflight_queue.len < stream->cwnd && ((stream->write_queue.len > 0) || stream->retransmit_queue.len > 0 || stream->unordered.len > 0);
+  return stream->inflight_queue.len < stream->cwnd && ((stream->write_queue.len > 0) || stream->retransmit_queue.len > 0 || stream->unordered_queue.len > 0);
 }
 
 static bool
@@ -443,7 +440,9 @@ clear_outgoing_packets (udx_stream_t *stream) {
   }
 
   while (stream->write_queue.len > 0) {
-    udx_stream_write_buf_t *wbuf = udx__fifo_shift(&stream->write_queue);
+    // udx_packet_t *pkt = udx__queue_data(udx__queue_shift(&stream->retransmit_queue), udx_packet_t, queue);
+
+    udx_stream_write_buf_t *wbuf = udx__queue_data(udx__queue_shift(&stream->write_queue), udx_stream_write_buf_t, queue);
     assert(wbuf != NULL);
     debug_printf("cancel wbuf: %lu/%lu\n", wbuf->bytes_acked, wbuf->buf.len);
 
@@ -455,24 +454,20 @@ clear_outgoing_packets (udx_stream_t *stream) {
     }
   }
 
-  // also clear pending unordered packets, and the destroy packet if waiting
-  udx_fifo_t *u = &(stream->unordered);
-
-  while (u->len > 0) {
-    udx_packet_t *pkt = udx__fifo_shift(u);
+  while (stream->unordered_queue.len > 0) {
+    udx_packet_t *pkt = udx__queue_data(udx__queue_shift(&stream->unordered_queue), udx_packet_t, queue);
     if (pkt == NULL) continue;
 
-    if (pkt->type == UDX_PACKET_TYPE_STREAM_SEND) {
-      udx_stream_send_t *req = pkt->ctx;
+    assert(pkt->type == UDX_PACKET_TYPE_STREAM_SEND);
 
-      if (req->on_send != NULL) {
-        req->on_send(req, UV_ECANCELED);
-      }
+    udx_stream_send_t *req = pkt->ctx;
+    assert((void *) req == (void *) pkt);
+
+    if (req->on_send != NULL) {
+      req->on_send(req, UV_ECANCELED);
     }
 
-    if (pkt->type & UDX_PACKET_FREE_ON_SEND) {
-      free(pkt);
-    }
+    assert(!(pkt->type & UDX_PACKET_FREE_ON_SEND));
   }
 }
 
@@ -610,10 +605,7 @@ udx_packet_t *
 udx__shift_packet (udx_socket_t *socket) {
 
   while (socket->send_queue.len > 0) {
-    udx_packet_t *pkt = udx__fifo_shift(&socket->send_queue);
-    if (pkt == NULL) {
-      continue;
-    }
+    udx_packet_t *pkt = udx__queue_data(udx__queue_shift(&socket->send_queue), udx_packet_t, queue);
     return pkt;
   }
 
@@ -623,9 +615,8 @@ udx__shift_packet (udx_socket_t *socket) {
     return NULL;
   }
 
-  if (stream->unordered.len > 0) {
-    udx_packet_t *pkt = udx__fifo_shift(&stream->unordered);
-    assert(pkt != NULL);
+  if (stream->unordered_queue.len > 0) {
+    udx_packet_t *pkt = udx__queue_data(udx__queue_shift(&stream->unordered_queue), udx_packet_t, queue);
     return pkt;
   }
 
@@ -746,7 +737,7 @@ udx__shift_packet (udx_socket_t *socket) {
     size_t size = 0;
 
     while (capacity > 0 && nwbufs < UDX_MAX_COMBINED_WRITES && stream->write_queue.len > 0) {
-      udx_stream_write_buf_t *wbuf = udx__fifo_peek(&stream->write_queue);
+      udx_stream_write_buf_t *wbuf = udx__queue_data(udx__queue_peek(&stream->write_queue), udx_stream_write_buf_t, queue);
 
       uv_buf_t *buf = &wbuf->buf;
 
@@ -773,7 +764,7 @@ udx__shift_packet (udx_socket_t *socket) {
         if (wbuf->is_write_end) {
           header_flag |= UDX_HEADER_END;
         }
-        udx__fifo_shift(&stream->write_queue);
+        udx__queue_shift(&stream->write_queue);
       }
     }
 
@@ -905,8 +896,6 @@ close_maybe (udx_stream_t *stream, int err) {
   udx__cirbuf_destroy(&stream->relaying_streams);
   udx__cirbuf_destroy(&stream->incoming);
   udx__cirbuf_destroy(&stream->outgoing);
-  udx__fifo_destroy(&stream->unordered);
-  udx__fifo_destroy(&stream->write_queue);
 
   uv_timer_stop(&stream->rto_timer);
   uv_timer_stop(&stream->rack_reo_timer);
@@ -1030,7 +1019,7 @@ void
 udx__unshift_packet (udx_packet_t *pkt, udx_socket_t *socket) {
 
   if (pkt->type == UDX_PACKET_TYPE_SOCKET_SEND || pkt->type == UDX_PACKET_TYPE_STREAM_RELAY) {
-    udx__fifo_undo(&socket->send_queue);
+    udx__queue_head(&socket->send_queue, &pkt->queue);
     return;
   }
 
@@ -1069,7 +1058,7 @@ udx__unshift_packet (udx_packet_t *pkt, udx_socket_t *socket) {
       for (int i = 0; i < pkt->nwbufs; i++) {
         udx_stream_write_buf_t *wbuf = pkt->wbufs[i];
         if (wbuf->bytes_acked + wbuf->bytes_inflight == wbuf->buf.len) {
-          udx__fifo_undo(&stream->write_queue);
+          udx__queue_head(&stream->write_queue, &wbuf->queue);
         }
 
         wbuf->bytes_inflight -= bufs[(pkt->is_mtu_probe ? 2 : 1) + i].len;
@@ -1090,7 +1079,7 @@ udx__unshift_packet (udx_packet_t *pkt, udx_socket_t *socket) {
   if (pkt->type == UDX_PACKET_TYPE_STREAM_SEND) {
     udx_stream_send_t *req = pkt->ctx;
     udx_stream_t *stream = req->stream;
-    udx__fifo_undo(&stream->unordered);
+    udx__queue_head(&stream->unordered_queue, &pkt->queue);
     return;
   }
 
@@ -1581,7 +1570,7 @@ relay_packet (udx_stream_t *stream, char *buf, ssize_t buf_len, int type, uint8_
       pkt->header[3] = data_offset;
       pkt->seq = seq;
 
-      udx__fifo_push(&relay->socket->send_queue, pkt);
+      udx__queue_tail(&relay->socket->send_queue, &pkt->queue);
       update_poll(relay->socket);
     }
   }
@@ -1853,7 +1842,7 @@ static bool
 check_if_streams_have_data (udx_socket_t *socket) {
   for (uint32_t i = 0; i < socket->udx->streams_len; i++) {
     udx_stream_t *stream = socket->udx->streams[i];
-    if (stream->socket == socket && (stream->unordered.len > 0 || stream->write_queue.len > 0 || stream->retransmit_queue.len > 0 || stream->write_wanted)) {
+    if (stream->socket == socket && (stream->unordered_queue.len > 0 || stream->write_queue.len > 0 || stream->retransmit_queue.len > 0 || stream->write_wanted)) {
       return true;
     }
   }
@@ -1948,9 +1937,8 @@ udx_socket_init (udx_t *udx, udx_socket_t *socket) {
   socket->packets_in = 0;
   socket->packets_out = 0;
 
-  udx__fifo_init(&(socket->send_queue), 16);
-
   uv_udp_t *handle = &(socket->handle);
+  udx__queue_init(&socket->send_queue);
 
   // Asserting all the errors here as it massively simplifies error handling.
   // In practice these will never fail.
@@ -2090,8 +2078,7 @@ udx_socket_send_ttl (udx_socket_send_t *req, udx_socket_t *socket, const uv_buf_
 
   buf[0] = bufs[0];
 
-  // pkt->send_queue = &socket->send_queue;
-  pkt->fifo_gc = udx__fifo_push(&socket->send_queue, pkt);
+  udx__queue_tail(&socket->send_queue, &pkt->queue);
   return update_poll(socket);
 }
 
@@ -2126,7 +2113,7 @@ udx_socket_close (udx_socket_t *socket, udx_socket_close_cb cb) {
   // allow stream packets to flush, but cancel anything else
 
   while (socket->send_queue.len > 0) {
-    udx_packet_t *pkt = udx__fifo_shift(&socket->send_queue);
+    udx_packet_t *pkt = udx__queue_data(udx__queue_shift(&socket->send_queue), udx_packet_t, queue);
     assert(pkt != NULL);
     assert(pkt->type == UDX_PACKET_TYPE_SOCKET_SEND);
 
@@ -2215,6 +2202,8 @@ udx_stream_init (udx_t *udx, udx_stream_t *stream, uint32_t local_id, udx_stream
 
   udx__queue_init(&stream->inflight_queue);
   udx__queue_init(&stream->retransmit_queue);
+  udx__queue_init(&stream->unordered_queue);
+  udx__queue_init(&stream->write_queue);
 
   stream->pkts_buffered = 0;
 
@@ -2245,10 +2234,6 @@ udx_stream_init (udx_t *udx, udx_stream_t *stream, uint32_t local_id, udx_stream
   // Init stream write/read buffers
   udx__cirbuf_init(&(stream->outgoing), 16);
   udx__cirbuf_init(&(stream->incoming), 16);
-  udx__fifo_init(&(stream->unordered), 1);
-
-  udx__fifo_init(&stream->write_queue, 1);
-
   udx__queue_init(&stream->inflight_queue);
   udx__queue_init(&stream->retransmit_queue);
 
@@ -2471,8 +2456,7 @@ udx_stream_send (udx_stream_send_t *req, udx_stream_t *stream, const uv_buf_t bu
   pkt->ttl = 0;
   pkt->ctx = req;
 
-  pkt->fifo_gc = udx__fifo_push(&stream->unordered, pkt);
-
+  udx__queue_tail(&stream->unordered_queue, &pkt->queue);
   return update_poll(socket);
 }
 
@@ -2516,7 +2500,7 @@ _udx_stream_write (udx_stream_write_t *write, udx_stream_t *stream, const uv_buf
     if (is_write_end && i == bufs_len - 1) {
       wbuf->is_write_end = true;
     }
-    udx__fifo_push(&stream->write_queue, wbuf);
+    udx__queue_tail(&stream->write_queue, &wbuf->queue);
   }
 }
 

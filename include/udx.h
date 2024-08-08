@@ -73,14 +73,6 @@ typedef struct {
   udx_cirbuf_val_t **values;
 } udx_cirbuf_t;
 
-typedef struct {
-  uint32_t btm;
-  uint32_t len;
-  uint32_t max_len;
-  uint32_t mask;
-  void **values;
-} udx_fifo_t;
-
 typedef struct udx_s udx_t;
 typedef struct udx_socket_s udx_socket_t;
 typedef struct udx_stream_s udx_stream_t;
@@ -153,7 +145,7 @@ struct udx_socket_s {
   uv_udp_t handle;
   uv_poll_t io_poll;
 
-  udx_fifo_t send_queue;
+  udx_queue_t send_queue;
 
   udx_t *udx;
   udx_cirbuf_t *streams_by_id; // for convenience
@@ -286,14 +278,16 @@ struct udx_stream_s {
   // congestion state
   udx_cong_t cong;
 
-  udx_fifo_t write_queue; // udx_stream_write_t
+  udx_queue_t write_queue;
+
   udx_cirbuf_t outgoing;
   udx_cirbuf_t incoming;
 
   udx_queue_t retransmit_queue; // udx_packet_t
   udx_queue_t inflight_queue;   // udx_packet_t
 
-  udx_fifo_t unordered;
+  // udx_queue_t unordered;
+  udx_queue_t unordered_queue;
 
   uint64_t bytes_in;
   uint64_t bytes_out;
@@ -322,8 +316,6 @@ struct udx_packet_s {
   struct sockaddr_storage dest;
   int dest_len;
 
-  uint32_t fifo_gc; // for removing from inflight / retransmit queue
-
   // just alloc it in place here, easier to manage
   char header[UDX_HEADER_SIZE];
   unsigned short nbufs;
@@ -346,6 +338,7 @@ struct udx_socket_send_s {
 struct udx_stream_write_buf_s {
   // immutable original buf
   uv_buf_t buf;
+  udx_queue_node_t queue;
 
   // 1. remove from write_queue when bytes_inflight + bytes_acked == buf.len
   // 2. free when bytes_acked == buf.len

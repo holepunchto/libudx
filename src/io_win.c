@@ -1,7 +1,6 @@
 #include <assert.h>
 #include <uv.h>
 
-#include "fifo.h"
 #include "internal.h"
 #include "io.h"
 

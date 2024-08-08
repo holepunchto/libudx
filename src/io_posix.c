@@ -12,7 +12,6 @@
 #include <uv.h>
 
 #include "../include/udx.h"
-#include "fifo.h"
 #include "internal.h"
 #include "io.h"
 
