@@ -43,6 +43,7 @@
 #define UDX_CONG_CUBE_FACTOR UDX_CONG_C_SCALE / UDX_CONG_C
 #define UDX_CONG_INIT_CWND   10
 #define UDX_CONG_MAX_CWND    65536
+#define UDX_RTO_MAX_MS       30000
 
 #define UDX_HIGH_WATERMARK 262144
 
@@ -222,6 +223,10 @@ socket_write_wanted (udx_socket_t *socket) {
 
 static int
 update_poll (udx_socket_t *socket) {
+  if (socket->status & UDX_SOCKET_CLOSING_HANDLES) {
+    assert(!uv_is_active((uv_handle_t *) &socket->io_poll));
+    return 0;
+  }
   int events = UV_READABLE;
 
   if (socket_write_wanted(socket)) {
@@ -1421,6 +1426,11 @@ ack_packet (udx_stream_t *stream, uint32_t seq, int sack) {
 
     // RTO <- SRTT + max (G, K*RTTVAR) where K is 4 maxed with 1s
     stream->rto = max_uint32(stream->srtt + 4 * stream->rttvar, 1000);
+
+    if (stream->rto > UDX_RTO_MAX_MS) {
+      debug_printf("rto: computed rto=%u ms, capping to %u ms\n", stream->rto, UDX_RTO_MAX_MS);
+      stream->rto = UDX_RTO_MAX_MS;
+    }
   }
 
   // rack 6.2 step 2 update the state for the most recently sent segment
@@ -1890,10 +1900,7 @@ on_uv_poll (uv_poll_t *handle, int status, int events) {
     }
   }
 
-  // update the poll if the socket is still active.
-  if (uv_is_active((uv_handle_t *) &socket->io_poll)) {
-    update_poll(socket);
-  }
+  update_poll(socket);
 }
 
 int
