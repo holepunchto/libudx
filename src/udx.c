@@ -440,8 +440,6 @@ clear_outgoing_packets (udx_stream_t *stream) {
   }
 
   while (stream->write_queue.len > 0) {
-    // udx_packet_t *pkt = udx__queue_data(udx__queue_shift(&stream->retransmit_queue), udx_packet_t, queue);
-
     udx_stream_write_buf_t *wbuf = udx__queue_data(udx__queue_shift(&stream->write_queue), udx_stream_write_buf_t, queue);
     assert(wbuf != NULL);
     debug_printf("cancel wbuf: %lu/%lu\n", wbuf->bytes_acked, wbuf->buf.len);
