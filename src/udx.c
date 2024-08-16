@@ -44,6 +44,7 @@
 #define UDX_CONG_INIT_CWND   10
 #define UDX_CONG_MAX_CWND    65536
 #define UDX_RTO_MAX_MS       30000
+#define UDX_RTT_MAX_MS       30000
 
 #define UDX_HIGH_WATERMARK 262144
 
@@ -68,6 +69,11 @@ cubic_root (uint64_t a) {
 static uint32_t
 max_uint32 (uint32_t a, uint32_t b) {
   return a < b ? b : a;
+}
+
+static uint32_t
+min_uint32 (uint32_t a, uint32_t b) {
+  return a < b ? a : b;
 }
 
 static uint64_t
@@ -1356,6 +1362,27 @@ ack_update (udx_stream_t *stream, uint32_t acked, bool is_limited) {
 static void
 rack_detect_loss_and_arm_timer (uv_timer_t *timer);
 
+// processing packets after waking from suspend may result in
+// spurious RTT values, where the RTT value includes the time spent suspended.
+// to prevent extremely long RTO timeouts we heuristically
+// clamp RTT samples over 5 seconds and over srtt + 5 * rttvar
+// to min(srtt + 5 * rttvar, 30s)
+
+static uint32_t
+clamp_rtt (udx_stream_t *stream, uint64_t rtt) {
+  // first sample special case, just clamp to max
+  if (stream->srtt == 0) {
+    return min_uint32(rtt, UDX_RTT_MAX_MS);
+  }
+  const uint32_t outlier_threshold = stream->srtt + 5 * stream->rttvar;
+  if (rtt > outlier_threshold && rtt > 5000) {
+    rtt = min_uint32(outlier_threshold, UDX_RTT_MAX_MS);
+    debug_printf("rtt: clamp rtt for stream=%u to rtt=%lu\n", stream->remote_id, rtt);
+  }
+
+  return rtt;
+}
+
 static int
 ack_packet (udx_stream_t *stream, uint32_t seq, int sack) {
   udx_cirbuf_t *out = &(stream->outgoing);
@@ -1400,7 +1427,7 @@ ack_packet (udx_stream_t *stream, uint32_t seq, int sack) {
   }
 
   const uint64_t time = uv_now(stream->udx->loop);
-  const uint32_t rtt = (uint32_t) (time - pkt->time_sent);
+  const uint32_t rtt = clamp_rtt(stream, time - pkt->time_sent);
   const uint32_t next = seq + 1;
 
   if (!pkt->retransmitted) {
