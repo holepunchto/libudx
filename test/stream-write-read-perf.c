@@ -144,9 +144,9 @@ main () {
   printf("readhash=%lx writehash=%lx\n", read_hash, write_hash);
   assert(read_hash == write_hash);
 
-  printf("stats: udx:      bytes_in=%lu packets_in=%lu bytes_out=%lu packets_out=%lu\n", udx.bytes_in, udx.packets_in, udx.bytes_out, udx.packets_out);
-  printf("stats: stream a: bytes_in=%lu packets_in=%lu bytes_out=%lu packets_out=%lu\n", astream.bytes_in, astream.packets_in, astream.bytes_out, astream.packets_out);
-  printf("stats: stream b: bytes_in=%lu packets_in=%lu bytes_out=%lu packets_out=%lu\n", bstream.bytes_in, bstream.packets_in, bstream.bytes_out, bstream.packets_out);
+  printf("stats: udx:      bytes_rx=%lu packets_rx=%lu bytes_tx=%lu packets_tx=%lu\n", udx.bytes_rx, udx.packets_rx, udx.bytes_tx, udx.packets_tx);
+  printf("stats: stream a: bytes_rx=%lu packets_rx=%lu bytes_tx=%lu packets_tx=%lu\n", astream.bytes_rx, astream.packets_rx, astream.bytes_tx, astream.packets_tx);
+  printf("stats: stream b: bytes_rx=%lu packets_rx=%lu bytes_tx=%lu packets_tx=%lu\n", bstream.bytes_rx, bstream.packets_rx, bstream.bytes_tx, bstream.packets_tx);
 
   return 0;
 }
