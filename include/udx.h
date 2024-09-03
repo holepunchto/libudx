@@ -58,10 +58,11 @@ extern "C" {
 #define UDX_HEADER_MESSAGE 0b01000
 #define UDX_HEADER_DESTROY 0b10000
 
-#define UDX_STREAM_WRITE_WANT_DATA    0b0001
-#define UDX_STREAM_WRITE_WANT_STATE   0b0010
-#define UDX_STREAM_WRITE_WANT_TLP     0b0100
-#define UDX_STREAM_WRITE_WANT_DESTROY 0b1000
+#define UDX_STREAM_WRITE_WANT_DATA    0b00001
+#define UDX_STREAM_WRITE_WANT_STATE   0b00010
+#define UDX_STREAM_WRITE_WANT_TLP     0b00100
+#define UDX_STREAM_WRITE_WANT_DESTROY 0b01000
+#define UDX_STREAM_WRITE_WANT_ZWP     0b10000
 
 typedef struct {
   uint32_t seq;
@@ -197,6 +198,7 @@ struct udx_stream_s {
   uint32_t high_seq; // seq at time of congestion, marks end of recovery
   bool hit_high_watermark;
   uint16_t rto_count;
+  uint16_t zwp_count;
   uint16_t fast_recovery_count;
   uint16_t retransmit_count;
   size_t writes_queued_bytes;
@@ -234,9 +236,9 @@ struct udx_stream_s {
   int mtu_max;        // min(UDX_MTU_MAX, get_link_mtu(remote_addr))
   uint16_t mtu;
 
-  uint32_t seq;
-  uint32_t ack;
-  uint32_t remote_acked;
+  uint32_t seq;          // tcp snd.nxt
+  uint32_t ack;          // tcp rcv.nxt
+  uint32_t remote_acked; // tcp snd.una
   uint32_t remote_ended;
 
   uint32_t srtt;
@@ -264,14 +266,19 @@ struct udx_stream_s {
   uv_timer_t rto_timer;
   uv_timer_t rack_reo_timer;
   uv_timer_t tlp_timer;
+  uv_timer_t zwp_timer;
 
   size_t inflight;
 
   uint32_t sacks;
   uint32_t ssthresh;
-  uint32_t cwnd;
+  uint32_t cwnd; // packets
   uint32_t cwnd_cnt;
-  uint32_t rwnd;
+  uint32_t recv_rwnd; // tcp: rcv.wnd. bytes
+  uint32_t send_rwnd; // remote advertised rwnd
+
+  uint32_t send_wl1; // seq at last window update
+  uint32_t send_wl2; // ack at last window update
 
   // congestion state
   udx_cong_t cong;
@@ -300,6 +307,7 @@ struct udx_packet_s {
   bool lost;
   bool retransmitted;
   bool is_tlp;
+  bool is_zwp;
   uint8_t transmits;
   bool is_mtu_probe;
   uint16_t size;
