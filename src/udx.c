@@ -2107,6 +2107,7 @@ udx_socket_send_ttl (udx_socket_send_t *req, udx_socket_t *socket, const uv_buf_
   pkt->retransmitted = false;
   pkt->transmits = 0;
   pkt->nbufs = 1;
+  pkt->size = bufs[0].len;
 
   uv_buf_t *buf = (uv_buf_t *) (pkt + 1);
 
