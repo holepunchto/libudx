@@ -203,11 +203,16 @@ stream_write_wanted (udx_stream_t *stream) {
     return false;
   }
 
-  if (stream->write_wanted) {
+  if (stream->status & UDX_STREAM_DEAD) {
+    // streams marked dead may only send their destroy packet and a pending ack
+    return stream->write_wanted & (UDX_STREAM_WRITE_WANT_DESTROY | UDX_STREAM_WRITE_WANT_STATE);
+  }
+
+  if (stream->unordered.len > 0 || stream->write_wanted) {
     return true;
   }
 
-  return stream->pkts_inflight < stream->cwnd && ((stream->write_queue.len > 0) || stream->retransmit_queue.len > 0 || stream->unordered.len > 0);
+  return stream->pkts_inflight < stream->cwnd && (stream->write_queue.len > 0 || stream->retransmit_queue.len > 0);
 }
 
 static bool
@@ -592,7 +597,7 @@ mtu_unprobeify_packet (udx_packet_t *pkt, udx_stream_t *stream) {
 // todo: inefficient
 
 static udx_stream_t *
-get_stream (udx_socket_t *socket) {
+get_next_writable_stream (udx_socket_t *socket) {
   for (uint32_t i = 0; i < socket->udx->streams_len; i++) {
     udx_stream_t *stream = socket->udx->streams[i];
     if (stream->socket == socket && stream_write_wanted(stream)) {
@@ -623,7 +628,7 @@ udx__shift_packet (udx_socket_t *socket) {
 
   udx_stream_t *stream;
 
-  while ((stream = get_stream(socket)) != NULL) {
+  while ((stream = get_next_writable_stream(socket)) != NULL) {
 
     if (stream->unordered.len > 0) {
       udx_packet_t *pkt = udx__fifo_shift(&stream->unordered);
@@ -823,7 +828,7 @@ udx__shift_packet (udx_socket_t *socket) {
 
     // if we don't have a new packet to send to satisfy TLP, re-transmit an old one
 
-    if (stream->write_wanted & UDX_STREAM_WRITE_WANT_TLP && stream->write_queue.len == 0) {
+    if (!(stream->status & UDX_STREAM_DEAD) && stream->write_wanted & UDX_STREAM_WRITE_WANT_TLP && stream->write_queue.len == 0) {
       // rack 7.3
       stream->write_wanted &= ~UDX_STREAM_WRITE_WANT_TLP;
 
@@ -1876,8 +1881,12 @@ static bool
 check_if_streams_have_data (udx_socket_t *socket) {
   for (uint32_t i = 0; i < socket->udx->streams_len; i++) {
     udx_stream_t *stream = socket->udx->streams[i];
-    if (stream->socket == socket && (stream->unordered.len > 0 || stream->write_queue.len > 0 || stream->retransmit_queue.len > 0 || stream->write_wanted)) {
-      return true;
+    if (stream->socket == socket) {
+      if (stream->status & UDX_STREAM_DEAD) {
+        if (stream->write_wanted & (UDX_STREAM_WRITE_WANT_DESTROY | UDX_STREAM_WRITE_WANT_STATE)) return true;
+      } else {
+        if (stream->write_wanted || stream->write_queue.len > 0 || stream->retransmit_queue.len > 0 || stream->unordered.len > 0) return true;
+      }
     }
   }
   return false;
