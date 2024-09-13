@@ -832,6 +832,7 @@ udx__shift_packet (udx_socket_t *socket) {
       if (pkt->lost) {
         udx__queue_unlink(&stream->retransmit_queue, &pkt->queue);
         udx__queue_tail(&stream->inflight_queue, &pkt->queue);
+        stream->inflight += pkt->size;
       }
 
       stream->tlp_is_retrans = true;
