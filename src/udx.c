@@ -827,7 +827,9 @@ udx__shift_packet (udx_socket_t *socket) {
       }
       debug_printf("\n");
 
-      // if packet is in retransmit queue, move it to inflight queue
+      // we selected the packet with the highest sequence number to retransmit
+      // it may be in-flight already or it may be marked 'lost' (in the retransmit queue)
+      // if not inflight already, mark it inflight and adjust counters:
 
       if (pkt->lost) {
         udx__queue_unlink(&stream->retransmit_queue, &pkt->queue);
