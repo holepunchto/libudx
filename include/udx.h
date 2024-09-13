@@ -124,11 +124,11 @@ struct udx_s {
 
   udx_cirbuf_t streams_by_id;
 
-  uint64_t bytes_in;
-  uint64_t bytes_out;
+  uint64_t bytes_rx;
+  uint64_t bytes_tx;
 
-  uint64_t packets_in;
-  uint64_t packets_out;
+  uint64_t packets_rx;
+  uint64_t packets_tx;
 };
 
 struct udx_queue_node_s {
@@ -162,11 +162,11 @@ struct udx_socket_s {
   udx_socket_recv_cb on_recv;
   udx_socket_close_cb on_close;
 
-  uint64_t bytes_in;
-  uint64_t bytes_out;
+  uint64_t bytes_rx;
+  uint64_t bytes_tx;
 
-  uint64_t packets_in;
-  uint64_t packets_out;
+  uint64_t packets_rx;
+  uint64_t packets_tx;
 };
 
 typedef struct udx_cong_s {
@@ -289,11 +289,11 @@ struct udx_stream_s {
   // udx_queue_t unordered;
   udx_queue_t unordered_queue;
 
-  uint64_t bytes_in;
-  uint64_t bytes_out;
+  uint64_t bytes_rx;
+  uint64_t bytes_tx;
 
-  uint64_t packets_in;
-  uint64_t packets_out;
+  uint64_t packets_rx;
+  uint64_t packets_tx;
 };
 
 struct udx_packet_s {
