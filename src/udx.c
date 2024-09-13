@@ -842,8 +842,15 @@ udx__shift_packet (udx_socket_t *socket) {
       }
       debug_printf("\n");
 
-      // packet may not actually be in the retransmit queue, but that's OK
-      udx__fifo_remove(&stream->retransmit_queue, pkt, pkt->fifo_gc);
+      // we selected the packet with the highest sequence number to retransmit
+      // it may be in-flight already or it may be marked 'lost' (in the retransmit queue)
+      // if not inflight already, mark it inflight and adjust counters:
+
+      if (pkt->lost) {
+        udx__fifo_remove(&stream->retransmit_queue, pkt, pkt->fifo_gc);
+        stream->inflight += pkt->size;
+        stream->pkts_inflight++;
+      }
 
       stream->tlp_is_retrans = true;
       pkt->is_tlp = true;
