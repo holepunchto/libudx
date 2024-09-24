@@ -7,9 +7,10 @@
 #define DEBUG 0
 #endif
 
+#include "queue.h"
+
 #ifdef DEBUG_STATS
 #include "../include/udx.h"
-#include "queue.h"
 #include <uv.h>
 
 static uint64_t debug_start = 0;

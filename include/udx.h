@@ -33,24 +33,15 @@ extern "C" {
 #define UDX_SOCKET_CLOSING         0b0100
 #define UDX_SOCKET_CLOSING_HANDLES 0b1000
 
-#define UDX_STREAM_CONNECTED        0b00000000001
-#define UDX_STREAM_RECEIVING        0b00000000010
-#define UDX_STREAM_READING          0b00000000100
-#define UDX_STREAM_ENDING           0b00000001000
-#define UDX_STREAM_ENDING_REMOTE    0b00000010000
-#define UDX_STREAM_ENDED            0b00000100000
-#define UDX_STREAM_ENDED_REMOTE     0b00001000000
-#define UDX_STREAM_DESTROYING       0b00010000000
-#define UDX_STREAM_DESTROYED        0b00100000000
-#define UDX_STREAM_DESTROYED_REMOTE 0b01000000000
-#define UDX_STREAM_CLOSED           0b10000000000
-
-#define UDX_PACKET_TYPE_STREAM_RELAY   0b00000
-#define UDX_PACKET_TYPE_STREAM_STATE   0b00001
-#define UDX_PACKET_TYPE_STREAM_WRITE   0b00010
-#define UDX_PACKET_TYPE_STREAM_SEND    0b00100
-#define UDX_PACKET_TYPE_STREAM_DESTROY 0b01000
-#define UDX_PACKET_TYPE_SOCKET_SEND    0b10000
+#define UDX_STREAM_CONNECTED     0b000000001
+#define UDX_STREAM_RECEIVING     0b000000010
+#define UDX_STREAM_READING       0b000000100
+#define UDX_STREAM_ENDING        0b000001000
+#define UDX_STREAM_ENDING_REMOTE 0b000010000
+#define UDX_STREAM_ENDED         0b000100000
+#define UDX_STREAM_ENDED_REMOTE  0b001000000
+#define UDX_STREAM_DESTROYING    0b010000000
+#define UDX_STREAM_CLOSED        0b100000000
 
 #define UDX_HEADER_DATA    0b00001
 #define UDX_HEADER_END     0b00010
@@ -58,10 +49,9 @@ extern "C" {
 #define UDX_HEADER_MESSAGE 0b01000
 #define UDX_HEADER_DESTROY 0b10000
 
-#define UDX_STREAM_WRITE_WANT_DATA    0b0001
-#define UDX_STREAM_WRITE_WANT_STATE   0b0010
-#define UDX_STREAM_WRITE_WANT_TLP     0b0100
-#define UDX_STREAM_WRITE_WANT_DESTROY 0b1000
+#define UDX_STREAM_WRITE_WANT_STATE   0b001
+#define UDX_STREAM_WRITE_WANT_TLP     0b010
+#define UDX_STREAM_WRITE_WANT_DESTROY 0b100
 
 typedef struct {
   uint32_t seq;
@@ -300,7 +290,6 @@ struct udx_packet_s {
   uint32_t seq; // must be the first entry, so its compat with the cirbuf
   udx_queue_node_t queue;
 
-  int type;
   int ttl;
 
   bool lost;
@@ -310,8 +299,6 @@ struct udx_packet_s {
   bool is_mtu_probe;
   uint16_t size;
   uint64_t time_sent;
-
-  void *ctx; // stream_send_t | socket_send_t | stream_t
 
   struct sockaddr_storage dest;
   int dest_len;

@@ -81,35 +81,3 @@ udx__recvmsg (udx_socket_t *socket, uv_buf_t *buf, struct sockaddr *addr, int ad
 
   return bytes;
 }
-
-void
-udx__on_writable (udx_socket_t *socket) {
-  assert((socket->status & UDX_SOCKET_CLOSING_HANDLES) == 0);
-  while (true) {
-    udx_packet_t *pkt = udx__shift_packet(socket);
-    if (pkt == NULL) break;
-
-    bool adjust_ttl = pkt->ttl > 0 && socket->ttl != pkt->ttl;
-
-    if (adjust_ttl) uv_udp_set_ttl((uv_udp_t *) socket, pkt->ttl);
-
-    if (socket->family == 6 && pkt->dest.ss_family == AF_INET) {
-      addr_to_v6((struct sockaddr_in *) &(pkt->dest));
-      pkt->dest_len = sizeof(struct sockaddr_in6);
-    }
-
-    ssize_t size = udx__sendmsg(socket, (uv_buf_t *) (pkt + 1), pkt->nbufs, (struct sockaddr *) &(pkt->dest), pkt->dest_len);
-
-    if (adjust_ttl) uv_udp_set_ttl((uv_udp_t *) socket, socket->ttl);
-
-    if (size == UV_EAGAIN) {
-      udx__unshift_packet(pkt, socket);
-      break;
-    }
-    pkt->time_sent = uv_now(socket->udx->loop);
-    udx__confirm_packet(pkt);
-    if (socket->status & UDX_SOCKET_CLOSING_HANDLES) {
-      break;
-    }
-  }
-}
