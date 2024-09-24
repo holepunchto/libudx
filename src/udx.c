@@ -836,21 +836,11 @@ udx__shift_packet (udx_socket_t *socket) {
 
       debug_printf("tlp: retransmitting old data");
 
-      if (!pkt) {
+      if (!pkt || pkt->lost) {
         debug_printf("... not available\n");
         continue;
       }
       debug_printf("\n");
-
-      // we selected the packet with the highest sequence number to retransmit
-      // it may be in-flight already or it may be marked 'lost' (in the retransmit queue)
-      // if not inflight already, mark it inflight and adjust counters:
-
-      if (pkt->lost) {
-        udx__fifo_remove(&stream->retransmit_queue, pkt, pkt->fifo_gc);
-        stream->inflight += pkt->size;
-        stream->pkts_inflight++;
-      }
 
       stream->tlp_is_retrans = true;
       pkt->is_tlp = true;
@@ -1069,12 +1059,7 @@ udx__unshift_packet (udx_packet_t *pkt, udx_socket_t *socket) {
 
     // packet came from retransmit queue, return it.
     if (pkt->lost) {
-      if (!pkt->is_tlp) {
-        udx__fifo_undo(&stream->retransmit_queue);
-      } else {
-        // a tlp packet is not necessarily from the start of the retransmit queue
-        pkt->fifo_gc = udx__fifo_push(&stream->retransmit_queue, pkt);
-      }
+      udx__fifo_undo(&stream->retransmit_queue);
     } else {
       assert(pkt->transmits == 0);
       // if the packet was the one that shifted a write, undo it
@@ -2241,6 +2226,7 @@ udx_stream_init (udx_t *udx, udx_stream_t *stream, uint32_t local_id, udx_stream
   stream->tlp_in_flight = false;
   stream->tlp_end_seq = 0;
   stream->tlp_is_retrans = false;
+  stream->tlp_permitted = false;
 
   memset(&stream->rack_reo_timer, 0, sizeof(uv_timer_t));
   uv_timer_init(udx->loop, &stream->rack_reo_timer);
