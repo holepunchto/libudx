@@ -1767,6 +1767,8 @@ send_stream_packets (udx_socket_t *socket, udx_stream_t *stream) {
 
     if (!pkt || pkt->lost) {
       debug_printf("... not available\n");
+      stream->write_wanted &= ~UDX_STREAM_WRITE_WANT_TLP;
+      return true;
     }
     debug_printf("\n");
 
