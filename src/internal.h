@@ -29,18 +29,6 @@ addr_to_v6 (struct sockaddr_in *addr) {
 }
 
 void
-udx__ensure_latest_stream_ack (udx_packet_t *packet);
-
-void
-udx__trigger_send_callback (udx_packet_t *packet);
-void
 udx__close_handles (udx_socket_t *socket);
-
-udx_packet_t *
-udx__shift_packet (udx_socket_t *socket);
-void
-udx__confirm_packet (udx_packet_t *pkt);
-void
-udx__unshift_packet (udx_packet_t *pkt, udx_socket_t *socket);
 
 #endif // UDX_INTERNAL_H

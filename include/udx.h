@@ -33,24 +33,15 @@ extern "C" {
 #define UDX_SOCKET_CLOSING         0b0100
 #define UDX_SOCKET_CLOSING_HANDLES 0b1000
 
-#define UDX_STREAM_CONNECTED        0b00000000001
-#define UDX_STREAM_RECEIVING        0b00000000010
-#define UDX_STREAM_READING          0b00000000100
-#define UDX_STREAM_ENDING           0b00000001000
-#define UDX_STREAM_ENDING_REMOTE    0b00000010000
-#define UDX_STREAM_ENDED            0b00000100000
-#define UDX_STREAM_ENDED_REMOTE     0b00001000000
-#define UDX_STREAM_DESTROYING       0b00010000000
-#define UDX_STREAM_DESTROYED        0b00100000000
-#define UDX_STREAM_DESTROYED_REMOTE 0b01000000000
-#define UDX_STREAM_CLOSED           0b10000000000
-
-#define UDX_PACKET_TYPE_STREAM_RELAY   0b00000
-#define UDX_PACKET_TYPE_STREAM_STATE   0b00001
-#define UDX_PACKET_TYPE_STREAM_WRITE   0b00010
-#define UDX_PACKET_TYPE_STREAM_SEND    0b00100
-#define UDX_PACKET_TYPE_STREAM_DESTROY 0b01000
-#define UDX_PACKET_TYPE_SOCKET_SEND    0b10000
+#define UDX_STREAM_CONNECTED     0b000000001
+#define UDX_STREAM_RECEIVING     0b000000010
+#define UDX_STREAM_READING       0b000000100
+#define UDX_STREAM_ENDING        0b000001000
+#define UDX_STREAM_ENDING_REMOTE 0b000010000
+#define UDX_STREAM_ENDED         0b000100000
+#define UDX_STREAM_ENDED_REMOTE  0b001000000
+#define UDX_STREAM_DESTROYING    0b010000000
+#define UDX_STREAM_CLOSED        0b100000000
 
 #define UDX_HEADER_DATA    0b00001
 #define UDX_HEADER_END     0b00010
@@ -58,10 +49,9 @@ extern "C" {
 #define UDX_HEADER_MESSAGE 0b01000
 #define UDX_HEADER_DESTROY 0b10000
 
-#define UDX_STREAM_WRITE_WANT_DATA    0b0001
-#define UDX_STREAM_WRITE_WANT_STATE   0b0010
-#define UDX_STREAM_WRITE_WANT_TLP     0b0100
-#define UDX_STREAM_WRITE_WANT_DESTROY 0b1000
+#define UDX_STREAM_WRITE_WANT_STATE   0b001
+#define UDX_STREAM_WRITE_WANT_TLP     0b010
+#define UDX_STREAM_WRITE_WANT_DESTROY 0b100
 
 typedef struct {
   uint32_t seq;
@@ -73,17 +63,10 @@ typedef struct {
   udx_cirbuf_val_t **values;
 } udx_cirbuf_t;
 
-typedef struct {
-  uint32_t btm;
-  uint32_t len;
-  uint32_t max_len;
-  uint32_t mask;
-  void **values;
-} udx_fifo_t;
-
 typedef struct udx_s udx_t;
 typedef struct udx_socket_s udx_socket_t;
 typedef struct udx_stream_s udx_stream_t;
+typedef struct udx_queue_node_s udx_queue_node_t;
 typedef struct udx_packet_s udx_packet_t;
 
 typedef struct udx_socket_send_s udx_socket_send_t;
@@ -131,18 +114,28 @@ struct udx_s {
 
   udx_cirbuf_t streams_by_id;
 
-  uint64_t bytes_in;
-  uint64_t bytes_out;
+  uint64_t bytes_rx;
+  uint64_t bytes_tx;
 
-  uint64_t packets_in;
-  uint64_t packets_out;
+  uint64_t packets_rx;
+  uint64_t packets_tx;
 };
+
+struct udx_queue_node_s {
+  udx_queue_node_t *next;
+  udx_queue_node_t *prev;
+};
+
+typedef struct udx_queue_s {
+  udx_queue_node_t node;
+  uint32_t len;
+} udx_queue_t;
 
 struct udx_socket_s {
   uv_udp_t handle;
   uv_poll_t io_poll;
 
-  udx_fifo_t send_queue;
+  udx_queue_t send_queue;
 
   udx_t *udx;
   udx_cirbuf_t *streams_by_id; // for convenience
@@ -159,11 +152,11 @@ struct udx_socket_s {
   udx_socket_recv_cb on_recv;
   udx_socket_close_cb on_close;
 
-  uint64_t bytes_in;
-  uint64_t bytes_out;
+  uint64_t bytes_rx;
+  uint64_t bytes_tx;
 
-  uint64_t packets_in;
-  uint64_t packets_out;
+  uint64_t packets_rx;
+  uint64_t packets_tx;
 };
 
 typedef struct udx_cong_s {
@@ -250,7 +243,6 @@ struct udx_stream_s {
   uint32_t rack_next_seq;
   uint32_t rack_fack;
 
-  uint32_t pkts_inflight; // packets inflight to the other peer
   uint32_t pkts_buffered; // how many (data) packets received but not processed (out of order)?
 
   // tlp
@@ -276,25 +268,28 @@ struct udx_stream_s {
   // congestion state
   udx_cong_t cong;
 
-  udx_fifo_t write_queue; // udx_stream_write_t
+  udx_queue_t write_queue;
+
   udx_cirbuf_t outgoing;
   udx_cirbuf_t incoming;
 
-  udx_fifo_t retransmit_queue; // udx_packet_t
+  udx_queue_t retransmit_queue; // udx_packet_t
+  udx_queue_t inflight_queue;   // udx_packet_t
 
-  udx_fifo_t unordered;
+  // udx_queue_t unordered;
+  udx_queue_t unordered_queue;
 
-  uint64_t bytes_in;
-  uint64_t bytes_out;
+  uint64_t bytes_rx;
+  uint64_t bytes_tx;
 
-  uint64_t packets_in;
-  uint64_t packets_out;
+  uint64_t packets_rx;
+  uint64_t packets_tx;
 };
 
 struct udx_packet_s {
   uint32_t seq; // must be the first entry, so its compat with the cirbuf
+  udx_queue_node_t queue;
 
-  int type;
   int ttl;
 
   bool lost;
@@ -305,12 +300,8 @@ struct udx_packet_s {
   uint16_t size;
   uint64_t time_sent;
 
-  void *ctx; // stream_send_t | socket_send_t | stream_t
-
   struct sockaddr_storage dest;
   int dest_len;
-
-  uint32_t fifo_gc; // for removing from inflight / retransmit queue
 
   // just alloc it in place here, easier to manage
   char header[UDX_HEADER_SIZE];
@@ -334,6 +325,7 @@ struct udx_socket_send_s {
 struct udx_stream_write_buf_s {
   // immutable original buf
   uv_buf_t buf;
+  udx_queue_node_t queue;
 
   // 1. remove from write_queue when bytes_inflight + bytes_acked == buf.len
   // 2. free when bytes_acked == buf.len
