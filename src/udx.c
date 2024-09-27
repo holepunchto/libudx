@@ -414,7 +414,7 @@ on_bytes_acked (udx_stream_write_buf_t *wbuf, size_t bytes, bool cancelled) {
 
 static void
 clear_outgoing_packets (udx_stream_t *stream) {
-  debug_printf("clear outgoing packets\n");
+  debug_printf("close: clearing outgoing packets\n");
 
   // todo: skip the math, and just
   // 1. destroy all packets
@@ -450,10 +450,11 @@ clear_outgoing_packets (udx_stream_t *stream) {
     free(pkt);
   }
 
+  debug_printf("close: cancelling queued writes, queue.len=%u\n", stream->write_queue.len);
+
   while (stream->write_queue.len > 0) {
     udx_stream_write_buf_t *wbuf = udx__queue_data(udx__queue_shift(&stream->write_queue), udx_stream_write_buf_t, queue);
     assert(wbuf != NULL);
-    debug_printf("cancel wbuf: %lu/%lu\n", wbuf->bytes_acked, wbuf->buf.len);
 
     on_bytes_acked(wbuf, wbuf->buf.len - wbuf->bytes_acked, true);
     // todo: move into on_bytes_acked itself
