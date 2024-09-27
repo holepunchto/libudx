@@ -1582,7 +1582,7 @@ send_stream_packets (udx_socket_t *socket, udx_stream_t *stream) {
 
     stream->write_wanted &= ~UDX_STREAM_WRITE_WANT_STATE;
 
-    if (stream->status & UDX_STREAM_ALL_ENDED) {
+    if ((stream->status & UDX_STREAM_ALL_ENDED) == UDX_STREAM_ALL_ENDED) {
       assert(stream->retransmit_queue.len == 0);
       assert(stream->write_queue.len == 0);
       close_stream(stream, 0);
