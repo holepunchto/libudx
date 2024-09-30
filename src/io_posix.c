@@ -90,9 +90,43 @@ udx__recvmsg (udx_socket_t *handle, uv_buf_t *buf, struct sockaddr *addr, int ad
   h.msg_iov = (struct iovec *) buf;
   h.msg_iovlen = 1;
 
+  union {
+    struct cmsghdr align;
+    uint8_t buf[2048];
+  } u;
+
+  h.msg_control = u.buf;
+  h.msg_controllen = sizeof(u.buf);
+
   do {
     size = recvmsg(handle->io_poll.io_watcher.fd, &h, 0);
   } while (size == -1 && errno == EINTR);
 
+  // relies on SO_RXQ_OVFL being set
+  uint32_t npackets_dropped_since_last_recv = 0;
+  uint32_t ttl = 0;
+
+  for (struct cmsghdr *cmsg = CMSG_FIRSTHDR(&h); cmsg != NULL; cmsg = CMSG_NXTHDR(&h, cmsg)) {
+    if (cmsg->cmsg_level == SOL_SOCKET && cmsg->cmsg_type == SO_RXQ_OVFL) {
+      npackets_dropped_since_last_recv = *(uint32_t *) CMSG_DATA(cmsg);
+    }
+    if (cmsg->cmsg_level == IPPROTO_IP && cmsg->cmsg_type == IP_TTL) {
+      ttl = *(int *) CMSG_DATA(cmsg);
+    }
+  }
+
   return size == -1 ? uv_translate_sys_error(errno) : size;
 }
+
+#if defined(__linux__)
+int
+udx__udp_set_rxq_ovfl (int fd) {
+  int on = 1;
+  return setsockopt(fd, SOL_SOCKET, SO_RXQ_OVFL, &on, sizeof(on));
+}
+#else
+int
+udx__udp_set_rxq_ovfl (int fd) {
+  return -1;
+}
+#endif

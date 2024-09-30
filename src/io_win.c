@@ -81,3 +81,8 @@ udx__recvmsg (udx_socket_t *socket, uv_buf_t *buf, struct sockaddr *addr, int ad
 
   return bytes;
 }
+
+int
+udx__udp_set_rxq_ovfl (int fd) {
+  return -1;
+}

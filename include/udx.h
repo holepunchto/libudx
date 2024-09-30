@@ -140,6 +140,7 @@ struct udx_socket_s {
   udx_t *udx;
   udx_cirbuf_t *streams_by_id; // for convenience
 
+  bool cmsg_wanted; // include a control buffer for recvmsg
   int family;
   int status;
   int readers;
@@ -157,6 +158,8 @@ struct udx_socket_s {
 
   uint64_t packets_rx;
   uint64_t packets_tx;
+
+  int64_t npackets_dropped_since_last_recv;
 };
 
 typedef struct udx_cong_s {
