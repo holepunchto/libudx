@@ -1448,12 +1448,16 @@ send_packet (udx_socket_t *socket, udx_packet_t *pkt) {
     pkt->dest_len = sizeof(struct sockaddr_in6);
   }
 
-  ssize_t size = udx__sendmsg(socket, (uv_buf_t *) (pkt + 1), pkt->nbufs, (struct sockaddr *) &(pkt->dest), pkt->dest_len);
+  ssize_t rc = udx__sendmsg(socket, (uv_buf_t *) (pkt + 1), pkt->nbufs, (struct sockaddr *) &(pkt->dest), pkt->dest_len);
 
   if (adjust_ttl) uv_udp_set_ttl((uv_udp_t *) socket, socket->ttl);
 
-  if (size < 0) {
-    return size;
+  if (rc == UV_EAGAIN) {
+    return rc;
+  }
+
+  if (rc < 0) {
+    debug_printf("sendmsg: %s\n", uv_strerror(rc));
   }
 
   pkt->time_sent = uv_now(socket->udx->loop);
@@ -1467,7 +1471,7 @@ send_packet (udx_socket_t *socket, udx_packet_t *pkt) {
   socket->packets_tx++;
   socket->udx->packets_tx++;
 
-  return size;
+  return rc;
 }
 
 static bool
