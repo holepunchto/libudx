@@ -66,7 +66,7 @@ on_read (udx_stream_t *handle, ssize_t read_len, const uv_buf_t *buf) {
 
   nbytes_read += read_len;
 
-  read_hash = hash(read_hash, buf->base, read_len);
+  read_hash = hash(read_hash, (uint8_t *) buf->base, read_len);
 
   // swap to relay 1/3 of the way into the stream
 
@@ -159,7 +159,7 @@ main () {
 
   uv_buf_t buf = uv_buf_init(malloc(NBYTES_TO_SEND), NBYTES_TO_SEND);
 
-  write_hash = hash(write_hash, buf.base, buf.len);
+  write_hash = hash(write_hash, (uint8_t *) buf.base, buf.len);
 
   e = udx_stream_write(req, &dstream, &buf, 1, on_ack);
   assert(e == 0); // write bigger than hwm

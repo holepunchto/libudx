@@ -8,6 +8,7 @@
 #endif
 
 #include "queue.h"
+#include <inttypes.h>
 
 #ifdef DEBUG_STATS
 #include "../include/udx.h"

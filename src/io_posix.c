@@ -19,6 +19,7 @@
 
 int
 udx__get_link_mtu (const struct sockaddr *addr) {
+  UDX_UNUSED(addr);
   return -1;
 }
 
