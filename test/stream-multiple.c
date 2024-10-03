@@ -58,7 +58,7 @@ on_read (udx_stream_t *handle, ssize_t read_len, const uv_buf_t *buf) {
   struct receiver *r = &receiver[handle->local_id - NSTREAMS];
 
   r->nbytes_read += read_len;
-  r->read_hash = hash(r->read_hash, buf->base, read_len);
+  r->read_hash = hash(r->read_hash, (uint8_t *) buf->base, read_len);
 }
 
 int
@@ -74,7 +74,7 @@ main () {
 
   size_t write_hash = HASH_INIT;
 
-  write_hash = hash(write_hash, buf.base, buf.len);
+  write_hash = hash(write_hash, (uint8_t *) buf.base, buf.len);
 
   for (int i = 0; i < NSTREAMS; i++) {
     int sender_id = i;

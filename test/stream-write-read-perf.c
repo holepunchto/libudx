@@ -132,7 +132,7 @@ main () {
 
   printf("writing data\n");
 
-  uv_buf_t buf = uv_buf_init(data, options.size_bytes);
+  uv_buf_t buf = uv_buf_init((char *) data, options.size_bytes);
   udx_stream_write(req, &bstream, &buf, 1, on_ack);
 
   e = uv_run(&loop, UV_RUN_DEFAULT);
