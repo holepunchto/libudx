@@ -33,7 +33,7 @@
 #define UDX_DEFAULT_TTL         64
 #define UDX_DEFAULT_BUFFER_SIZE 212992
 
-#define UDX_MAX_TRANSMITS 6
+#define UDX_MAX_RTO_TIMEOUTS 6
 
 #define UDX_CONG_C           400  // C=0.4 (inverse) in scaled 1000
 #define UDX_CONG_C_SCALE     1e12 // ms/s ** 3 * c-scale
@@ -502,6 +502,7 @@ init_stream_packet (udx_packet_t *pkt, int type, udx_stream_t *stream, const uv_
   pkt->seq = stream->seq;
   pkt->retransmitted = false;
   pkt->transmits = 0;
+  pkt->rto_timeouts = 0;
   pkt->size = UDX_HEADER_SIZE;
 
   pkt->dest = stream->remote_addr;
@@ -865,12 +866,13 @@ udx_rto_timeout (uv_timer_t *timer) {
     int64_t remaining = pkt->time_sent + stream->rack_rtt + rack_reo_wnd - now;
 
     if (pkt->seq == stream->remote_acked || remaining < 0) {
-      if (pkt->transmits >= UDX_MAX_TRANSMITS) {
+      if (pkt->rto_timeouts >= UDX_MAX_RTO_TIMEOUTS) {
         close_stream(stream, UV_ETIMEDOUT);
         break;
       }
 
       pkt->lost = true;
+      pkt->rto_timeouts++;
       udx__queue_unlink(&stream->inflight_queue, &pkt->queue);
       udx__queue_tail(&stream->retransmit_queue, &pkt->queue);
 
@@ -2065,6 +2067,7 @@ udx_socket_send_ttl (udx_socket_send_t *req, udx_socket_t *socket, const uv_buf_
   pkt->lost = false;
   pkt->retransmitted = false;
   pkt->transmits = 0;
+  pkt->rto_timeouts = 0;
   pkt->nbufs = 1;
   pkt->size = bufs[0].len;
 
