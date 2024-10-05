@@ -846,7 +846,7 @@ udx_rto_timeout (uv_timer_t *timer) {
   // zero retransmit queue
   udx__queue_init(&stream->retransmit_queue);
 
-  debug_printf("rto: lost rid=%u [%u:%u] inflight=%lu ssthresh=%u cwnd=%u srtt=%u\n", stream->remote_id, stream->remote_acked, stream->seq, stream->inflight, stream->ssthresh, stream->cwnd, stream->srtt);
+  debug_printf("rto: lost rid=%u [%u:%u] inflight=%zu ssthresh=%u cwnd=%u srtt=%u\n", stream->remote_id, stream->remote_acked, stream->seq, stream->inflight, stream->ssthresh, stream->cwnd, stream->srtt);
 
   uint64_t now = uv_now(timer->loop);
   uint32_t rack_reo_wnd = rack_update_reo_wnd(stream);
@@ -935,7 +935,7 @@ clamp_rtt (udx_stream_t *stream, uint64_t rtt) {
   const uint32_t outlier_threshold = stream->srtt + 5 * stream->rttvar;
   if (rtt > outlier_threshold && rtt > 5000) {
     rtt = min_uint32(outlier_threshold, UDX_RTT_MAX_MS);
-    debug_printf("rtt: clamp rtt for stream=%u to rtt=%lu\n", stream->remote_id, rtt);
+    debug_printf("rtt: clamp rtt for stream=%u to rtt=%" PRIu64 "\n", stream->remote_id, rtt);
   }
 
   return rtt;
@@ -1056,7 +1056,6 @@ ack_packet (udx_stream_t *stream, uint32_t seq, int sack) {
 
   free(pkt);
 
-  // debug_printf("pkt_len=%lu write->bytes_acked=%lu write->size=%lu\n", pkt_len, writewrite>bytes_acked, write->buf.len);
   if (stream->status & UDX_STREAM_DEAD) return 2; // reentry from write->on_ack
 
   // TODO: the end condition needs work here to be more "stateless"

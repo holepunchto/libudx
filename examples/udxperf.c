@@ -391,7 +391,7 @@ on_ack (udx_stream_write_t *req, int status, int unordered) {
 
 static void
 pump_writes (udx_stream_t *stream) {
-  uv_buf_t chunk = uv_buf_init(chunk_bytes, sizeof(chunk_bytes));
+  uv_buf_t chunk = uv_buf_init((char *) chunk_bytes, sizeof(chunk_bytes));
 
   while (1) {
     udx_stream_write_t *req = malloc(udx_stream_write_sizeof(1));
@@ -526,8 +526,7 @@ typedef enum {
   SW_C,
   SW_T,
   SW_I,
-  SW_P,
-  SW_X,
+  SW_P
 } switch_type_t;
 
 int

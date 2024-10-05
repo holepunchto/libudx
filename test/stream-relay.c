@@ -53,7 +53,7 @@ on_read (udx_stream_t *handle, ssize_t read_len, const uv_buf_t *buf) {
     printf("read_len=%ld\n", read_len);
     assert(memcmp(buf->base, "hello", 5) == 0);
   }
-  read_hash = hash(read_hash, buf->base, read_len);
+  read_hash = hash(read_hash, (uint8_t *) buf->base, read_len);
 
   nbytes_read += read_len;
   read_called = true;
@@ -135,7 +135,7 @@ main () {
 
   memcpy(buf.base, "hello", 5);
 
-  write_hash = hash(write_hash, buf.base, buf.len);
+  write_hash = hash(write_hash, (uint8_t *) buf.base, buf.len);
 
   udx_stream_write(req, &dstream, &buf, 1, on_ack);
 

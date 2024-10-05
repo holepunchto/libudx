@@ -1,3 +1,4 @@
+#include <inttypes.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <uv.h>
@@ -33,7 +34,7 @@ get_milliseconds () {
 
 static void
 on_uv_interval (uv_timer_t *handle) {
-  printf("received %zu bytes in %lu ms\n", bytes_recv, get_milliseconds() - started);
+  printf("received %zu bytes in %" PRIu64 " ms\n", bytes_recv, get_milliseconds() - started);
 }
 
 static void
@@ -45,7 +46,7 @@ on_read (udx_stream_t *handle, ssize_t read_len, const uv_buf_t *buf) {
   }
 
   if (read_len < 0) {
-    printf("received %zu bytes in %lu ms\n", bytes_recv, get_milliseconds() - started);
+    printf("received %zu bytes in %" PRIu64 " ms\n", bytes_recv, get_milliseconds() - started);
     printf("stream is done!\n");
     exit(0);
   }

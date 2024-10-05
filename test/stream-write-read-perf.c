@@ -1,4 +1,5 @@
 #include <assert.h>
+#include <inttypes.h>
 #include <stdbool.h>
 #include <stdlib.h>
 #include <string.h>
@@ -47,7 +48,7 @@ on_read (udx_stream_t *handle, ssize_t read_len, const uv_buf_t *buf) {
 
   assert(read_len == buf->len);
 
-  read_hash = hash(read_hash, buf->base, read_len);
+  read_hash = hash(read_hash, (uint8_t *) buf->base, read_len);
 
   if (stats.bytes_read == options.size_bytes) {
     printf("read all bytes\n");
@@ -121,9 +122,9 @@ main () {
   assert(e == 0);
 
   options.size_bytes = 500 * 1024 * 1024L;
-  printf("generating data ... (%lu bytes)\n", options.size_bytes);
+  printf("generating data ... (%" PRIu64 " bytes)\n", options.size_bytes);
 
-  char *data = calloc(options.size_bytes, 1);
+  uint8_t *data = calloc(options.size_bytes, 1);
 
   write_hash = hash(write_hash, data, options.size_bytes);
 
@@ -131,7 +132,7 @@ main () {
 
   printf("writing data\n");
 
-  uv_buf_t buf = uv_buf_init(data, options.size_bytes);
+  uv_buf_t buf = uv_buf_init((char *) data, options.size_bytes);
   udx_stream_write(req, &bstream, &buf, 1, on_ack);
 
   e = uv_run(&loop, UV_RUN_DEFAULT);
@@ -141,12 +142,12 @@ main () {
 
   free(data); // valgrind
   free(req);  // valgrind
-  printf("readhash=%lx writehash=%lx\n", read_hash, write_hash);
+  printf("readhash=%" PRIx64 " writehash=%" PRIx64 "\n", read_hash, write_hash);
   assert(read_hash == write_hash);
 
-  printf("stats: udx:      bytes_rx=%lu packets_rx=%lu bytes_tx=%lu packets_tx=%lu\n", udx.bytes_rx, udx.packets_rx, udx.bytes_tx, udx.packets_tx);
-  printf("stats: stream a: bytes_rx=%lu packets_rx=%lu bytes_tx=%lu packets_tx=%lu\n", astream.bytes_rx, astream.packets_rx, astream.bytes_tx, astream.packets_tx);
-  printf("stats: stream b: bytes_rx=%lu packets_rx=%lu bytes_tx=%lu packets_tx=%lu\n", bstream.bytes_rx, bstream.packets_rx, bstream.bytes_tx, bstream.packets_tx);
+  printf("stats: udx:      bytes_rx=%" PRIu64 " packets_rx=%" PRIu64 " bytes_tx=%" PRIu64 " packets_tx=%" PRIu64 "\n", udx.bytes_rx, udx.packets_rx, udx.bytes_tx, udx.packets_tx);
+  printf("stats: stream a: bytes_rx=%" PRIu64 " packets_rx=%" PRIu64 " bytes_tx=%" PRIu64 " packets_tx=%" PRIu64 "\n", astream.bytes_rx, astream.packets_rx, astream.bytes_tx, astream.packets_tx);
+  printf("stats: stream b: bytes_rx=%" PRIu64 " packets_rx=%" PRIu64 " bytes_tx=%" PRIu64 " packets_tx=%" PRIu64 "\n", bstream.bytes_rx, bstream.packets_rx, bstream.bytes_tx, bstream.packets_tx);
 
   return 0;
 }
