@@ -296,6 +296,7 @@ struct udx_packet_s {
   bool retransmitted;
   bool is_tlp;
   uint8_t transmits;
+  uint8_t rto_timeouts;
   bool is_mtu_probe;
   uint16_t size;
   uint64_t time_sent;
