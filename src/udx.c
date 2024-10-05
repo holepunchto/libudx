@@ -1305,7 +1305,10 @@ process_packet (udx_socket_t *socket, char *buf, ssize_t buf_len, struct sockadd
 
     if ((pkt->type & UDX_HEADER_DATA) && stream->on_read != NULL) {
       stream->on_read(stream, pkt->buf.len, &(pkt->buf));
-      if (stream->status & UDX_STREAM_DEAD) return 1;
+      if (stream->status & UDX_STREAM_DEAD) {
+        free(pkt);
+        return 1;
+      }
     }
 
     free(pkt);
