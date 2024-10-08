@@ -103,16 +103,16 @@ udx__recvmsg (udx_socket_t *handle, uv_buf_t *buf, struct sockaddr *addr, int ad
   } while (size == -1 && errno == EINTR);
 
   // relies on SO_RXQ_OVFL being set
-  uint32_t npackets_dropped_since_last_recv = 0;
-  uint32_t ttl = 0;
+  uint32_t packets_dropped_by_kernel = 0;
 
   for (struct cmsghdr *cmsg = CMSG_FIRSTHDR(&h); cmsg != NULL; cmsg = CMSG_NXTHDR(&h, cmsg)) {
     if (cmsg->cmsg_level == SOL_SOCKET && cmsg->cmsg_type == SO_RXQ_OVFL) {
-      npackets_dropped_since_last_recv = *(uint32_t *) CMSG_DATA(cmsg);
+      packets_dropped_by_kernel = *(uint32_t *) CMSG_DATA(cmsg);
     }
-    if (cmsg->cmsg_level == IPPROTO_IP && cmsg->cmsg_type == IP_TTL) {
-      ttl = *(int *) CMSG_DATA(cmsg);
-    }
+  }
+
+  if (packets_dropped_by_kernel) {
+    handle->packets_dropped_by_kernel = packets_dropped_by_kernel;
   }
 
   return size == -1 ? uv_translate_sys_error(errno) : size;

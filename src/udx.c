@@ -1938,7 +1938,7 @@ udx_socket_init (udx_t *udx, udx_socket_t *socket) {
   socket->packets_rx = 0;
   socket->packets_tx = 0;
 
-  socket->npackets_dropped_since_last_recv = -1;
+  socket->packets_dropped_by_kernel = -1;
   socket->cmsg_wanted = false;
 
   uv_udp_t *handle = &(socket->handle);
@@ -2033,7 +2033,7 @@ udx_socket_bind (udx_socket_t *socket, const struct sockaddr *addr, unsigned int
   err = udx__udp_set_rxq_ovfl(fd);
   if (!err) {
     socket->cmsg_wanted = true;
-    socket->npackets_dropped_since_last_recv = 0;
+    socket->packets_dropped_by_kernel = 0;
   }
 
   socket->status |= UDX_SOCKET_BOUND;

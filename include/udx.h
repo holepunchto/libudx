@@ -159,7 +159,7 @@ struct udx_socket_s {
   uint64_t packets_rx;
   uint64_t packets_tx;
 
-  int64_t npackets_dropped_since_last_recv;
+  int64_t packets_dropped_by_kernel;
 };
 
 typedef struct udx_cong_s {
