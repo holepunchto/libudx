@@ -102,6 +102,8 @@ udx__recvmsg (udx_socket_t *handle, uv_buf_t *buf, struct sockaddr *addr, int ad
     size = recvmsg(handle->io_poll.io_watcher.fd, &h, 0);
   } while (size == -1 && errno == EINTR);
 
+#if defined(__linux__)
+
   // relies on SO_RXQ_OVFL being set
   uint32_t packets_dropped_by_kernel = 0;
 
@@ -115,6 +117,8 @@ udx__recvmsg (udx_socket_t *handle, uv_buf_t *buf, struct sockaddr *addr, int ad
     handle->packets_dropped_by_kernel = packets_dropped_by_kernel;
   }
 
+#endif
+
   return size == -1 ? uv_translate_sys_error(errno) : size;
 }
 
@@ -127,6 +131,7 @@ udx__udp_set_rxq_ovfl (int fd) {
 #else
 int
 udx__udp_set_rxq_ovfl (int fd) {
+  UDX_UNUSED(fd);
   return -1;
 }
 #endif

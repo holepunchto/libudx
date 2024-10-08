@@ -84,5 +84,6 @@ udx__recvmsg (udx_socket_t *socket, uv_buf_t *buf, struct sockaddr *addr, int ad
 
 int
 udx__udp_set_rxq_ovfl (int fd) {
+  UDX_UNUSED(fd);
   return -1;
 }
