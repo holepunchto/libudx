@@ -1364,6 +1364,11 @@ process_packet (udx_socket_t *socket, char *buf, ssize_t buf_len, struct sockadd
       // TODO: make this work as well, if the ack packet is lost, ie
       // have some internal (capped) queue of "gracefully closed" streams (TIME_WAIT)
 
+      if ((stream->status & UDX_STREAM_ALL_ENDED) == UDX_STREAM_ALL_ENDED) {
+        close_stream(stream, 0);
+        return 1;
+      }
+
       if (stream->remote_acked == stream->seq) {
         uv_timer_stop(&stream->rto_timer);
         uv_timer_stop(&stream->tlp_timer);
