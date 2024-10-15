@@ -18,6 +18,7 @@ list(APPEND tests
   stream-write-read-perf
   stream-change-remote
   stream-multiple
+  stream-write-read-receive-window
 )
 
 list(APPEND skipped_tests
