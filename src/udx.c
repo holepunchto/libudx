@@ -2450,6 +2450,11 @@ udx_stream_relay_to (udx_stream_t *stream, udx_stream_t *destination) {
 
 int
 udx_stream_send (udx_stream_send_t *req, udx_stream_t *stream, const uv_buf_t bufs[], unsigned int bufs_len, udx_stream_send_cb cb) {
+
+  if (!(stream->status & UDX_STREAM_CONNECTED)) {
+    return UV_ENOTCONN;
+  }
+
   assert(bufs_len == 1);
 
   req->stream = stream;
@@ -2512,7 +2517,17 @@ _udx_stream_write (udx_stream_write_t *write, udx_stream_t *stream, const uv_buf
 
 int
 udx_stream_write (udx_stream_write_t *req, udx_stream_t *stream, const uv_buf_t bufs[], unsigned int bufs_len, udx_stream_ack_cb ack_cb) {
-  assert(bufs_len > 0);
+  if (!(stream->status & UDX_STREAM_CONNECTED)) {
+    return UV_ENOTCONN;
+  }
+
+  if (stream->status & UDX_STREAM_ENDING) {
+    return UV_EPIPE;
+  }
+
+  if (bufs_len == 0) {
+    return UV_EINVAL;
+  }
 
   req->nwbufs = bufs_len;
 
@@ -2531,6 +2546,15 @@ udx_stream_write (udx_stream_write_t *req, udx_stream_t *stream, const uv_buf_t 
 
 int
 udx_stream_write_end (udx_stream_write_t *req, udx_stream_t *stream, const uv_buf_t bufs[], unsigned int bufs_len, udx_stream_ack_cb ack_cb) {
+
+  if (!(stream->status & UDX_STREAM_CONNECTED)) {
+    return UV_ENOTCONN;
+  }
+
+  if (stream->status & UDX_STREAM_ENDING) {
+    return UV_EPIPE;
+  }
+
   stream->status |= UDX_STREAM_ENDING;
 
   if (bufs_len > 0) {
