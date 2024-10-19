@@ -28,10 +28,9 @@ extern "C" {
 #define UDX_MAGIC_BYTE 255
 #define UDX_VERSION    1
 
-#define UDX_SOCKET_RECEIVING       0b0001
-#define UDX_SOCKET_BOUND           0b0010
-#define UDX_SOCKET_CLOSING         0b0100
-#define UDX_SOCKET_CLOSING_HANDLES 0b1000
+#define UDX_SOCKET_RECEIVING 0b0001
+#define UDX_SOCKET_BOUND     0b0010
+#define UDX_SOCKET_CLOSED    0b0100
 
 #define UDX_STREAM_CONNECTED     0b000000001
 #define UDX_STREAM_RECEIVING     0b000000010
@@ -481,10 +480,6 @@ udx_stream_read_start (udx_stream_t *stream, udx_stream_read_cb cb);
 
 int
 udx_stream_read_stop (udx_stream_t *stream);
-
-// only exposed here as a convenience / debug tool - the udx instance uses this automatically
-int
-udx_stream_check_timeouts (udx_stream_t *stream);
 
 int
 udx_stream_send (udx_stream_send_t *req, udx_stream_t *stream, const uv_buf_t bufs[], unsigned int bufs_len, udx_stream_send_cb cb);
