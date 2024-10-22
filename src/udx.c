@@ -2515,6 +2515,7 @@ udx_stream_relay_to (udx_stream_t *stream, udx_stream_t *destination) {
 
 int
 udx_stream_send (udx_stream_send_t *req, udx_stream_t *stream, const uv_buf_t bufs[], unsigned int bufs_len, udx_stream_send_cb cb) {
+  UDX_UNUSED(bufs_len);
 
   if (!(stream->status & UDX_STREAM_CONNECTED)) {
     return UV_ENOTCONN;
