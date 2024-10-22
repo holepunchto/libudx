@@ -91,6 +91,7 @@ set_target_properties(
   udx_static
   PROPERTIES
   OUTPUT_NAME udx
+  PREFIX lib
 )
 
 target_link_libraries(
