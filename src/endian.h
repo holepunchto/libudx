@@ -4,12 +4,10 @@
 #include <stdbool.h>
 #include <stdint.h>
 
-typedef enum udx__endianness udx__endianness_t;
-
-enum udx__endianness {
+typedef enum {
   UDX_LE,
   UDX_BE
-};
+} udx__endianness_t;
 
 udx__endianness_t
 udx__endianness ();

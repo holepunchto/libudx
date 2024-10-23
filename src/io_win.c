@@ -28,7 +28,7 @@ udx__get_link_mtu (const struct sockaddr *addr) {
     rc = getsockopt(s, IPPROTO_IPV6, IPV6_MTU, (char *) &mtu, &mtu_opt_size);
   }
   if (rc == -1) {
-    close(s);
+    closesocket(s);
     return -1;
   }
 
