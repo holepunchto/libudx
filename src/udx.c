@@ -2084,7 +2084,7 @@ udx_socket_bind (udx_socket_t *socket, const struct sockaddr *addr, unsigned int
   err = uv_fileno((const uv_handle_t *) handle, &fd);
   assert(err == 0);
 
-  err = uv_poll_init_socket(socket->udx->loop, poll, fd);
+  err = uv_poll_init_socket(socket->udx->loop, poll, (uv_os_sock_t) fd);
   assert(err == 0);
 
   socket->status |= UDX_SOCKET_BOUND;
