@@ -2358,6 +2358,12 @@ udx_stream_set_ack (udx_stream_t *stream, uint32_t ack) {
 }
 
 int
+udx_stream_set_rwnd (udx_stream_t *stream, uint32_t rwnd) {
+  stream->recv_rwnd = rwnd;
+  return 0;
+}
+
+int
 udx_stream_firewall (udx_stream_t *stream, udx_stream_firewall_cb cb) {
   stream->on_firewall = cb;
   return 0;

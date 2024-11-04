@@ -458,6 +458,9 @@ int
 udx_stream_set_ack (udx_stream_t *stream, uint32_t ack);
 
 int
+udx_stream_set_rwnd (udx_stream_t *stream, uint32_t rwnd);
+
+int
 udx_stream_connect (udx_stream_t *stream, udx_socket_t *socket, uint32_t remote_id, const struct sockaddr *remote_addr);
 
 int
