@@ -218,7 +218,6 @@ stream_write_wanted (udx_stream_t *stream) {
 
 static bool
 socket_write_wanted (udx_socket_t *socket) {
-
   if (socket->send_queue.len > 0) {
     return true;
   }
@@ -392,7 +391,6 @@ udx_stream_write_sizeof (int nwbufs) {
 
 static void
 on_bytes_acked (udx_stream_write_buf_t *wbuf, size_t bytes, bool cancelled) {
-
   udx_stream_write_t *write = wbuf->write;
   udx_stream_t *stream = write->stream;
 
@@ -422,7 +420,6 @@ on_bytes_acked (udx_stream_write_buf_t *wbuf, size_t bytes, bool cancelled) {
 
 static void
 clear_outgoing_packets (udx_stream_t *stream) {
-
   // todo: skip the math, and just
   // 1. destroy all packets
   // 2. destroy all wbufs
@@ -607,6 +604,7 @@ finalize_maybe (uv_handle_t *timer) {
 // you must immediately return and process another packet
 // 2. if you call this on the send path, you must immediately return from
 // send_stream_packets
+
 static int
 close_stream (udx_stream_t *stream, int err) {
   assert((stream->status & UDX_STREAM_CLOSED) == 0);
@@ -623,6 +621,15 @@ close_stream (udx_stream_t *stream, int err) {
   other->set_id = stream->set_id;
 
   udx__cirbuf_remove(&(udx->streams_by_id), stream->local_id);
+
+  // stream on_close called before acks are cancelled!
+  // this is to prevent on_ack / on_send reentry while
+  // stream is closing
+
+  if (stream->on_close != NULL) {
+    stream->on_close(stream, err);
+  }
+
   clear_outgoing_packets(stream);
   clear_incoming_packets(stream);
 
@@ -662,10 +669,6 @@ close_stream (udx_stream_t *stream, int err) {
   uv_close((uv_handle_t *) &stream->rack_reo_timer, finalize_maybe);
   uv_close((uv_handle_t *) &stream->tlp_timer, finalize_maybe);
   uv_close((uv_handle_t *) &stream->zwp_timer, finalize_maybe);
-
-  if (stream->on_close != NULL) {
-    stream->on_close(stream, err);
-  }
 
   return 1;
 }
@@ -760,7 +763,6 @@ rack_detect_loss (udx_stream_t *stream) {
   for (p = stream->inflight_queue.node.next, next = p->next;
        p != &stream->inflight_queue.node;
        p = next, next = p->next) {
-
     udx_packet_t *pkt = udx__queue_data(p, udx_packet_t, queue);
     assert(pkt->transmits > 0);
 
@@ -876,7 +878,6 @@ udx_rto_timeout (uv_timer_t *timer) {
   // rack 6.3
 
   for (uint32_t seq = stream->remote_acked; seq != stream->seq; seq++) {
-
     udx_packet_t *pkt = (udx_packet_t *) udx__cirbuf_get(&stream->outgoing, seq);
     if (pkt == NULL) continue;
 
@@ -1067,7 +1068,6 @@ ack_packet (udx_stream_t *stream, uint32_t seq, int sack) {
   uv_buf_t *bufs = (uv_buf_t *) (pkt + 1);
 
   for (int i = 0; i < pkt->nwbufs; i++) {
-
     size_t pkt_len = bufs[i + diff].len;
     udx_stream_write_buf_t *wbuf = pkt->wbufs[i];
 
@@ -1226,7 +1226,6 @@ detect_loss_repaired_by_loss_probe (udx_stream_t *stream, uint32_t ack) {
 
 static int
 process_packet (udx_socket_t *socket, char *buf, ssize_t buf_len, struct sockaddr *addr) {
-
   socket->bytes_rx += buf_len;
   socket->packets_rx += 1;
 
@@ -1438,7 +1437,6 @@ process_packet (udx_socket_t *socket, char *buf, ssize_t buf_len, struct sockadd
   }
 
   if (delivered > 0) {
-
     if (stream->remote_acked == stream->seq) {
       assert(stream->inflight_queue.len == 0 && stream->retransmit_queue.len == 0);
       uv_timer_stop(&stream->rto_timer);
@@ -1485,7 +1483,6 @@ arm_stream_timers (udx_stream_t *stream, bool sent_tlp);
 
 ssize_t
 send_packet (udx_socket_t *socket, udx_packet_t *pkt) {
-
   bool adjust_ttl = pkt->ttl > 0 && socket->ttl != pkt->ttl;
 
   if (adjust_ttl) uv_udp_set_ttl((uv_udp_t *) socket, pkt->ttl);
@@ -1571,7 +1568,6 @@ send_stream_packets (udx_socket_t *socket, udx_stream_t *stream) {
   }
 
   if (stream->write_wanted & UDX_STREAM_WRITE_WANT_STATE) {
-
     assert(stream->status & UDX_STREAM_CONNECTED);
 
     uint32_t *sacks = NULL;
@@ -1648,7 +1644,6 @@ send_stream_packets (udx_socket_t *socket, udx_stream_t *stream) {
   }
 
   if (stream->write_wanted & UDX_STREAM_WRITE_WANT_DESTROY) {
-
     struct {
       udx_packet_t packet;
       uv_buf_t bufs[2];
@@ -1776,7 +1771,6 @@ send_stream_packets (udx_socket_t *socket, udx_stream_t *stream) {
     ssize_t rc = send_packet(socket, pkt);
 
     if (rc == UV_EAGAIN) {
-
       for (int i = 0; i < pkt->nwbufs; i++) {
         udx_stream_write_buf_t *wbuf = pkt->wbufs[i];
         if (wbuf->bytes_acked + wbuf->bytes_inflight == wbuf->buf.len) {
@@ -1872,7 +1866,6 @@ send_stream_packets (udx_socket_t *socket, udx_stream_t *stream) {
 
 static void
 arm_stream_timers (udx_stream_t *stream, bool sent_tlp) {
-
   if (!uv_is_active((uv_handle_t *) &stream->rto_timer)) {
     assert(stream->rto >= 1);
     assert(stream->status != UDX_STREAM_CLOSED);
@@ -2618,7 +2611,6 @@ udx_stream_write (udx_stream_write_t *req, udx_stream_t *stream, const uv_buf_t 
 
 int
 udx_stream_write_end (udx_stream_write_t *req, udx_stream_t *stream, const uv_buf_t bufs[], unsigned int bufs_len, udx_stream_ack_cb ack_cb) {
-
   if (!(stream->status & UDX_STREAM_CONNECTED)) {
     return UV_ENOTCONN;
   }
@@ -2651,7 +2643,6 @@ udx_stream_write_end (udx_stream_write_t *req, udx_stream_t *stream, const uv_bu
 
 int
 udx_stream_destroy (udx_stream_t *stream) {
-
   if (stream->status & UDX_STREAM_CLOSED) {
     debug_printf("udx: closing already closed stream %u", stream->local_id);
     return 0;
