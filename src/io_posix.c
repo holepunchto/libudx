@@ -104,17 +104,20 @@ udx__recvmsg (udx_socket_t *handle, uv_buf_t *buf, struct sockaddr *addr, int ad
 
 #if defined(__linux__)
 
-  // relies on SO_RXQ_OVFL being set
-  uint32_t packets_dropped_by_kernel = 0;
+  if (size != -1 && h.msg_controllen) {
 
-  for (struct cmsghdr *cmsg = CMSG_FIRSTHDR(&h); cmsg != NULL; cmsg = CMSG_NXTHDR(&h, cmsg)) {
-    if (cmsg->cmsg_level == SOL_SOCKET && cmsg->cmsg_type == SO_RXQ_OVFL) {
-      packets_dropped_by_kernel = *(uint32_t *) CMSG_DATA(cmsg);
+    // relies on SO_RXQ_OVFL being set
+    uint32_t packets_dropped_by_kernel = 0;
+
+    for (struct cmsghdr *cmsg = CMSG_FIRSTHDR(&h); cmsg != NULL; cmsg = CMSG_NXTHDR(&h, cmsg)) {
+      if (cmsg->cmsg_level == SOL_SOCKET && cmsg->cmsg_type == SO_RXQ_OVFL) {
+        packets_dropped_by_kernel = *(uint32_t *) CMSG_DATA(cmsg);
+      }
     }
-  }
 
-  if (packets_dropped_by_kernel) {
-    handle->packets_dropped_by_kernel = packets_dropped_by_kernel;
+    if (packets_dropped_by_kernel) {
+      handle->packets_dropped_by_kernel = packets_dropped_by_kernel;
+    }
   }
 
 #endif
