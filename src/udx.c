@@ -2083,7 +2083,7 @@ udx_socket_bind (udx_socket_t *socket, const struct sockaddr *addr, unsigned int
   err = uv_poll_init_socket(socket->udx->loop, poll, (uv_os_sock_t) fd);
   assert(err == 0);
 
-  err = udx__udp_set_rxq_ovfl(fd);
+  err = udx__udp_set_rxq_ovfl((uv_os_sock_t) fd);
   if (!err) {
     socket->cmsg_wanted = true;
     socket->packets_dropped_by_kernel = 0;
