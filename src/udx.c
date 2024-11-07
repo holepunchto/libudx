@@ -1458,14 +1458,6 @@ process_packet (udx_socket_t *socket, char *buf, ssize_t buf_len, struct sockadd
     }
   }
 
-  if ((stream->status & UDX_STREAM_SHOULD_END_REMOTE) == UDX_STREAM_END_REMOTE && seq_compare(stream->remote_ended, stream->ack) <= 0) {
-    stream->status |= UDX_STREAM_ENDED_REMOTE;
-    if (stream->on_read != NULL) {
-      uv_buf_t b = uv_buf_init(NULL, 0);
-      stream->on_read(stream, UV_EOF, &b);
-    }
-  }
-
   return 1;
 }
 
@@ -1630,6 +1622,16 @@ send_stream_packets (udx_socket_t *socket, udx_stream_t *stream) {
     if (rc == UV_EAGAIN) {
       return false;
     }
+
+    // if this ACK packet acks the remote's END packet, advance from ENDING_REMOTE -> ENDED_REMOTE
+    if ((stream->status & UDX_STREAM_SHOULD_END_REMOTE) == UDX_STREAM_END_REMOTE && seq_compare(stream->remote_ended, stream->ack) <= 0) {
+      stream->status |= UDX_STREAM_ENDED_REMOTE;
+      if (stream->on_read != NULL) {
+        uv_buf_t b = uv_buf_init(NULL, 0);
+        stream->on_read(stream, UV_EOF, &b);
+      }
+    }
+
     stream->packets_tx++;
     stream->bytes_tx += pkt->size;
 
