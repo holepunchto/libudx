@@ -1,10 +1,10 @@
 cmake_minimum_required(VERSION 3.25)
 
+find_package(cmake-fetch REQUIRED PATHS node_modules/cmake-fetch)
+
 project(udx C)
 
-if(NOT TARGET uv)
-  add_subdirectory(vendor/libuv EXCLUDE_FROM_ALL)
-endif()
+fetch_package("github:libuv/libuv@1.48.0")
 
 add_library(udx OBJECT)
 
@@ -115,6 +115,7 @@ install(FILES include/udx.h DESTINATION include)
 
 if(PROJECT_IS_TOP_LEVEL)
   enable_testing()
+
   add_subdirectory(test)
   add_subdirectory(examples)
 endif()
