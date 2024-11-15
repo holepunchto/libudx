@@ -1,5 +1,9 @@
 #define _GNU_SOURCE
 
+#if defined(__APPLE__)
+#define __APPLE_USE_RFC_3542
+#endif
+
 #include <assert.h>
 #include <stdlib.h>
 #include <string.h>
