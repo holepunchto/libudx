@@ -152,6 +152,8 @@ main () {
   if (asock.packets_dropped_by_kernel != -1 && bsock.packets_dropped_by_kernel != -1) {
     printf("stats: socket a: packets_dropped=%" PRIi64 "\n", asock.packets_dropped_by_kernel);
     printf("stats: socket b: packets_dropped=%" PRIi64 "\n", bsock.packets_dropped_by_kernel);
+
+    assert(asock.packets_dropped_by_kernel + bsock.packets_dropped_by_kernel == udx.packets_dropped_by_kernel);
   }
 
   return 0;

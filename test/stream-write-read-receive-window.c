@@ -129,7 +129,7 @@ main () {
   assert(e == 0);
 
   int data_sz = UDX_MTU_MAX * 6;
-  uint8_t *data = malloc(data_sz);
+  char *data = malloc(data_sz);
   uv_buf_t buf = uv_buf_init(data, data_sz);
 
   e = udx_stream_write(req, &send_stream, &buf, 1, on_ack);

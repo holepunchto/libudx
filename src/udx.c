@@ -1965,6 +1965,7 @@ udx_init (uv_loop_t *loop, udx_t *udx) {
   udx->packets_rx = 0;
   udx->packets_tx = 0;
 
+  udx->packets_dropped_by_kernel = -1;
   udx->loop = loop;
 
   return 0;
@@ -2089,6 +2090,15 @@ udx_socket_bind (udx_socket_t *socket, const struct sockaddr *addr, unsigned int
   if (!err) {
     socket->cmsg_wanted = true;
     socket->packets_dropped_by_kernel = 0;
+
+    if (socket->udx->packets_dropped_by_kernel == -1) {
+      socket->udx->packets_dropped_by_kernel = 0;
+    }
+  }
+
+  err = udx__udp_set_dontfrag((uv_os_sock_t) fd, socket->family == 6);
+  if (err) {
+    debug_printf("udx: failed to set IP Don't Fragment socket option\n");
   }
 
   socket->status |= UDX_SOCKET_BOUND;

@@ -15,4 +15,7 @@ udx__recvmsg (udx_socket_t *handle, uv_buf_t *buf, struct sockaddr *addr, int ad
 int
 udx__udp_set_rxq_ovfl (uv_os_sock_t fd);
 
+int
+udx__udp_set_dontfrag (uv_os_sock_t fd, bool is_ipv6);
+
 #endif // UDX_IO_H

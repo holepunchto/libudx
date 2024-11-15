@@ -87,3 +87,17 @@ udx__udp_set_rxq_ovfl (uv_os_sock_t fd) {
   UDX_UNUSED(fd);
   return -1;
 }
+
+int
+udx__udp_set_dontfrag (uv_os_sock_t fd, bool is_ipv6) {
+  int rc;
+  if (is_ipv6) {
+    int val = IPV6_PMTUDISC_PROBE;
+    rc = setsockopt(fd, IPPROTO_IPV6, IPV6_MTU_DISCOVER, &val, sizeof(val));
+  } else {
+    int val = IP_PMTUDISC_PROBE;
+    rc = setsockopt(fd, IPPROTO_IP, IP_MTU_DISCOVER, &val, sizeof(val));
+  }
+
+  return rc;
+}
