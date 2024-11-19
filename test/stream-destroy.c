@@ -13,7 +13,9 @@ void
 on_close (udx_stream_t *handle, int status) {
   assert(status == 0);
 
-  udx_socket_close(&sock, NULL);
+  int e = udx_socket_close(&sock, NULL);
+
+  assert(e == 0);
 
   close_called = true;
 }

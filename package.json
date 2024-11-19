@@ -1,0 +1,17 @@
+{
+  "private": true,
+  "name": "libudx",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/holepunchto/libudx.git"
+  },
+  "author": "Holepunch",
+  "license": "Apache-2.0",
+  "bugs": {
+    "url": "https://github.com/holepunchto/libudx/issues"
+  },
+  "homepage": "https://github.com/holepunchto/libudx#readme",
+  "devDependencies": {
+    "cmake-fetch": "^1.0.0"
+  }
+}

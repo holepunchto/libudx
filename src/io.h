@@ -12,4 +12,7 @@ udx__sendmsg (udx_socket_t *handle, const uv_buf_t bufs[], unsigned int bufs_len
 ssize_t
 udx__recvmsg (udx_socket_t *handle, uv_buf_t *buf, struct sockaddr *addr, int addr_len);
 
+int
+udx__udp_set_rxq_ovfl (uv_os_sock_t fd);
+
 #endif // UDX_IO_H
