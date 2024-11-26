@@ -5,6 +5,13 @@
 
 #include "../include/udx.h"
 
+/*
+ * this test is contrived to start with a receiver advertizing zero receive
+ * window to cause the sender to send zero window probes. after two zero-window
+ * probes are received we switch to advertizing an empty receive window (see `on_read`
+ * below) to allow the data to flow at max speed.
+ */
+
 uv_loop_t loop;
 udx_t udx;
 
@@ -67,6 +74,16 @@ on_ack (udx_stream_write_t *req, int status, int unordered) {
   udx_stream_write_end(recv_end_req, &recv_stream, NULL, 0, on_end);
 }
 
+uint32_t
+pretend_buffer_is_full (udx_stream_t *stream) {
+  return stream->recv_rwnd_max;
+}
+
+uint32_t
+pretend_buffer_is_empty (udx_stream_t *stream) {
+  return 0;
+}
+
 void
 on_read (udx_stream_t *handle, ssize_t read_len, const uv_buf_t *buf) {
   read_counter++;
@@ -78,7 +95,7 @@ on_read (udx_stream_t *handle, ssize_t read_len, const uv_buf_t *buf) {
   // read_counter 2: read fired from the first zero window probe triggered by timeout.
 
   if (read_counter == 2) {
-    recv_stream.recv_rwnd = 131072;
+    handle->get_read_buffer_size = &pretend_buffer_is_empty;
   }
 }
 
@@ -115,7 +132,7 @@ main () {
   e = udx_stream_init(&udx, &send_stream, 2, on_close, on_finalize);
   assert(e == 0);
 
-  recv_stream.recv_rwnd = 0;
+  recv_stream.get_read_buffer_size = &pretend_buffer_is_full;
   send_stream.send_rwnd = 0;
   assert(recv_stream.rto == 1000);
 
@@ -129,7 +146,7 @@ main () {
   assert(e == 0);
 
   int data_sz = UDX_MTU_MAX * 6;
-  uint8_t *data = malloc(data_sz);
+  char *data = malloc(data_sz);
   uv_buf_t buf = uv_buf_init(data, data_sz);
 
   e = udx_stream_write(req, &send_stream, &buf, 1, on_ack);

@@ -45,7 +45,7 @@
 #define UDX_CONG_MAX_CWND    65536
 #define UDX_RTO_MAX_MS       30000
 #define UDX_RTT_MAX_MS       30000
-#define UDX_INIT_RWND_BYTES  131072 // arbitrary, ~90 1500 mtu packets, 52mbits/sec at 20millis latency
+#define UDX_DEFAULT_RWND_MAX (256 * 1024) // arbitrary, ~175 1500 mtu packets, @20ms latency = 104 mbits/sec
 
 #define UDX_HIGH_WATERMARK 262144
 
@@ -480,6 +480,25 @@ clear_outgoing_packets (udx_stream_t *stream) {
   }
 }
 
+// returns the rwnd to advertise to the sender
+// to provide a rwnd value the user provides two values
+// 1. a maximum buffer size. default is UDX_DEFAULT_RWND_MAX
+// 2. a callback to return the number of bytes already in the buffer.
+// the window is then set to the
+
+static uint32_t
+get_recv_rwnd (udx_stream_t *stream) {
+  uint32_t bufsize = 0;
+  if (stream->get_read_buffer_size) {
+    bufsize = stream->get_read_buffer_size(stream);
+  }
+  if (stream->recv_rwnd_max > bufsize) {
+    return stream->recv_rwnd_max - bufsize;
+  } else {
+    return 0;
+  }
+}
+
 static void
 init_stream_packet (udx_packet_t *pkt, int type, udx_stream_t *stream, const uv_buf_t *userbufs, int nuserbufs) {
   uint8_t *b = (uint8_t *) &(pkt->header);
@@ -495,7 +514,7 @@ init_stream_packet (udx_packet_t *pkt, int type, udx_stream_t *stream, const uv_
   // 32 bit (le) remote id
   *(i++) = udx__swap_uint32_if_be(stream->remote_id);
   // 32 bit (le) recv window
-  *(i++) = udx__swap_uint32_if_be(stream->recv_rwnd);
+  *(i++) = udx__swap_uint32_if_be(get_recv_rwnd(stream));
   // 32 bit (le) seq
   *(i++) = udx__swap_uint32_if_be(stream->seq);
   // 32 bit (le) ack
@@ -2289,14 +2308,15 @@ udx_stream_init (udx_t *udx, udx_stream_t *stream, uint32_t local_id, udx_stream
   stream->ssthresh = 255;
   stream->cwnd = UDX_CONG_INIT_CWND;
   stream->cwnd_cnt = 0;
-  stream->recv_rwnd = UDX_INIT_RWND_BYTES;
-  stream->send_rwnd = UDX_INIT_RWND_BYTES;
+  stream->recv_rwnd_max = UDX_DEFAULT_RWND_MAX;
+  stream->send_rwnd = UDX_DEFAULT_RWND_MAX;
   stream->on_firewall = NULL;
   stream->on_read = NULL;
   stream->on_recv = NULL;
   stream->on_drain = NULL;
   stream->on_close = close_cb;
   stream->on_finalize = finalize_cb;
+  stream->get_read_buffer_size = NULL;
 
   // Clear congestion state
   memset(&(stream->cong), 0, sizeof(udx_cong_t));
@@ -2362,8 +2382,14 @@ udx_stream_set_ack (udx_stream_t *stream, uint32_t ack) {
 }
 
 int
-udx_stream_set_rwnd (udx_stream_t *stream, uint32_t rwnd) {
-  stream->recv_rwnd = rwnd;
+udx_stream_get_rwnd_max (udx_stream_t *stream, uint32_t *size) {
+  *size = stream->recv_rwnd_max;
+  return 0;
+}
+
+int
+udx_stream_set_rwnd_max (udx_stream_t *stream, uint32_t size) {
+  stream->recv_rwnd_max = size;
   return 0;
 }
 
