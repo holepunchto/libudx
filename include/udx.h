@@ -315,10 +315,6 @@ struct udx_packet_s {
   // just alloc it in place here, easier to manage
   char header[UDX_HEADER_SIZE];
   unsigned short nbufs;
-
-  // inefficient - only relevant for stream_t packets
-  unsigned short nwbufs;
-  udx_stream_write_buf_t **wbufs;
 };
 
 struct udx_socket_send_s {
