@@ -119,6 +119,8 @@ struct udx_s {
 
   uint64_t packets_rx;
   uint64_t packets_tx;
+
+  int64_t packets_dropped_by_kernel;
 };
 
 struct udx_queue_node_s {

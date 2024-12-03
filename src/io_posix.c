@@ -1,7 +1,7 @@
 #define _GNU_SOURCE
 
-#if defined(__linux__) || defined(__FreeBSD__)
-#define UDX_PLATFORM_HAS_SENDMMSG
+#if defined(__APPLE__)
+#define __APPLE_USE_RFC_3542
 #endif
 
 #include <assert.h>
@@ -21,6 +21,19 @@ int
 udx__get_link_mtu (const struct sockaddr *addr) {
   UDX_UNUSED(addr);
   return -1;
+}
+
+int
+udx__udp_set_dontfrag (uv_os_sock_t fd, bool is_ipv6) {
+  int val = 1;
+  int rc;
+  if (is_ipv6) {
+    rc = setsockopt(fd, IPPROTO_IPV6, IPV6_DONTFRAG, &val, sizeof(val));
+  } else {
+    rc = setsockopt(fd, IPPROTO_IP, IP_DONTFRAG, &val, sizeof(val));
+  }
+
+  return rc;
 }
 
 #else
@@ -55,6 +68,21 @@ udx__get_link_mtu (const struct sockaddr *addr) {
   close(s);
   return mtu;
 }
+
+int
+udx__udp_set_dontfrag (uv_os_sock_t fd, bool is_ipv6) {
+  int rc;
+  if (is_ipv6) {
+    int val = IPV6_PMTUDISC_PROBE;
+    rc = setsockopt(fd, IPPROTO_IPV6, IPV6_MTU_DISCOVER, &val, sizeof(val));
+  } else {
+    int val = IP_PMTUDISC_PROBE;
+    rc = setsockopt(fd, IPPROTO_IP, IP_MTU_DISCOVER, &val, sizeof(val));
+  }
+
+  return rc;
+}
+
 #endif
 
 ssize_t
@@ -111,11 +139,13 @@ udx__recvmsg (udx_socket_t *handle, uv_buf_t *buf, struct sockaddr *addr, int ad
 
     for (struct cmsghdr *cmsg = CMSG_FIRSTHDR(&h); cmsg != NULL; cmsg = CMSG_NXTHDR(&h, cmsg)) {
       if (cmsg->cmsg_level == SOL_SOCKET && cmsg->cmsg_type == SO_RXQ_OVFL) {
-        packets_dropped_by_kernel = *(uint32_t *) CMSG_DATA(cmsg);
+        memcpy(&packets_dropped_by_kernel, CMSG_DATA(cmsg), sizeof(packets_dropped_by_kernel));
       }
     }
 
     if (packets_dropped_by_kernel) {
+      uint32_t delta = packets_dropped_by_kernel - handle->packets_dropped_by_kernel;
+      handle->udx->packets_dropped_by_kernel += delta;
       handle->packets_dropped_by_kernel = packets_dropped_by_kernel;
     }
   }
