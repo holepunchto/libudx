@@ -1256,6 +1256,10 @@ process_packet (udx_socket_t *socket, char *buf, ssize_t buf_len, struct sockadd
     delivered = process_sacks(stream, buf, header_len);
   }
 
+  if (stream->status & UDX_STREAM_DEAD) {
+    return 1;
+  }
+
   // Done with header processing now.
   // For future compat, make sure we are now pointing at the actual data using the data_offset
   if (data_offset) {
@@ -1382,6 +1386,10 @@ process_packet (udx_socket_t *socket, char *buf, ssize_t buf_len, struct sockadd
     if (a == 2) { // it ended, so ack that and trigger close
       // TODO: make this work as well, if the ack packet is lost, ie
       // have some internal (capped) queue of "gracefully closed" streams (TIME_WAIT)
+
+      if (stream->status & UDX_STREAM_DEAD) {
+        return 1;
+      }
 
       if ((stream->status & UDX_STREAM_ALL_ENDED) == UDX_STREAM_ALL_ENDED) {
         close_stream(stream, 0);
