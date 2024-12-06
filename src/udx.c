@@ -2112,6 +2112,26 @@ udx_socket_getsockname (udx_socket_t *socket, struct sockaddr *name, int *name_l
 }
 
 int
+udx_socket_set_membership (udx_socket_t *socket, const char *multicast_addr, const char *interface_addr, uv_membership membership) {
+  return uv_udp_set_membership(&socket->handle, multicast_addr, interface_addr, membership);
+}
+
+int
+udx_socket_set_source_membership (udx_socket_t *socket, const char *multicast_addr, const char *interface_addr, const char *source_addr, uv_membership membership) {
+  return uv_udp_set_source_membership(&socket->handle, multicast_addr, interface_addr, source_addr, membership);
+}
+
+int
+udx_socket_set_multicast_loop (udx_socket_t *socket, int on) {
+  return uv_udp_set_multicast_loop(&socket->handle, on);
+}
+
+int
+udx_socket_set_multicast_interface (udx_socket_t *socket, const char *addr) {
+  return uv_udp_set_multicast_interface(&socket->handle, addr);
+}
+
+int
 udx_socket_send (udx_socket_send_t *req, udx_socket_t *socket, const uv_buf_t bufs[], unsigned int bufs_len, const struct sockaddr *dest, udx_socket_send_cb cb) {
   return udx_socket_send_ttl(req, socket, bufs, bufs_len, dest, 0, cb);
 }

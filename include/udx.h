@@ -419,6 +419,18 @@ int
 udx_socket_bind (udx_socket_t *socket, const struct sockaddr *addr, unsigned int flags);
 
 int
+udx_socket_set_membership (udx_socket_t *socket, const char *multicast_addr, const char *interface_addr, uv_membership membership);
+
+int
+udx_socket_set_source_membership (udx_socket_t *socket, const char *multicast_addr, const char *interface_addr, const char *source_addr, uv_membership membership);
+
+int
+udx_socket_set_multicast_loop (udx_socket_t *socket, int on);
+
+int
+udx_socket_set_multicast_interface (udx_socket_t *socket, const char *addr);
+
+int
 udx_socket_getsockname (udx_socket_t *socket, struct sockaddr *name, int *name_len);
 
 int
