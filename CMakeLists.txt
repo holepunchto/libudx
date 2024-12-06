@@ -35,6 +35,7 @@ target_sources(
     src/queue.c
     src/queue.h
     src/io.h
+    src/thread.c
     src/udx.c
 )
 

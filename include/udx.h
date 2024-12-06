@@ -53,6 +53,8 @@ extern "C" {
 #define UDX_STREAM_WRITE_WANT_DESTROY 0b0100
 #define UDX_STREAM_WRITE_WANT_ZWP     0b1000
 
+#define THREADED_DRAIN // experimental
+
 typedef struct {
   uint32_t seq;
 } udx_cirbuf_val_t;
@@ -102,6 +104,32 @@ typedef void (*udx_lookup_cb)(udx_lookup_t *handle, int status, const struct soc
 typedef void (*udx_interface_event_cb)(udx_interface_event_t *handle, int status);
 typedef void (*udx_interface_event_close_cb)(udx_interface_event_t *handle);
 
+#ifdef THREADED_DRAIN
+int
+__udx_read_poll_setup (udx_t *udx);
+
+int
+__udx_read_poll_start (udx_t *udx, udx_socket_t *socket); // uv_os_fd_t fd, uv_async_t on_data);
+
+int
+__udx_read_poll_stop (udx_t *udx, udx_socket_t *socket); // uv_os_fd_t fd);
+
+int
+__udx_read_poll_destroy (udx_t *udx);
+
+typedef struct udx_reader_s {
+    uv_thread_t thread_id;
+    uv_loop_t loop;
+
+    // signals sub->main
+    uv_async_t signal_drain;
+
+    // signals main->sub
+    uv_async_t signal_control;
+    void *commands; // q&d
+} udx_reader_t;
+#endif
+
 struct udx_s {
   uv_loop_t *loop;
 
@@ -121,6 +149,10 @@ struct udx_s {
   uint64_t packets_tx;
 
   int64_t packets_dropped_by_kernel;
+
+#ifdef THREADED_DRAIN
+  udx_reader_t worker;
+#endif
 };
 
 struct udx_queue_node_s {
@@ -162,6 +194,10 @@ struct udx_socket_s {
   uint64_t packets_tx;
 
   int64_t packets_dropped_by_kernel;
+
+#ifdef THREADED_DRAIN
+  uv_poll_t drain_poll;
+#endif
 };
 
 typedef struct udx_cong_s {

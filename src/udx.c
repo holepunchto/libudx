@@ -238,7 +238,12 @@ update_poll (udx_socket_t *socket) {
     assert(!uv_is_active((uv_handle_t *) &socket->io_poll));
     return 0;
   }
-  int events = UV_READABLE;
+
+  int events = 0;
+
+#ifndef THREADED_DRAIN
+  events = UV_READABLE;
+#endif
 
   if (socket_write_wanted(socket)) {
     events |= UV_WRITABLE;
@@ -1967,6 +1972,9 @@ udx_init (uv_loop_t *loop, udx_t *udx) {
   udx->packets_dropped_by_kernel = -1;
   udx->loop = loop;
 
+#ifdef THREADED_DRAIN
+  assert(__udx_read_poll_setup(udx) == 0);
+#endif
   return 0;
 }
 
@@ -2050,6 +2058,7 @@ udx_socket_set_ttl (udx_socket_t *socket, int ttl) {
 int
 udx_socket_bind (udx_socket_t *socket, const struct sockaddr *addr, unsigned int flags) {
   uv_udp_t *handle = &(socket->handle);
+
   uv_poll_t *poll = &(socket->io_poll);
   uv_os_fd_t fd;
 
@@ -2075,7 +2084,7 @@ udx_socket_bind (udx_socket_t *socket, const struct sockaddr *addr, unsigned int
   err = uv_send_buffer_size((uv_handle_t *) handle, &send_buffer_size);
   assert(err == 0);
 
-  int recv_buffer_size = UDX_DEFAULT_BUFFER_SIZE;
+  int recv_buffer_size = UDX_DEFAULT_BUFFER_SIZE; // TODO: move to other thread
   err = uv_recv_buffer_size((uv_handle_t *) handle, &recv_buffer_size);
   assert(err == 0);
 
@@ -2084,6 +2093,11 @@ udx_socket_bind (udx_socket_t *socket, const struct sockaddr *addr, unsigned int
 
   err = uv_poll_init_socket(socket->udx->loop, poll, (uv_os_sock_t) fd);
   assert(err == 0);
+
+#ifdef THREADED_DRAIN
+  err = __udx_read_poll_start(socket->udx, socket);
+  assert(err == 0);
+#endif
 
   err = udx__udp_set_rxq_ovfl((uv_os_sock_t) fd);
   if (!err) {
