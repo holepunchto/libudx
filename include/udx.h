@@ -79,11 +79,6 @@ typedef enum {
   UDX_LOOKUP_FAMILY_IPV6 = 2,
 } udx_lookup_flags;
 
-typedef enum {
-  UDX_JOIN_GROUP,
-  UDX_LEAVE_GROUP
-} udx_multicast_membership;
-
 typedef struct udx_lookup_s udx_lookup_t;
 
 typedef struct udx_interface_event_s udx_interface_event_t;
@@ -424,10 +419,10 @@ int
 udx_socket_bind (udx_socket_t *socket, const struct sockaddr *addr, unsigned int flags);
 
 int
-udx_socket_set_membership (udx_socket_t *socket, const char *multicast_addr, const char *interface_addr, udx_multicast_membership membership);
+udx_socket_set_membership (udx_socket_t *socket, const char *multicast_addr, const char *interface_addr, uv_membership membership);
 
 int
-udx_socket_set_source_membership (udx_socket_t *socket, const char *multicast_addr, const char *interface_addr, const char *source_addr, udx_multicast_membership membership);
+udx_socket_set_source_membership (udx_socket_t *socket, const char *multicast_addr, const char *interface_addr, const char *source_addr, uv_membership membership);
 
 int
 udx_socket_set_multicast_loop (udx_socket_t *socket, int on);

@@ -2112,15 +2112,13 @@ udx_socket_getsockname (udx_socket_t *socket, struct sockaddr *name, int *name_l
 }
 
 int
-udx_socket_set_membership (udx_socket_t *socket, const char *multicast_addr, const char *interface_addr, udx_multicast_membership membership) {
-  uv_membership m = membership == UDX_JOIN_GROUP ? UV_JOIN_GROUP : UV_LEAVE_GROUP;
-  return uv_udp_set_membership(&socket->handle, multicast_addr, interface_addr, m);
+udx_socket_set_membership (udx_socket_t *socket, const char *multicast_addr, const char *interface_addr, uv_membership membership) {
+  return uv_udp_set_membership(&socket->handle, multicast_addr, interface_addr, membership);
 }
 
 int
-udx_socket_set_source_membership (udx_socket_t *socket, const char *multicast_addr, const char *interface_addr, const char *source_addr, udx_multicast_membership membership) {
-  uv_membership m = membership == UDX_JOIN_GROUP ? UV_JOIN_GROUP : UV_LEAVE_GROUP;
-  return uv_udp_set_source_membership(&socket->handle, multicast_addr, interface_addr, source_addr, m);
+udx_socket_set_source_membership (udx_socket_t *socket, const char *multicast_addr, const char *interface_addr, const char *source_addr, uv_membership membership) {
+  return uv_udp_set_source_membership(&socket->handle, multicast_addr, interface_addr, source_addr, membership);
 }
 
 int
