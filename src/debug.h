@@ -79,6 +79,4 @@ debug_print_outgoing (udx_stream_t *stream) {
 }
 */
 
-#define debugger __builtin_debugtrap();
-
 #endif // UDX_DEBUG_H

@@ -4,9 +4,10 @@
 #include <memory.h>
 
 #include "../include/udx.h"
+#include "io.h"
 #include "internal.h"
 
-#include "debug.h"
+#define debugger __builtin_debugtrap();
 
 static void
 on_miso (uv_async_t *signal) {
@@ -38,10 +39,14 @@ static int stub_update_poll (udx_socket_t *socket);
  * B)
  * - or... actually blindly drain the data from kernel here;
  *   and act as a prebuffer/ gracefully return flow back to `udx.c:on_uv_poll`
+ *   - B it is.
  *
  *
  * Next up:
- * need a small queue for control signals.
+ * - [x] need a small queue for control signals.
+ * - [ ] how to thread-safe without stdatomic.h?
+ * - [?] malloc/free ctrl queue or pre-allocatte?
+ * - [ ] drain kernel buffer / prove multi-threaded poll works
  */
 
 // TODO: remove after verify multithreaded poll works
@@ -49,10 +54,30 @@ static void
 stub_on_uv_poll (uv_poll_t *handle, int status, int events) {
   UDX_UNUSED(status);
   udx_socket_t *socket = handle->data;
+  // uv_loop_t *loop = &socket->udx->worker.loop;
 
   printf("event: %i, socket->events: %i\n", events, socket->events);
-  debugger
-  // TODO: uv_async_send(loop, miso_drain);
+
+  // borrowed from udx.c:on_uv_poll()
+  ssize_t size;
+  if (events & UV_READABLE) {
+    struct sockaddr_storage addr;
+    int addr_len = sizeof(addr);
+    uv_buf_t buf;
+
+    memset(&addr, 0, addr_len);
+
+    char b[2048];
+    buf.base = (char *) &b;
+    buf.len = 2048;
+
+    while (!(socket->status & UDX_SOCKET_CLOSED) && (size = udx__recvmsg(socket, &buf, (struct sockaddr *) &addr, addr_len)) >= 0) {
+      debugger
+      // TODO: stash data into lock-free buffer
+    }
+  }
+
+  // TODO: notify main loop; uv_async_send(loop, miso_drain);
 
   assert(stub_update_poll(socket) == 0);
 }
@@ -65,7 +90,7 @@ stub_update_poll (udx_socket_t *socket) {
 }
 
 static void
-socket_init (udx_t *udx, udx_socket_t *socket) {
+read_poll_start (udx_t *udx, udx_socket_t *socket) {
   uv_loop_t *loop = &udx->worker.loop;
 
   int err = 0;
@@ -75,7 +100,7 @@ socket_init (udx_t *udx, udx_socket_t *socket) {
   err = uv_fileno((const uv_handle_t *) &socket->handle, &fd);
   assert(err == 0);
 
-  printf("read_poll_start: %i\n", fd);
+  printf("read_poll_start(fd: %i) tid: %zu\n", fd, uv_thread_self());
 
   err = uv_poll_init_socket(loop, poll, (uv_os_sock_t) fd);
   assert(err == 0);
@@ -101,13 +126,18 @@ typedef struct command_s {
 static void
 on_control (uv_async_t *signal) {
   udx_t *udx = signal->data;
-  // TODO: threadsafe
-  command_t *head = udx->worker.commands;
-  printf("sub thread: on_control() t: %zu\n", uv_thread_self());
+
+  command_t *head;
+  // TODO: not threadsafe
+  head = udx->worker.commands;
+  udx->worker.commands = NULL;
+
+  // process queue
   while (head != NULL) {
+    printf("sub thread: on_control(%i) t: %zu\n", head->type, uv_thread_self());
     switch (head->type) {
       case SOCKET_INIT:
-        socket_init(udx, head->data);
+        read_poll_start(udx, head->data);
         break;
 
       case SOCKET_REMOVE:
@@ -130,16 +160,16 @@ on_control (uv_async_t *signal) {
 
 static inline int
 run_command (udx_t *udx, enum command_id type, void *data) {
-  printf("run_command(%i) %zu\n", type, uv_thread_self());
+  printf("run_command(%i) \t\ttid: %zu\n", type, uv_thread_self());
 
   command_t *cmd = malloc(sizeof(command_t));
   cmd->type = type;
   cmd->data = data;
   cmd->next = NULL;
 
-  // TODO: threadsafe
+  // TODO: not threadsafe
   command_t *head = udx->worker.commands;
-  if (head) {
+  if (head != NULL) {
     while (head->next != NULL) head = head->next;
     head->next = cmd;
   } else {
@@ -153,17 +183,10 @@ static void reader_thread (void *data) {
   udx_t *udx = data;
   int err;
 
-  udx_reader_t *worker = &(udx->worker);
-  uv_loop_t *loop = &(udx->worker.loop);
+  uv_loop_t *loop = &udx->worker.loop;
 
-  printf("background thread started %zu\n", uv_thread_self());
-  err = uv_loop_init(loop);
-  assert(err == 0);
+  printf("uv_run(worker) \t\ttid: %zu\n", uv_thread_self());
 
-  err = uv_async_init(loop, &worker->signal_control, on_control);
-  assert(err == 0);
-
-  printf("starting loop\n");
   err = uv_run(loop, UV_RUN_DEFAULT);
   assert(err == 0);
 
@@ -176,11 +199,21 @@ static void reader_thread (void *data) {
 
 int
 __udx_read_poll_setup(udx_t *udx) {
-  printf("read_poll_setup() %zu\n", uv_thread_self());
+  printf("read_poll_setup() main \ttid: %zu\n", uv_thread_self());
 
   int err;
   err = uv_async_init(udx->loop, &udx->worker.signal_drain, on_miso);
   if (err) return err;
+
+  udx->worker.signal_drain.data = udx;
+
+  err = uv_loop_init(&udx->worker.loop);
+  assert(err == 0);
+
+  err = uv_async_init(&udx->worker.loop, &udx->worker.signal_control, on_control);
+  assert(err == 0);
+
+  udx->worker.signal_control.data = udx;
 
   err = uv_thread_create(&udx->worker.thread_id, reader_thread, udx);
   if (err) return err;
@@ -190,6 +223,9 @@ __udx_read_poll_setup(udx_t *udx) {
 
 int
 __udx_read_poll_start (udx_t *udx, udx_socket_t *socket) {
+  uv_os_fd_t fd;
+  assert(0 == uv_fileno((uv_handle_t *) &socket->handle, &fd));
+  printf("__poll_start fd: %i \ttid: %zu\n", fd, uv_thread_self());
   return run_command(udx, SOCKET_INIT, socket);
 }
 
