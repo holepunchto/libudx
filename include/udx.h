@@ -107,16 +107,12 @@ typedef void (*udx_interface_event_close_cb)(udx_interface_event_t *handle);
 struct udx_s {
   uv_loop_t *loop;
 
-  uint32_t refs;
+  int refs;
   udx_idle_cb on_idle;
 
-  uint32_t sockets_len;
-  uint32_t sockets_max_len;
-  udx_socket_t **sockets;
-
-  uint32_t streams_len;
-  uint32_t streams_max_len;
-  udx_stream_t **streams;
+  udx_socket_t *sockets;
+  udx_stream_t *streams;
+  udx_interface_event_t *listeners;
 
   udx_cirbuf_t streams_by_id;
 
@@ -145,10 +141,11 @@ struct udx_socket_s {
 
   udx_queue_t send_queue;
 
+  udx_socket_t *prev;
+  udx_socket_t *next;
+
   udx_t *udx;
   udx_cirbuf_t *streams_by_id; // for convenience
-
-  int set_id;
 
   bool cmsg_wanted; // include a control buffer for recvmsg
   int family;
@@ -193,7 +190,9 @@ struct udx_stream_s {
   uint32_t local_id; // must be first entry, so its compat with the cirbuf
   uint32_t remote_id;
 
-  int set_id;
+  udx_stream_t *prev;
+  udx_stream_t *next;
+
   int status;
   int write_wanted;
   int out_of_order;
@@ -391,6 +390,9 @@ struct udx_interface_event_s {
   uv_timer_t timer;
   uv_loop_t *loop;
   udx_t *udx;
+
+  udx_interface_event_t *prev;
+  udx_interface_event_t *next;
 
   uv_interface_address_t *addrs;
   int addrs_len;
