@@ -2842,7 +2842,7 @@ udx_interface_event_init (udx_t *udx, udx_interface_event_t *handle, udx_interfa
   handle->timer.data = handle;
 
   udx->refs++;
-  udx__set_add(udx->listeners, handle);
+  udx__link_add(udx->listeners, handle);
 
   return 0;
 }
