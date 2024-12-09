@@ -83,6 +83,8 @@ typedef struct udx_lookup_s udx_lookup_t;
 
 typedef struct udx_interface_event_s udx_interface_event_t;
 
+typedef void (*udx_idle_cb)(udx_t *udx);
+
 typedef void (*udx_socket_send_cb)(udx_socket_send_t *req, int status);
 typedef void (*udx_socket_recv_cb)(udx_socket_t *socket, ssize_t read_len, const uv_buf_t *buf, const struct sockaddr *from);
 typedef void (*udx_socket_close_cb)(udx_socket_t *socket);
@@ -106,6 +108,7 @@ struct udx_s {
   uv_loop_t *loop;
 
   uint32_t refs;
+  udx_idle_cb on_idle;
 
   uint32_t sockets_len;
   uint32_t sockets_max_len;
@@ -375,6 +378,8 @@ struct udx_stream_send_s {
 
 struct udx_lookup_s {
   uv_getaddrinfo_t req;
+  udx_t *udx;
+
   struct addrinfo hints;
 
   udx_lookup_cb on_lookup;
@@ -385,6 +390,7 @@ struct udx_lookup_s {
 struct udx_interface_event_s {
   uv_timer_t timer;
   uv_loop_t *loop;
+  udx_t *udx;
 
   uv_interface_address_t *addrs;
   int addrs_len;
@@ -398,6 +404,9 @@ struct udx_interface_event_s {
 
 int
 udx_init (uv_loop_t *loop, udx_t *udx);
+
+void
+udx_idle (udx_t *udx, udx_idle_cb cb);
 
 int
 udx_socket_init (udx_t *udx, udx_socket_t *socket);
@@ -518,10 +527,10 @@ int
 udx_stream_destroy (udx_stream_t *stream);
 
 int
-udx_lookup (uv_loop_t *loop, udx_lookup_t *req, const char *host, unsigned int flags, udx_lookup_cb cb);
+udx_lookup (udx_t *udx, udx_lookup_t *req, const char *host, unsigned int flags, udx_lookup_cb cb);
 
 int
-udx_interface_event_init (uv_loop_t *loop, udx_interface_event_t *handle);
+udx_interface_event_init (udx_t *udx, udx_interface_event_t *handle);
 
 int
 udx_interface_event_start (udx_interface_event_t *handle, udx_interface_event_cb cb, uint64_t frequency);

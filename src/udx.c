@@ -33,6 +33,8 @@
 #define UDX_DEFAULT_TTL         64
 #define UDX_DEFAULT_BUFFER_SIZE 212992
 
+#define UDX_DEFAULT_SET_SIZE 16
+
 #define UDX_MAX_RTO_TIMEOUTS 6
 
 #define UDX_CONG_C           400  // C=0.4 (inverse) in scaled 1000
@@ -152,24 +154,6 @@ static void
 on_uv_poll (uv_poll_t *handle, int status, int events);
 
 static void
-ref_inc (udx_t *udx) {
-  udx->refs++;
-
-  if (udx->sockets == NULL) {
-    udx->sockets_len = 0;
-    udx->sockets_max_len = 16;
-    udx->sockets = malloc(udx->sockets_max_len * sizeof(udx_socket_t *));
-  }
-
-  if (udx->streams == NULL) {
-    udx->streams_len = 0;
-    udx->streams_max_len = 16;
-    udx->streams = malloc(udx->streams_max_len * sizeof(udx_stream_t *));
-    udx__cirbuf_init(&(udx->streams_by_id), 16);
-  }
-}
-
-static void
 ref_dec (udx_t *udx) {
   udx->refs--;
 
@@ -187,6 +171,10 @@ ref_dec (udx_t *udx) {
     udx->streams_max_len = 0;
 
     udx__cirbuf_destroy(&(udx->streams_by_id));
+  }
+
+  if (udx->on_idle != NULL) {
+    udx->on_idle(udx);
   }
 }
 
@@ -1966,6 +1954,7 @@ on_uv_poll (uv_poll_t *handle, int status, int events) {
 int
 udx_init (uv_loop_t *loop, udx_t *udx) {
   udx->refs = 0;
+  udx->on_idle = NULL;
 
   udx->sockets_len = 0;
   udx->sockets_max_len = 0;
@@ -1986,9 +1975,20 @@ udx_init (uv_loop_t *loop, udx_t *udx) {
   return 0;
 }
 
+void
+udx_idle (udx_t *udx, udx_idle_cb cb) {
+  udx->on_idle = cb;
+}
+
 int
 udx_socket_init (udx_t *udx, udx_socket_t *socket) {
-  ref_inc(udx);
+  udx->refs++;
+
+  if (udx->sockets == NULL) {
+    udx->sockets_len = 0;
+    udx->sockets_max_len = UDX_DEFAULT_SET_SIZE;
+    udx->sockets = malloc(udx->sockets_max_len * sizeof(udx_socket_t *));
+  }
 
   socket->family = 0;
   socket->status = 0;
@@ -2259,7 +2259,14 @@ udx_socket_close (udx_socket_t *socket, udx_socket_close_cb cb) {
 
 int
 udx_stream_init (udx_t *udx, udx_stream_t *stream, uint32_t local_id, udx_stream_close_cb close_cb, udx_stream_finalize_cb finalize_cb) {
-  ref_inc(udx);
+  udx->refs++;
+
+  if (udx->streams == NULL) {
+    udx->streams_len = 0;
+    udx->streams_max_len = UDX_DEFAULT_SET_SIZE;
+    udx->streams = malloc(udx->streams_max_len * sizeof(udx_stream_t *));
+    udx__cirbuf_init(&(udx->streams_by_id), 16);
+  }
 
   stream->local_id = local_id;
   stream->remote_id = 0;
@@ -2743,12 +2750,17 @@ on_uv_getaddrinfo (uv_getaddrinfo_t *req, int status, struct addrinfo *res) {
   }
 
   uv_freeaddrinfo(res);
+
+  ref_dec(lookup->udx);
 }
 
 int
-udx_lookup (uv_loop_t *loop, udx_lookup_t *req, const char *host, unsigned int flags, udx_lookup_cb cb) {
+udx_lookup (udx_t *udx, udx_lookup_t *req, const char *host, unsigned int flags, udx_lookup_cb cb) {
+  req->udx = udx;
   req->on_lookup = cb;
   req->req.data = req;
+
+  udx->refs++;
 
   memset(&req->hints, 0, sizeof(struct addrinfo));
 
@@ -2760,7 +2772,7 @@ udx_lookup (uv_loop_t *loop, udx_lookup_t *req, const char *host, unsigned int f
   req->hints.ai_family = family;
   req->hints.ai_socktype = SOCK_STREAM;
 
-  return uv_getaddrinfo(loop, &req->req, on_uv_getaddrinfo, host, NULL, &req->hints);
+  return uv_getaddrinfo(udx->loop, &req->req, on_uv_getaddrinfo, host, NULL, &req->hints);
 }
 
 static int
@@ -2828,12 +2840,17 @@ on_interface_event_close (uv_handle_t *handle) {
   if (event->on_close != NULL) {
     event->on_close(event);
   }
+
+  ref_dec(event->udx);
 }
 
 int
-udx_interface_event_init (uv_loop_t *loop, udx_interface_event_t *handle) {
-  handle->loop = loop;
+udx_interface_event_init (udx_t *udx, udx_interface_event_t *handle) {
+  handle->udx = udx;
+  handle->loop = udx->loop;
   handle->sorted = false;
+
+  udx->refs++;
 
   int err = uv_interface_addresses(&(handle->addrs), &(handle->addrs_len));
   if (err < 0) return err;

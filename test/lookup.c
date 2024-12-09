@@ -5,6 +5,7 @@
 #include "../include/udx.h"
 
 uv_loop_t loop;
+udx_t udx;
 udx_lookup_t req;
 
 void
@@ -26,8 +27,9 @@ main () {
   int e;
 
   uv_loop_init(&loop);
+  udx_init(&loop, &udx);
 
-  e = udx_lookup(&loop, &req, "localhost", UDX_LOOKUP_FAMILY_IPV4, on_lookup);
+  e = udx_lookup(&udx, &req, "localhost", UDX_LOOKUP_FAMILY_IPV4, on_lookup);
   assert(e == 0);
 
   uv_run(&loop, UV_RUN_DEFAULT);
