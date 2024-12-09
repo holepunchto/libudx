@@ -106,7 +106,10 @@ struct udx_s {
   uv_loop_t *loop;
 
   uint32_t refs;
-  uint32_t sockets;
+
+  uint32_t sockets_len;
+  uint32_t sockets_max_len;
+  udx_socket_t **sockets;
 
   uint32_t streams_len;
   uint32_t streams_max_len;
@@ -141,6 +144,8 @@ struct udx_socket_s {
 
   udx_t *udx;
   udx_cirbuf_t *streams_by_id; // for convenience
+
+  int set_id;
 
   bool cmsg_wanted; // include a control buffer for recvmsg
   int family;

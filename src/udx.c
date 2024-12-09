@@ -155,26 +155,39 @@ static void
 ref_inc (udx_t *udx) {
   udx->refs++;
 
-  if (udx->streams != NULL) return;
+  if (udx->sockets == NULL) {
+    udx->sockets_len = 0;
+    udx->sockets_max_len = 16;
+    udx->sockets = malloc(udx->sockets_max_len * sizeof(udx_socket_t *));
+  }
 
-  udx->streams_len = 0;
-  udx->streams_max_len = 16;
-  udx->streams = malloc(udx->streams_max_len * sizeof(udx_stream_t *));
-
-  udx__cirbuf_init(&(udx->streams_by_id), 16);
+  if (udx->streams == NULL) {
+    udx->streams_len = 0;
+    udx->streams_max_len = 16;
+    udx->streams = malloc(udx->streams_max_len * sizeof(udx_stream_t *));
+    udx__cirbuf_init(&(udx->streams_by_id), 16);
+  }
 }
 
 static void
 ref_dec (udx_t *udx) {
   udx->refs--;
 
-  if (udx->refs || udx->streams == NULL) return;
+  if (udx->refs) return;
 
-  free(udx->streams);
-  udx->streams = NULL;
-  udx->streams_max_len = 0;
+  if (udx->sockets != NULL) {
+    free(udx->sockets);
+    udx->sockets = NULL;
+    udx->sockets_max_len = 0;
+  }
 
-  udx__cirbuf_destroy(&(udx->streams_by_id));
+  if (udx->streams != NULL) {
+    free(udx->streams);
+    udx->streams = NULL;
+    udx->streams_max_len = 0;
+
+    udx__cirbuf_destroy(&(udx->streams_by_id));
+  }
 }
 
 static void
@@ -1953,7 +1966,10 @@ on_uv_poll (uv_poll_t *handle, int status, int events) {
 int
 udx_init (uv_loop_t *loop, udx_t *udx) {
   udx->refs = 0;
-  udx->sockets = 0;
+
+  udx->sockets_len = 0;
+  udx->sockets_max_len = 0;
+  udx->sockets = NULL;
 
   udx->streams_len = 0;
   udx->streams_max_len = 0;
@@ -1983,7 +1999,14 @@ udx_socket_init (udx_t *udx, udx_socket_t *socket) {
   socket->udx = udx;
   socket->streams_by_id = &(udx->streams_by_id);
 
-  udx->sockets++;
+  socket->set_id = udx->sockets_len++;
+
+  if (udx->sockets_len == udx->sockets_max_len) {
+    udx->sockets_max_len *= 2;
+    udx->sockets = realloc(udx->sockets, udx->sockets_max_len * sizeof(udx_socket_t *));
+  }
+
+  udx->sockets[socket->set_id] = socket;
 
   socket->on_recv = NULL;
   socket->on_close = NULL;
@@ -2226,7 +2249,10 @@ udx_socket_close (udx_socket_t *socket, udx_socket_close_cb cb) {
   uv_close((uv_handle_t *) &(socket->handle), on_uv_close);
 
   udx_t *udx = socket->udx;
-  udx->sockets--;
+
+  udx_socket_t *other = udx->sockets[--(udx->sockets_len)];
+  udx->sockets[socket->set_id] = other;
+  other->set_id = socket->set_id;
 
   return 0;
 }
@@ -2237,7 +2263,6 @@ udx_stream_init (udx_t *udx, udx_stream_t *stream, uint32_t local_id, udx_stream
 
   stream->local_id = local_id;
   stream->remote_id = 0;
-  stream->set_id = 0;
   stream->status = 0;
   stream->write_wanted = 0;
   stream->out_of_order = 0;
