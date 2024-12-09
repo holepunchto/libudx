@@ -12,13 +12,9 @@
   (l) = (v);
 
 #define udx__link_remove(l, v) \
-  if ((v) == (l)) { \
-    (l) = (v)->next; \
-    if ((v)->next != NULL) (v)->next->prev = NULL; \
-  } else { \
-    if ((v)->next != NULL) (v)->next->prev = (v)->prev; \
-    if ((v)->prev != NULL) (v)->prev->next = (v)->next; \
-  }
+  if ((v)->next != NULL) (v)->next->prev = (v)->prev; \
+  if ((v)->prev == NULL) (l) = (v)->next; \
+  else (v)->prev->next = (v)->next;
 
 #define udx__link_foreach(l, el) \
   for ((el) = (l); (el) != NULL; (el) = (el)->next)
