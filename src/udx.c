@@ -1992,6 +1992,8 @@ udx_teardown (udx_t *udx) {
 
 int
 udx_socket_init (udx_t *udx, udx_socket_t *socket, udx_socket_close_cb cb) {
+  if (udx->teardown) return UV_EINVAL;
+
   udx->refs++;
 
   udx__link_add(udx->sockets, socket);
@@ -2252,6 +2254,8 @@ udx_socket_close (udx_socket_t *socket) {
 
 int
 udx_stream_init (udx_t *udx, udx_stream_t *stream, uint32_t local_id, udx_stream_close_cb close_cb, udx_stream_finalize_cb finalize_cb) {
+  if (udx->teardown) return UV_EINVAL;
+
   udx->refs++;
 
   if (!(udx->allocated)) {
@@ -2754,11 +2758,13 @@ on_uv_getaddrinfo (uv_getaddrinfo_t *req, int status, struct addrinfo *res) {
 
 int
 udx_lookup (udx_t *udx, udx_lookup_t *req, const char *host, unsigned int flags, udx_lookup_cb cb) {
+  if (udx->teardown) return UV_EINVAL;
+
+  udx->refs++;
+
   req->udx = udx;
   req->on_lookup = cb;
   req->req.data = req;
-
-  udx->refs++;
 
   memset(&req->hints, 0, sizeof(struct addrinfo));
 
@@ -2847,6 +2853,8 @@ on_interface_event_close (uv_handle_t *handle) {
 
 int
 udx_interface_event_init (udx_t *udx, udx_interface_event_t *handle, udx_interface_event_close_cb cb) {
+  if (udx->teardown) return UV_EINVAL;
+
   handle->udx = udx;
   handle->loop = udx->loop;
   handle->sorted = false;
