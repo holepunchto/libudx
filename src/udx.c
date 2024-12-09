@@ -2462,11 +2462,12 @@ static void
 set_stream_socket (udx_stream_t *stream, udx_socket_t *socket) {
   if (stream->socket == socket) return; // just in case
 
-  if (stream->socket == NULL) {
+  udx_socket_t *prev = stream->socket;
+
+  if (prev == NULL) {
     udx_t *udx = stream->udx;
     udx__link_remove(udx->streams, stream);
   } else {
-    udx_socket_t *prev = stream->socket;
     udx__link_remove(prev->streams, stream);
   }
 
