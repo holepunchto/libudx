@@ -34,6 +34,7 @@ target_sources(
     src/endian.c
     src/queue.c
     src/queue.h
+    src/link.h
     src/io.h
     src/udx.c
 )

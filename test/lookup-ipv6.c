@@ -27,7 +27,7 @@ main () {
   int e;
 
   uv_loop_init(&loop);
-  udx_init(&loop, &udx);
+  udx_init(&loop, &udx, NULL);
 
   e = udx_lookup(&udx, &req, "localhost", UDX_LOOKUP_FAMILY_IPV6, on_lookup);
   assert(e == 0);

@@ -10,7 +10,7 @@ main () {
   uv_loop_init(&loop);
 
   udx_t udx;
-  e = udx_init(&loop, &udx);
+  e = udx_init(&loop, &udx, NULL);
   assert(e == 0);
 
   udx_stream_t stream;

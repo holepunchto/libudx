@@ -107,16 +107,15 @@ typedef void (*udx_interface_event_close_cb)(udx_interface_event_t *handle);
 struct udx_s {
   uv_loop_t *loop;
 
-  uint32_t refs;
+  int refs;
+  bool teardown;
+  bool has_streams;
+
   udx_idle_cb on_idle;
 
-  uint32_t sockets_len;
-  uint32_t sockets_max_len;
-  udx_socket_t **sockets;
-
-  uint32_t streams_len;
-  uint32_t streams_max_len;
-  udx_stream_t **streams;
+  udx_socket_t *sockets;
+  udx_stream_t *streams;
+  udx_interface_event_t *listeners;
 
   udx_cirbuf_t streams_by_id;
 
@@ -145,10 +144,13 @@ struct udx_socket_s {
 
   udx_queue_t send_queue;
 
+  udx_socket_t *prev;
+  udx_socket_t *next;
+
+  udx_stream_t *streams;
+
   udx_t *udx;
   udx_cirbuf_t *streams_by_id; // for convenience
-
-  int set_id;
 
   bool cmsg_wanted; // include a control buffer for recvmsg
   int family;
@@ -193,7 +195,9 @@ struct udx_stream_s {
   uint32_t local_id; // must be first entry, so its compat with the cirbuf
   uint32_t remote_id;
 
-  int set_id;
+  udx_stream_t *prev;
+  udx_stream_t *next;
+
   int status;
   int write_wanted;
   int out_of_order;
@@ -392,6 +396,9 @@ struct udx_interface_event_s {
   uv_loop_t *loop;
   udx_t *udx;
 
+  udx_interface_event_t *prev;
+  udx_interface_event_t *next;
+
   uv_interface_address_t *addrs;
   int addrs_len;
   bool sorted;
@@ -403,13 +410,16 @@ struct udx_interface_event_s {
 };
 
 int
-udx_init (uv_loop_t *loop, udx_t *udx);
-
-void
-udx_idle (udx_t *udx, udx_idle_cb cb);
+udx_init (uv_loop_t *loop, udx_t *udx, udx_idle_cb on_idle);
 
 int
-udx_socket_init (udx_t *udx, udx_socket_t *socket);
+udx_is_idle (udx_t *udx);
+
+void
+udx_teardown (udx_t *udx);
+
+int
+udx_socket_init (udx_t *udx, udx_socket_t *socket, udx_socket_close_cb cb);
 
 int
 udx_socket_get_send_buffer_size (udx_socket_t *socket, int *value);
@@ -460,7 +470,7 @@ int
 udx_socket_recv_stop (udx_socket_t *socket);
 
 int
-udx_socket_close (udx_socket_t *socket, udx_socket_close_cb cb);
+udx_socket_close (udx_socket_t *socket);
 
 // only exposed here as a convenience / debug tool - the udx instance uses this automatically
 int
@@ -530,7 +540,7 @@ int
 udx_lookup (udx_t *udx, udx_lookup_t *req, const char *host, unsigned int flags, udx_lookup_cb cb);
 
 int
-udx_interface_event_init (udx_t *udx, udx_interface_event_t *handle);
+udx_interface_event_init (udx_t *udx, udx_interface_event_t *handle, udx_interface_event_close_cb cb);
 
 int
 udx_interface_event_start (udx_interface_event_t *handle, udx_interface_event_cb cb, uint64_t frequency);
@@ -539,7 +549,7 @@ int
 udx_interface_event_stop (udx_interface_event_t *handle);
 
 int
-udx_interface_event_close (udx_interface_event_t *handle, udx_interface_event_close_cb cb);
+udx_interface_event_close (udx_interface_event_t *handle);
 
 #ifdef __cplusplus
 }

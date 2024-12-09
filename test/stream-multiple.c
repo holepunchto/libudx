@@ -67,7 +67,7 @@ main () {
 
   uv_loop_init(&loop);
 
-  e = udx_init(&loop, &udx);
+  e = udx_init(&loop, &udx, NULL);
   assert(e == 0);
 
   uv_buf_t buf = uv_buf_init(malloc(NBYTES_TO_SEND), NBYTES_TO_SEND);
@@ -81,7 +81,7 @@ main () {
     int receiver_id = NSTREAMS + i;
 
     receiver[i].read_hash = HASH_INIT;
-    e = udx_socket_init(&udx, &sender[i].usock);
+    e = udx_socket_init(&udx, &sender[i].usock, NULL);
     assert(e == 0);
     uv_ip4_addr("127.0.0.1", 8000 + i, &sender[i].addr);
     e = udx_socket_bind(&sender[i].usock, (struct sockaddr *) &sender[i].addr, 0);
@@ -89,7 +89,7 @@ main () {
     sender[i].write = malloc(udx_stream_write_sizeof(1));
     e = udx_stream_init(&udx, &sender[i].stream, sender_id, NULL, NULL);
 
-    udx_socket_init(&udx, &receiver[i].usock);
+    udx_socket_init(&udx, &receiver[i].usock, NULL);
     uv_ip4_addr("127.0.0.1", 8100 + i, &receiver[i].addr);
     e = udx_socket_bind(&receiver[i].usock, (struct sockaddr *) &receiver[i].addr, 0);
     assert(e == 0);

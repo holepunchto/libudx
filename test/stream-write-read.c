@@ -29,8 +29,8 @@ on_close (udx_stream_t *s, int status) {
   nclosed++;
 
   if (nclosed == 2) {
-    udx_socket_close(&asock, NULL);
-    udx_socket_close(&bsock, NULL);
+    udx_socket_close(&asock);
+    udx_socket_close(&bsock);
   }
 }
 
@@ -65,13 +65,13 @@ main () {
 
   uv_loop_init(&loop);
 
-  e = udx_init(&loop, &udx);
+  e = udx_init(&loop, &udx, NULL);
   assert(e == 0);
 
-  e = udx_socket_init(&udx, &asock);
+  e = udx_socket_init(&udx, &asock, NULL);
   assert(e == 0);
 
-  e = udx_socket_init(&udx, &bsock);
+  e = udx_socket_init(&udx, &bsock, NULL);
   assert(e == 0);
 
   struct sockaddr_in baddr;
