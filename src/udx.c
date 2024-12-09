@@ -644,6 +644,13 @@ close_stream (udx_stream_t *stream, int err) {
   uv_close((uv_handle_t *) &stream->tlp_timer, finalize_maybe);
   uv_close((uv_handle_t *) &stream->zwp_timer, finalize_maybe);
 
+  if (udx->teardown && udx->streams == NULL) {
+    udx_socket_t *socket;
+    udx__link_foreach(udx->sockets, socket) {
+      udx_socket_close(socket);
+    }
+  }
+
   return 1;
 }
 
@@ -1938,9 +1945,10 @@ on_uv_poll (uv_poll_t *handle, int status, int events) {
 }
 
 int
-udx_init (uv_loop_t *loop, udx_t *udx) {
+udx_init (uv_loop_t *loop, udx_t *udx, udx_idle_cb on_idle) {
   udx->refs = 0;
-  udx->on_idle = NULL;
+  udx->teardown = false;
+  udx->on_idle = on_idle;
 
   udx->sockets = NULL;
   udx->streams = NULL;
@@ -1963,11 +1971,39 @@ udx_idle (udx_t *udx, udx_idle_cb cb) {
 }
 
 int
-udx_socket_init (udx_t *udx, udx_socket_t *socket) {
+udx_is_idle (udx_t *udx) {
+  return udx->refs == 0;
+}
+
+void
+udx_teardown (udx_t *udx) {
+  udx->teardown = true;
+
+  if (udx->streams == NULL) {
+    udx_socket_t *socket;
+    udx__link_foreach(udx->sockets, socket) {
+      udx_socket_close(socket);
+    }
+  }
+
+  udx_stream_t *stream;
+  udx__link_foreach(udx->streams, stream) {
+    udx_stream_destroy(stream);
+  }
+
+  udx_interface_event_t *listener;
+  udx__link_foreach(udx->listeners, listener) {
+    udx_interface_event_close(listener);
+  }
+}
+
+int
+udx_socket_init (udx_t *udx, udx_socket_t *socket, udx_socket_close_cb cb) {
   udx->refs++;
 
   udx__link_add(udx->sockets, socket);
 
+  socket->on_close = cb;
   socket->family = 0;
   socket->status = 0;
   socket->events = 0;
@@ -2190,12 +2226,10 @@ udx_socket_recv_stop (udx_socket_t *socket) {
 }
 
 int
-udx_socket_close (udx_socket_t *socket, udx_socket_close_cb cb) {
+udx_socket_close (udx_socket_t *socket) {
   if (check_for_streams(socket)) return UV_EBUSY;
 
   socket->status |= UDX_SOCKET_CLOSED;
-
-  socket->on_close = cb;
 
   while (socket->send_queue.len > 0) {
     udx_packet_t *pkt = udx__queue_data(udx__queue_shift(&socket->send_queue), udx_packet_t, queue);
@@ -2803,10 +2837,11 @@ on_interface_event_close (uv_handle_t *handle) {
 }
 
 int
-udx_interface_event_init (udx_t *udx, udx_interface_event_t *handle) {
+udx_interface_event_init (udx_t *udx, udx_interface_event_t *handle, udx_interface_event_close_cb cb) {
   handle->udx = udx;
   handle->loop = udx->loop;
   handle->sorted = false;
+  handle->on_close = cb;
 
   int err = uv_interface_addresses(&(handle->addrs), &(handle->addrs_len));
   if (err < 0) return err;
@@ -2839,9 +2874,8 @@ udx_interface_event_stop (udx_interface_event_t *handle) {
 }
 
 int
-udx_interface_event_close (udx_interface_event_t *handle, udx_interface_event_close_cb cb) {
+udx_interface_event_close (udx_interface_event_t *handle) {
   handle->on_event = NULL;
-  handle->on_close = cb;
 
   uv_free_interface_addresses(handle->addrs, handle->addrs_len);
 

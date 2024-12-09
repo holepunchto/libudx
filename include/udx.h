@@ -108,6 +108,8 @@ struct udx_s {
   uv_loop_t *loop;
 
   int refs;
+  bool teardown;
+
   udx_idle_cb on_idle;
 
   udx_socket_t *sockets;
@@ -405,13 +407,16 @@ struct udx_interface_event_s {
 };
 
 int
-udx_init (uv_loop_t *loop, udx_t *udx);
-
-void
-udx_idle (udx_t *udx, udx_idle_cb cb);
+udx_init (uv_loop_t *loop, udx_t *udx, udx_idle_cb on_idle);
 
 int
-udx_socket_init (udx_t *udx, udx_socket_t *socket);
+udx_is_idle (udx_t *udx);
+
+void
+udx_teardown (udx_t *udx);
+
+int
+udx_socket_init (udx_t *udx, udx_socket_t *socket, udx_socket_close_cb cb);
 
 int
 udx_socket_get_send_buffer_size (udx_socket_t *socket, int *value);
@@ -462,7 +467,7 @@ int
 udx_socket_recv_stop (udx_socket_t *socket);
 
 int
-udx_socket_close (udx_socket_t *socket, udx_socket_close_cb cb);
+udx_socket_close (udx_socket_t *socket);
 
 // only exposed here as a convenience / debug tool - the udx instance uses this automatically
 int
@@ -532,7 +537,7 @@ int
 udx_lookup (udx_t *udx, udx_lookup_t *req, const char *host, unsigned int flags, udx_lookup_cb cb);
 
 int
-udx_interface_event_init (udx_t *udx, udx_interface_event_t *handle);
+udx_interface_event_init (udx_t *udx, udx_interface_event_t *handle, udx_interface_event_close_cb cb);
 
 int
 udx_interface_event_start (udx_interface_event_t *handle, udx_interface_event_cb cb, uint64_t frequency);
@@ -541,7 +546,7 @@ int
 udx_interface_event_stop (udx_interface_event_t *handle);
 
 int
-udx_interface_event_close (udx_interface_event_t *handle, udx_interface_event_close_cb cb);
+udx_interface_event_close (udx_interface_event_t *handle);
 
 #ifdef __cplusplus
 }
