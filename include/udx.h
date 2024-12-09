@@ -109,7 +109,7 @@ struct udx_s {
 
   int refs;
   bool teardown;
-  bool allocated;
+  bool has_streams;
 
   udx_idle_cb on_idle;
 

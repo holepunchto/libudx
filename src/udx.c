@@ -158,9 +158,9 @@ ref_dec (udx_t *udx) {
 
   if (udx->refs) return;
 
-  if (udx->allocated) {
+  if (udx->has_streams) {
     udx__cirbuf_destroy(&(udx->streams_by_id));
-    udx->allocated = false;
+    udx->has_streams = false;
   }
 
   if (udx->on_idle != NULL) {
@@ -1201,13 +1201,15 @@ detect_loss_repaired_by_loss_probe (udx_stream_t *stream, uint32_t ack) {
 
 static int
 process_packet (udx_socket_t *socket, char *buf, ssize_t buf_len, struct sockaddr *addr) {
+  udx_t *udx = socket->udx;
+
   socket->bytes_rx += buf_len;
   socket->packets_rx += 1;
 
-  socket->udx->bytes_rx += buf_len;
-  socket->udx->packets_rx += 1;
+  udx->bytes_rx += buf_len;
+  udx->packets_rx += 1;
 
-  if (buf_len < UDX_HEADER_SIZE) return 0;
+  if (!(udx->has_streams) || buf_len < UDX_HEADER_SIZE) return 0;
 
   uint8_t *b = (uint8_t *) buf;
 
@@ -1934,7 +1936,7 @@ int
 udx_init (uv_loop_t *loop, udx_t *udx, udx_idle_cb on_idle) {
   udx->refs = 0;
   udx->teardown = false;
-  udx->allocated = false;
+  udx->has_streams = false;
   udx->on_idle = on_idle;
 
   udx->sockets = NULL;
@@ -2258,9 +2260,9 @@ udx_stream_init (udx_t *udx, udx_stream_t *stream, uint32_t local_id, udx_stream
 
   udx->refs++;
 
-  if (!(udx->allocated)) {
+  if (!(udx->has_streams)) {
     udx__cirbuf_init(&(udx->streams_by_id), 16);
-    udx->allocated = true;
+    udx->has_streams = true;
   }
 
   udx__link_add(udx->streams, stream);
