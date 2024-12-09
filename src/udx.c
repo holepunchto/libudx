@@ -55,16 +55,6 @@
 
 #define UDX_BANDWIDTH_INTERVAL_SECS 10
 
-#define udx__set_add(s, v) \
-  v->next = s->next; \
-  s->next = v; \
-  v->prev = s; \
-  if (s->prev == s) s->prev = v;
-
-#define udx__set_remove(v) \
-  v->next->prev = v->prev; \
-  v->prev->next = v->next;
-
 typedef struct {
   uint32_t seq; // must be the first entry, so its compat with the cirbuf
 
