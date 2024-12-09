@@ -158,8 +158,9 @@ ref_dec (udx_t *udx) {
 
   if (udx->refs) return;
 
-  if (udx->streams == NULL) {
+  if (udx->allocated) {
     udx__cirbuf_destroy(&(udx->streams_by_id));
+    udx->allocated = false;
   }
 
   if (udx->on_idle != NULL) {
@@ -213,8 +214,9 @@ socket_write_wanted (udx_socket_t *socket) {
   }
 
   udx_stream_t *stream;
-  udx__link_foreach(socket->udx->streams, stream) {
-    if (stream->socket == socket && stream_write_wanted(stream)) {
+  udx__link_foreach(socket->streams, stream) {
+    assert(stream->socket == socket);
+    if (stream_write_wanted(stream)) {
       return true;
     }
   }
@@ -582,8 +584,14 @@ close_stream (udx_stream_t *stream, int err) {
   debug_printf("closing stream local_id=%u \n", stream->local_id);
 
   udx_t *udx = stream->udx;
+  udx_socket_t *socket = stream->socket;
 
-  udx__link_remove(udx->streams, stream);
+  if (socket) {
+    udx__link_remove(socket->streams, stream);
+  } else {
+    udx__link_remove(udx->streams, stream);
+  }
+
   udx__cirbuf_remove(&(udx->streams_by_id), stream->local_id);
 
   // stream on_close called before acks are cancelled!
@@ -634,11 +642,8 @@ close_stream (udx_stream_t *stream, int err) {
   uv_close((uv_handle_t *) &stream->tlp_timer, finalize_maybe);
   uv_close((uv_handle_t *) &stream->zwp_timer, finalize_maybe);
 
-  if (udx->teardown && udx->streams == NULL) {
-    udx_socket_t *socket;
-    udx__link_foreach(udx->sockets, socket) {
-      udx_socket_close(socket);
-    }
+  if (udx->teardown && socket->streams == NULL) {
+    udx_socket_close(socket);
   }
 
   return 1;
@@ -1439,15 +1444,6 @@ process_packet (udx_socket_t *socket, char *buf, ssize_t buf_len, struct sockadd
   return 1;
 }
 
-static bool
-check_for_streams (udx_socket_t *socket) {
-  udx_stream_t *stream;
-  udx__link_foreach(socket->udx->streams, stream) {
-    if (stream->socket == socket) return true;
-  }
-  return false;
-}
-
 static void
 arm_stream_timers (udx_stream_t *stream, bool sent_tlp);
 
@@ -1884,8 +1880,8 @@ send_packets (udx_socket_t *socket) {
   if (!send_datagrams(socket)) return;
 
   udx_stream_t *stream;
-  udx__link_foreach(socket->udx->streams, stream) {
-    if (stream->socket != socket) continue;
+  udx__link_foreach(socket->streams, stream) {
+    assert(stream->socket == socket);
     if (!send_stream_packets(socket, stream)) return;
   }
 }
@@ -1938,6 +1934,7 @@ int
 udx_init (uv_loop_t *loop, udx_t *udx, udx_idle_cb on_idle) {
   udx->refs = 0;
   udx->teardown = false;
+  udx->allocated = false;
   udx->on_idle = on_idle;
 
   udx->sockets = NULL;
@@ -1969,19 +1966,25 @@ void
 udx_teardown (udx_t *udx) {
   udx->teardown = true;
 
-  if (udx->streams == NULL) {
-    udx_socket_t *socket;
-    udx__link_foreach(udx->sockets, socket) {
+  udx_socket_t *socket;
+  udx_stream_t *stream;
+  udx_interface_event_t *listener;
+
+  udx__link_foreach(udx->sockets, socket) {
+    if (socket->streams == NULL) {
       udx_socket_close(socket);
+      continue;
+    }
+
+    udx__link_foreach(socket->streams, stream) {
+      udx_stream_destroy(stream);
     }
   }
 
-  udx_stream_t *stream;
   udx__link_foreach(udx->streams, stream) {
     udx_stream_destroy(stream);
   }
 
-  udx_interface_event_t *listener;
   udx__link_foreach(udx->listeners, listener) {
     udx_interface_event_close(listener);
   }
@@ -1993,6 +1996,7 @@ udx_socket_init (udx_t *udx, udx_socket_t *socket, udx_socket_close_cb cb) {
 
   udx__link_add(udx->sockets, socket);
 
+  socket->streams = NULL;
   socket->family = 0;
   socket->status = 0;
   socket->events = 0;
@@ -2216,7 +2220,7 @@ udx_socket_recv_stop (udx_socket_t *socket) {
 
 int
 udx_socket_close (udx_socket_t *socket) {
-  if (check_for_streams(socket)) return UV_EBUSY;
+  if (socket->streams != NULL) return UV_EBUSY;
 
   socket->status |= UDX_SOCKET_CLOSED;
 
@@ -2250,8 +2254,9 @@ int
 udx_stream_init (udx_t *udx, udx_stream_t *stream, uint32_t local_id, udx_stream_close_cb close_cb, udx_stream_finalize_cb finalize_cb) {
   udx->refs++;
 
-  if (udx->streams == NULL) {
+  if (!(udx->allocated)) {
     udx__cirbuf_init(&(udx->streams_by_id), 16);
+    udx->allocated = true;
   }
 
   udx__link_add(udx->streams, stream);
@@ -2447,6 +2452,22 @@ udx_stream_read_stop (udx_stream_t *stream) {
   return stream->socket == NULL ? 0 : update_poll(stream->socket);
 }
 
+static void
+set_stream_socket (udx_stream_t *stream, udx_socket_t *socket) {
+  if (stream->socket == socket) return; // just in case
+
+  if (stream->socket == NULL) {
+    udx_t *udx = stream->udx;
+    udx__link_remove(udx->streams, stream);
+  } else {
+    udx_socket_t *prev = stream->socket;
+    udx__link_remove(prev->streams, stream);
+  }
+
+  stream->socket = socket;
+  udx__link_add(socket->streams, stream);
+}
+
 int
 udx_stream_change_remote (udx_stream_t *stream, udx_socket_t *socket, uint32_t remote_id, const struct sockaddr *remote_addr, udx_stream_remote_changed_cb on_remote_changed) {
   assert(stream->status & UDX_STREAM_CONNECTED);
@@ -2480,8 +2501,7 @@ udx_stream_change_remote (udx_stream_t *stream, udx_socket_t *socket, uint32_t r
   }
 
   stream->remote_id = remote_id;
-
-  stream->socket = socket;
+  set_stream_socket(stream, socket);
 
   if (stream->seq != stream->remote_acked) {
     debug_printf("change_remote: id=%u RA=%u Seq=%u\n", stream->local_id, stream->remote_acked, stream->seq);
@@ -2511,7 +2531,7 @@ udx_stream_connect (udx_stream_t *stream, udx_socket_t *socket, uint32_t remote_
   stream->status |= UDX_STREAM_CONNECTED;
 
   stream->remote_id = remote_id;
-  stream->socket = socket;
+  set_stream_socket(stream, socket);
 
   if (remote_addr->sa_family == AF_INET) {
     stream->remote_addr_len = sizeof(struct sockaddr_in);

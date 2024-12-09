@@ -109,6 +109,7 @@ struct udx_s {
 
   int refs;
   bool teardown;
+  bool allocated;
 
   udx_idle_cb on_idle;
 
@@ -145,6 +146,8 @@ struct udx_socket_s {
 
   udx_socket_t *prev;
   udx_socket_t *next;
+
+  udx_stream_t *streams;
 
   udx_t *udx;
   udx_cirbuf_t *streams_by_id; // for convenience
