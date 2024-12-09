@@ -13,7 +13,8 @@
 
 #define udx__link_remove(l, v) \
   if ((v) == (l)) { \
-    (l) = NULL; \
+    (l) = (v)->next; \
+    if ((v)->next != NULL) (v)->next->prev = NULL; \
   } else { \
     if ((v)->next != NULL) (v)->next->prev = (v)->prev; \
     if ((v)->prev != NULL) (v)->prev->next = (v)->next; \
