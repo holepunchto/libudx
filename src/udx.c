@@ -1993,7 +1993,6 @@ udx_socket_init (udx_t *udx, udx_socket_t *socket, udx_socket_close_cb cb) {
 
   udx__link_add(udx->sockets, socket);
 
-  socket->on_close = cb;
   socket->family = 0;
   socket->status = 0;
   socket->events = 0;
@@ -2004,7 +2003,7 @@ udx_socket_init (udx_t *udx, udx_socket_t *socket, udx_socket_close_cb cb) {
   socket->streams_by_id = &(udx->streams_by_id);
 
   socket->on_recv = NULL;
-  socket->on_close = NULL;
+  socket->on_close = cb;
 
   socket->bytes_rx = 0;
   socket->bytes_tx = 0;
