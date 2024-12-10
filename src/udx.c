@@ -585,7 +585,7 @@ close_stream (udx_stream_t *stream, int err) {
   udx_t *udx = stream->udx;
   udx_socket_t *socket = stream->socket;
 
-  if (socket) {
+  if (socket != NULL) {
     udx__link_remove(socket->streams, stream);
   } else {
     udx__link_remove(udx->streams, stream);
@@ -641,7 +641,7 @@ close_stream (udx_stream_t *stream, int err) {
   uv_close((uv_handle_t *) &stream->tlp_timer, finalize_maybe);
   uv_close((uv_handle_t *) &stream->zwp_timer, finalize_maybe);
 
-  if (udx->teardown && socket->streams == NULL) {
+  if (udx->teardown && socket != NULL && socket->streams == NULL) {
     udx_socket_close(socket);
   }
 
