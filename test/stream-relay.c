@@ -67,19 +67,19 @@ main () {
 
   uv_loop_init(&loop);
 
-  e = udx_init(&loop, &udx);
+  e = udx_init(&loop, &udx, NULL);
   assert(e == 0);
 
-  e = udx_socket_init(&udx, &asock);
+  e = udx_socket_init(&udx, &asock, NULL);
   assert(e == 0);
 
-  e = udx_socket_init(&udx, &bsock);
+  e = udx_socket_init(&udx, &bsock, NULL);
   assert(e == 0);
 
-  e = udx_socket_init(&udx, &csock);
+  e = udx_socket_init(&udx, &csock, NULL);
   assert(e == 0);
 
-  e = udx_socket_init(&udx, &dsock);
+  e = udx_socket_init(&udx, &dsock, NULL);
   assert(e == 0);
 
   uv_ip4_addr("127.0.0.1", 8081, &aaddr);
