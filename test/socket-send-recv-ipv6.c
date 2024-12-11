@@ -40,13 +40,13 @@ main () {
 
   uv_loop_init(&loop);
 
-  e = udx_init(&loop, &udx);
+  e = udx_init(&loop, &udx, NULL);
   assert(e == 0);
 
-  e = udx_socket_init(&udx, &asock);
+  e = udx_socket_init(&udx, &asock, NULL);
   assert(e == 0);
 
-  e = udx_socket_init(&udx, &bsock);
+  e = udx_socket_init(&udx, &bsock, NULL);
   assert(e == 0);
 
   struct sockaddr_in6 baddr;

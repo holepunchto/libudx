@@ -63,7 +63,7 @@ on_b_sock_close () {
 static void
 on_b_stream_close () {
   printf("sending stream closing\n");
-  int e = udx_socket_close(&bsock, on_b_sock_close);
+  int e = udx_socket_close(&bsock);
   assert(e == 0 && "udx_socket_close (sender, 'b')");
 }
 
@@ -75,7 +75,7 @@ on_a_sock_close () {
 static void
 on_a_stream_close () {
   printf("receiving stream closing\n");
-  int e = udx_socket_close(&asock, on_a_sock_close);
+  int e = udx_socket_close(&asock);
   assert(e == 0 && "udx_socket_close (receiver, 'a')");
 }
 
@@ -87,13 +87,13 @@ main () {
 
   uv_loop_init(&loop);
 
-  e = udx_init(&loop, &udx);
+  e = udx_init(&loop, &udx, NULL);
   assert(e == 0);
 
-  e = udx_socket_init(&udx, &asock);
+  e = udx_socket_init(&udx, &asock, on_a_sock_close);
   assert(e == 0);
 
-  e = udx_socket_init(&udx, &bsock);
+  e = udx_socket_init(&udx, &bsock, on_b_sock_close);
   assert(e == 0);
 
   struct sockaddr_in baddr;

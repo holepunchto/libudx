@@ -49,8 +49,8 @@ void
 on_finalize (udx_stream_t *stream) {
   nfinalize++;
   if (nfinalize == 2) {
-    udx_socket_close(&send_sock, on_socket_close);
-    udx_socket_close(&recv_sock, on_socket_close);
+    udx_socket_close(&send_sock);
+    udx_socket_close(&recv_sock);
   }
 }
 
@@ -90,13 +90,13 @@ main () {
 
   uv_loop_init(&loop);
 
-  e = udx_init(&loop, &udx);
+  e = udx_init(&loop, &udx, NULL);
   assert(e == 0);
 
-  e = udx_socket_init(&udx, &recv_sock);
+  e = udx_socket_init(&udx, &recv_sock, on_socket_close);
   assert(e == 0);
 
-  e = udx_socket_init(&udx, &send_sock);
+  e = udx_socket_init(&udx, &send_sock, on_socket_close);
   assert(e == 0);
 
   struct sockaddr_in send_addr;

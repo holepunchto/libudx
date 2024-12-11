@@ -115,9 +115,9 @@ main (int argc, char **argv) {
   chunk.len = 16384;
   chunk.base = calloc(1, chunk.len);
 
-  udx_init(&loop, &udx);
+  udx_init(&loop, &udx, NULL);
 
-  udx_socket_init(&udx, &sock);
+  udx_socket_init(&udx, &sock, NULL);
 
   struct sockaddr_in addr;
   uv_ip4_addr("0.0.0.0", 18081, &addr);

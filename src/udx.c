@@ -15,6 +15,7 @@
 #include "endian.h"
 #include "io.h"
 #include "queue.h"
+#include "link.h"
 
 #define UDX_STREAM_ALL_ENDED (UDX_STREAM_ENDED | UDX_STREAM_ENDED_REMOTE)
 #define UDX_STREAM_DEAD      (UDX_STREAM_DESTROYING | UDX_STREAM_CLOSED)
@@ -130,29 +131,19 @@ static void
 on_uv_poll (uv_poll_t *handle, int status, int events);
 
 static void
-ref_inc (udx_t *udx) {
-  udx->refs++;
-
-  if (udx->streams != NULL) return;
-
-  udx->streams_len = 0;
-  udx->streams_max_len = 16;
-  udx->streams = malloc(udx->streams_max_len * sizeof(udx_stream_t *));
-
-  udx__cirbuf_init(&(udx->streams_by_id), 16);
-}
-
-static void
 ref_dec (udx_t *udx) {
   udx->refs--;
 
-  if (udx->refs || udx->streams == NULL) return;
+  if (udx->refs) return;
 
-  free(udx->streams);
-  udx->streams = NULL;
-  udx->streams_max_len = 0;
+  if (udx->has_streams) {
+    udx__cirbuf_destroy(&(udx->streams_by_id));
+    udx->has_streams = false;
+  }
 
-  udx__cirbuf_destroy(&(udx->streams_by_id));
+  if (udx->on_idle != NULL) {
+    udx->on_idle(udx);
+  }
 }
 
 static void
@@ -200,9 +191,9 @@ socket_write_wanted (udx_socket_t *socket) {
     return true;
   }
 
-  for (uint32_t i = 0; i < socket->udx->streams_len; i++) {
-    udx_stream_t *stream = socket->udx->streams[i];
-    if (stream->socket == socket && stream_write_wanted(stream)) {
+  udx_stream_t *stream;
+  udx__link_foreach(socket->streams, stream) {
+    if (stream_write_wanted(stream)) {
       return true;
     }
   }
@@ -575,11 +566,13 @@ close_stream (udx_stream_t *stream, int err) {
   debug_printf("closing stream local_id=%u \n", stream->local_id);
 
   udx_t *udx = stream->udx;
+  udx_socket_t *socket = stream->socket;
 
-  // Remove from the set, by array[i] = array.pop()
-  udx_stream_t *other = udx->streams[--(udx->streams_len)];
-  udx->streams[stream->set_id] = other;
-  other->set_id = stream->set_id;
+  if (socket != NULL) {
+    udx__link_remove(socket->streams, stream);
+  } else {
+    udx__link_remove(udx->streams, stream);
+  }
 
   udx__cirbuf_remove(&(udx->streams_by_id), stream->local_id);
 
@@ -630,6 +623,10 @@ close_stream (udx_stream_t *stream, int err) {
   uv_close((uv_handle_t *) &stream->rack_reo_timer, finalize_maybe);
   uv_close((uv_handle_t *) &stream->tlp_timer, finalize_maybe);
   uv_close((uv_handle_t *) &stream->zwp_timer, finalize_maybe);
+
+  if (udx->teardown && socket != NULL && socket->streams == NULL) {
+    udx_socket_close(socket);
+  }
 
   return 1;
 }
@@ -1186,13 +1183,15 @@ detect_loss_repaired_by_loss_probe (udx_stream_t *stream, uint32_t ack) {
 
 int
 process_packet (udx_socket_t *socket, char *buf, ssize_t buf_len, struct sockaddr *addr) {
+  udx_t *udx = socket->udx;
+
   socket->bytes_rx += buf_len;
   socket->packets_rx += 1;
 
-  socket->udx->bytes_rx += buf_len;
-  socket->udx->packets_rx += 1;
+  udx->bytes_rx += buf_len;
+  udx->packets_rx += 1;
 
-  if (buf_len < UDX_HEADER_SIZE) return 0;
+  if (!(udx->has_streams) || buf_len < UDX_HEADER_SIZE) return 0;
 
   uint8_t *b = (uint8_t *) buf;
 
@@ -1427,15 +1426,6 @@ process_packet (udx_socket_t *socket, char *buf, ssize_t buf_len, struct sockadd
   }
 
   return 1;
-}
-
-static bool
-check_for_streams (udx_socket_t *socket) {
-  for (uint32_t i = 0; i < socket->udx->streams_len; i++) {
-    udx_stream_t *stream = socket->udx->streams[i];
-    if (stream->socket == socket) return true;
-  }
-  return false;
 }
 
 static void
@@ -1871,20 +1861,23 @@ arm_stream_timers (udx_stream_t *stream, bool sent_tlp) {
 
 static void
 send_packets (udx_socket_t *socket) {
-  bool _continue = send_datagrams(socket);
+  if (!send_datagrams(socket)) return;
 
-  if (!_continue) return;
+  udx_stream_t *stream;
+  udx__link_foreach(socket->streams, stream) {
+    // in case of re-entry, the stream might be closed, ie both us and next one in line was destroyed
+    // if so no just ignore
+    if (stream->status & UDX_STREAM_CLOSED) continue;
 
-  for (uint32_t i = 0; i < socket->udx->streams_len;) {
-    udx_stream_t *stream = socket->udx->streams[i];
-    if (stream->socket == socket) {
-      _continue = send_stream_packets(socket, stream);
+    assert(stream->socket == socket);
 
-      if (!_continue) return;
-    }
-    // if stream was closed, a new stream shuffled into this slot
-    if (socket->udx->streams[i] == stream) {
-      i++;
+    if (!send_stream_packets(socket, stream)) return;
+
+    // the above could have triggered a re-entry moving this stream to another socket (change_remote)
+    // if so just restart, unlikely
+    if (stream->socket != socket) {
+      stream = socket->streams;
+      if (!stream || !send_stream_packets(socket, stream)) return;
     }
   }
 }
@@ -1934,13 +1927,15 @@ on_uv_poll (uv_poll_t *handle, int status, int events) {
 }
 
 int
-udx_init (uv_loop_t *loop, udx_t *udx) {
+udx_init (uv_loop_t *loop, udx_t *udx, udx_idle_cb on_idle) {
   udx->refs = 0;
-  udx->sockets = 0;
+  udx->teardown = false;
+  udx->has_streams = false;
+  udx->on_idle = on_idle;
 
-  udx->streams_len = 0;
-  udx->streams_max_len = 0;
+  udx->sockets = NULL;
   udx->streams = NULL;
+  udx->listeners = NULL;
 
   udx->bytes_rx = 0;
   udx->bytes_tx = 0;
@@ -1956,10 +1951,53 @@ udx_init (uv_loop_t *loop, udx_t *udx) {
   return 0;
 }
 
-int
-udx_socket_init (udx_t *udx, udx_socket_t *socket) {
-  ref_inc(udx);
+void
+udx_idle (udx_t *udx, udx_idle_cb cb) {
+  udx->on_idle = cb;
+}
 
+int
+udx_is_idle (udx_t *udx) {
+  return udx->refs == 0;
+}
+
+void
+udx_teardown (udx_t *udx) {
+  udx->teardown = true;
+
+  udx_socket_t *socket;
+  udx_stream_t *stream;
+  udx_interface_event_t *listener;
+
+  udx__link_foreach(udx->sockets, socket) {
+    if (socket->streams == NULL) {
+      udx_socket_close(socket);
+      continue;
+    }
+
+    udx__link_foreach(socket->streams, stream) {
+      udx_stream_destroy(stream);
+    }
+  }
+
+  udx__link_foreach(udx->streams, stream) {
+    udx_stream_destroy(stream);
+  }
+
+  udx__link_foreach(udx->listeners, listener) {
+    udx_interface_event_close(listener);
+  }
+}
+
+int
+udx_socket_init (udx_t *udx, udx_socket_t *socket, udx_socket_close_cb cb) {
+  if (udx->teardown) return UV_EINVAL;
+
+  udx->refs++;
+
+  udx__link_add(udx->sockets, socket);
+
+  socket->streams = NULL;
   socket->family = 0;
   socket->status = 0;
   socket->events = 0;
@@ -1969,10 +2007,8 @@ udx_socket_init (udx_t *udx, udx_socket_t *socket) {
   socket->udx = udx;
   socket->streams_by_id = &(udx->streams_by_id);
 
-  udx->sockets++;
-
   socket->on_recv = NULL;
-  socket->on_close = NULL;
+  socket->on_close = cb;
 
   socket->bytes_rx = 0;
   socket->bytes_tx = 0;
@@ -2104,6 +2140,26 @@ udx_socket_getsockname (udx_socket_t *socket, struct sockaddr *name, int *name_l
 }
 
 int
+udx_socket_set_membership (udx_socket_t *socket, const char *multicast_addr, const char *interface_addr, uv_membership membership) {
+  return uv_udp_set_membership(&socket->handle, multicast_addr, interface_addr, membership);
+}
+
+int
+udx_socket_set_source_membership (udx_socket_t *socket, const char *multicast_addr, const char *interface_addr, const char *source_addr, uv_membership membership) {
+  return uv_udp_set_source_membership(&socket->handle, multicast_addr, interface_addr, source_addr, membership);
+}
+
+int
+udx_socket_set_multicast_loop (udx_socket_t *socket, int on) {
+  return uv_udp_set_multicast_loop(&socket->handle, on);
+}
+
+int
+udx_socket_set_multicast_interface (udx_socket_t *socket, const char *addr) {
+  return uv_udp_set_multicast_interface(&socket->handle, addr);
+}
+
+int
 udx_socket_send (udx_socket_send_t *req, udx_socket_t *socket, const uv_buf_t bufs[], unsigned int bufs_len, const struct sockaddr *dest, udx_socket_send_cb cb) {
   return udx_socket_send_ttl(req, socket, bufs, bufs_len, dest, 0, cb);
 }
@@ -2170,12 +2226,10 @@ udx_socket_recv_stop (udx_socket_t *socket) {
 }
 
 int
-udx_socket_close (udx_socket_t *socket, udx_socket_close_cb cb) {
-  if (check_for_streams(socket)) return UV_EBUSY;
+udx_socket_close (udx_socket_t *socket) {
+  if (socket->streams != NULL) return UV_EBUSY;
 
   socket->status |= UDX_SOCKET_CLOSED;
-
-  socket->on_close = cb;
 
   while (socket->send_queue.len > 0) {
     udx_packet_t *pkt = udx__queue_data(udx__queue_shift(&socket->send_queue), udx_packet_t, queue);
@@ -2198,18 +2252,26 @@ udx_socket_close (udx_socket_t *socket, udx_socket_close_cb cb) {
   uv_close((uv_handle_t *) &(socket->handle), on_uv_close);
 
   udx_t *udx = socket->udx;
-  udx->sockets--;
+  udx__link_remove(udx->sockets, socket);
 
   return 0;
 }
 
 int
 udx_stream_init (udx_t *udx, udx_stream_t *stream, uint32_t local_id, udx_stream_close_cb close_cb, udx_stream_finalize_cb finalize_cb) {
-  ref_inc(udx);
+  if (udx->teardown) return UV_EINVAL;
+
+  udx->refs++;
+
+  if (!(udx->has_streams)) {
+    udx__cirbuf_init(&(udx->streams_by_id), 16);
+    udx->has_streams = true;
+  }
+
+  udx__link_add(udx->streams, stream);
 
   stream->local_id = local_id;
   stream->remote_id = 0;
-  stream->set_id = 0;
   stream->status = 0;
   stream->write_wanted = 0;
   stream->out_of_order = 0;
@@ -2316,17 +2378,7 @@ udx_stream_init (udx_t *udx, udx_stream_t *stream, uint32_t local_id, udx_stream
   udx__queue_init(&stream->inflight_queue);
   udx__queue_init(&stream->retransmit_queue);
 
-  stream->set_id = udx->streams_len++;
-
-  if (udx->streams_len == udx->streams_max_len) {
-    udx->streams_max_len *= 2;
-    udx->streams = realloc(udx->streams, udx->streams_max_len * sizeof(udx_stream_t *));
-  }
-
-  udx->streams[stream->set_id] = stream;
-
   // Add the socket to the active set
-
   udx__cirbuf_set(&(udx->streams_by_id), (udx_cirbuf_val_t *) stream);
 
   return 0;
@@ -2409,13 +2461,35 @@ udx_stream_read_stop (udx_stream_t *stream) {
   return stream->socket == NULL ? 0 : update_poll(stream->socket);
 }
 
+static void
+set_stream_socket (udx_stream_t *stream, udx_socket_t *socket) {
+  if (stream->socket == socket) return; // just in case
+
+  udx_socket_t *prev = stream->socket;
+
+  // technically its unsafe to remove and add it to another queue
+  // if iterating the queue we removed from.
+  if (prev == NULL) {
+    udx_t *udx = stream->udx;
+    udx__link_remove(udx->streams, stream);
+  } else {
+    udx__link_remove(prev->streams, stream);
+  }
+
+  stream->socket = socket;
+  udx__link_add(socket->streams, stream);
+}
+
 int
 udx_stream_change_remote (udx_stream_t *stream, udx_socket_t *socket, uint32_t remote_id, const struct sockaddr *remote_addr, udx_stream_remote_changed_cb on_remote_changed) {
-  assert(stream->status & UDX_STREAM_CONNECTED);
-
   // the since the udx_t object stores streams_by_id, we cannot migrate streams across udx objects
   // the local id's of different udx streams may collide.
   assert(socket->udx == stream->socket->udx);
+
+  if (stream->status & UDX_STREAM_DEAD || stream->udx->teardown) {
+    return UV_EINVAL;
+  }
+
   if (!(stream->status & UDX_STREAM_CONNECTED)) {
     return UV_EINVAL;
   }
@@ -2442,8 +2516,7 @@ udx_stream_change_remote (udx_stream_t *stream, udx_socket_t *socket, uint32_t r
   }
 
   stream->remote_id = remote_id;
-
-  stream->socket = socket;
+  set_stream_socket(stream, socket);
 
   if (stream->seq != stream->remote_acked) {
     debug_printf("change_remote: id=%u RA=%u Seq=%u\n", stream->local_id, stream->remote_acked, stream->seq);
@@ -2466,6 +2539,10 @@ udx_stream_change_remote (udx_stream_t *stream, udx_socket_t *socket, uint32_t r
 
 int
 udx_stream_connect (udx_stream_t *stream, udx_socket_t *socket, uint32_t remote_id, const struct sockaddr *remote_addr) {
+  if (stream->status & UDX_STREAM_DEAD || stream->udx->teardown) {
+    return UV_EINVAL;
+  }
+
   if (stream->status & UDX_STREAM_CONNECTED) {
     return UV_EISCONN;
   }
@@ -2473,7 +2550,7 @@ udx_stream_connect (udx_stream_t *stream, udx_socket_t *socket, uint32_t remote_
   stream->status |= UDX_STREAM_CONNECTED;
 
   stream->remote_id = remote_id;
-  stream->socket = socket;
+  set_stream_socket(stream, socket);
 
   if (remote_addr->sa_family == AF_INET) {
     stream->remote_addr_len = sizeof(struct sockaddr_in);
@@ -2690,10 +2767,17 @@ on_uv_getaddrinfo (uv_getaddrinfo_t *req, int status, struct addrinfo *res) {
   }
 
   uv_freeaddrinfo(res);
+
+  ref_dec(lookup->udx);
 }
 
 int
-udx_lookup (uv_loop_t *loop, udx_lookup_t *req, const char *host, unsigned int flags, udx_lookup_cb cb) {
+udx_lookup (udx_t *udx, udx_lookup_t *req, const char *host, unsigned int flags, udx_lookup_cb cb) {
+  if (udx->teardown) return UV_EINVAL;
+
+  udx->refs++;
+
+  req->udx = udx;
   req->on_lookup = cb;
   req->req.data = req;
 
@@ -2707,7 +2791,7 @@ udx_lookup (uv_loop_t *loop, udx_lookup_t *req, const char *host, unsigned int f
   req->hints.ai_family = family;
   req->hints.ai_socktype = SOCK_STREAM;
 
-  return uv_getaddrinfo(loop, &req->req, on_uv_getaddrinfo, host, NULL, &req->hints);
+  return uv_getaddrinfo(udx->loop, &req->req, on_uv_getaddrinfo, host, NULL, &req->hints);
 }
 
 static int
@@ -2772,15 +2856,24 @@ static void
 on_interface_event_close (uv_handle_t *handle) {
   udx_interface_event_t *event = (udx_interface_event_t *) handle->data;
 
+  udx_t *udx = event->udx;
+  udx__link_remove(udx->listeners, event);
+
   if (event->on_close != NULL) {
     event->on_close(event);
   }
+
+  ref_dec(event->udx);
 }
 
 int
-udx_interface_event_init (uv_loop_t *loop, udx_interface_event_t *handle) {
-  handle->loop = loop;
+udx_interface_event_init (udx_t *udx, udx_interface_event_t *handle, udx_interface_event_close_cb cb) {
+  if (udx->teardown) return UV_EINVAL;
+
+  handle->udx = udx;
+  handle->loop = udx->loop;
   handle->sorted = false;
+  handle->on_close = cb;
 
   int err = uv_interface_addresses(&(handle->addrs), &(handle->addrs_len));
   if (err < 0) return err;
@@ -2789,6 +2882,9 @@ udx_interface_event_init (uv_loop_t *loop, udx_interface_event_t *handle) {
   if (err < 0) return err;
 
   handle->timer.data = handle;
+
+  udx->refs++;
+  udx__link_add(udx->listeners, handle);
 
   return 0;
 }
@@ -2810,9 +2906,8 @@ udx_interface_event_stop (udx_interface_event_t *handle) {
 }
 
 int
-udx_interface_event_close (udx_interface_event_t *handle, udx_interface_event_close_cb cb) {
+udx_interface_event_close (udx_interface_event_t *handle) {
   handle->on_event = NULL;
-  handle->on_close = cb;
 
   uv_free_interface_addresses(handle->addrs, handle->addrs_len);
 

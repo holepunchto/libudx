@@ -13,7 +13,7 @@ void
 on_close (udx_stream_t *handle, int status) {
   assert(status == 0);
 
-  int e = udx_socket_close(&sock, NULL);
+  int e = udx_socket_close(&sock);
 
   assert(e == 0);
 
@@ -26,10 +26,10 @@ main () {
 
   uv_loop_init(&loop);
 
-  e = udx_init(&loop, &udx);
+  e = udx_init(&loop, &udx, NULL);
   assert(e == 0);
 
-  e = udx_socket_init(&udx, &sock);
+  e = udx_socket_init(&udx, &sock, NULL);
   assert(e == 0);
 
   struct sockaddr_in addr;

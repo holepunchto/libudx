@@ -599,8 +599,8 @@ main (int argc, char **argv) {
   }
 
   uv_loop_init(&loop);
-  udx_init(&loop, &udx);
-  udx_socket_init(&udx, &sock);
+  udx_init(&loop, &udx, NULL);
+  udx_socket_init(&udx, &sock, NULL);
 
   if (is_server) {
     server();

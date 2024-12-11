@@ -4,6 +4,7 @@
 
 #include "../include/udx.h"
 
+udx_t udx;
 uv_loop_t loop;
 udx_lookup_t req;
 
@@ -21,8 +22,9 @@ main () {
   int e;
 
   uv_loop_init(&loop);
+  udx_init(&loop, &udx, NULL);
 
-  e = udx_lookup(&loop, &req, "example.invalid.", 0, on_lookup);
+  e = udx_lookup(&udx, &req, "example.invalid.", 0, on_lookup);
   assert(e == 0);
 
   uv_run(&loop, UV_RUN_DEFAULT);
