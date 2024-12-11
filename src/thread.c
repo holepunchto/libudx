@@ -9,10 +9,51 @@
 
 #define debugger __builtin_debugtrap();
 
+/**
+ * note to self:
+ *
+ * Next up:
+ * - [x] need a small queue for control signals.
+ * - [x] how to thread-safe without stdatomic.h? (atomic allowed, msvc<2017 unsupported)
+ * - [ ] threadsafe malloc/free ctrl queue
+ * - [x] drain kernel buffer / prove multi-threaded poll works
+ * - [x] stash data into buffer
+ * - [x] notify drain available
+ * - [ ] patch buffer back into on_recv/process_packet()
+ */
+
+// TODO: maybe move to udx.c instead of importing multiple deps via internal.h
 static void
-on_miso (uv_async_t *signal) {
-  UDX_UNUSED(signal);
-  printf("miso: message from sub, running on main\n");
+on_drain (uv_async_t *signal) {
+  udx_t *udx = signal->data;
+  udx_reader_t *worker = &udx->worker;
+
+  struct sockaddr_storage addr = {0};
+
+  udx__drain_slot_t *slot;
+  udx_socket_t *socket;
+
+  while (worker->cursors.drained != worker->cursors.read) {
+    slot = &worker->buffer[worker->cursors.drained];
+
+    socket = slot->socket;
+
+    if (!process_packet(socket, slot->buffer, slot->len, (struct sockaddr *) &addr) && socket->on_recv != NULL) {
+      if (is_addr_v4_mapped((struct sockaddr *) &addr)) {
+        addr_to_v4((struct sockaddr_in6 *) &addr);
+      }
+
+      uv_buf_t buf = {
+        .base = slot->buffer,
+        .len = slot->len
+      };
+
+      // TODO: ask, what is the difference between read_len and buf_len?
+
+      socket->on_recv(socket, slot->len, &buf, (struct sockaddr *) &addr);
+    }
+    worker->cursors.drained = (worker->cursors.drained + 1) % worker->buffer_len;
+  }
 }
 
 /*
@@ -26,65 +67,59 @@ command_close (uv_handle_t *signal) {
 
 static int stub_update_poll (udx_socket_t *socket);
 
-/**
- * note to self:
- * There is a low-level protocol in udx (relaying / ordering / retransmission)
- * it includes uv_timers and uv_calls.
- * so it's not possible to simply divert the read flow here.
- * A)
- * - remove the defined update_poll and on_uv_poll functions here.
- * - make the original pollers thread/loop aware.
- * - check out what other uv-objects would have to be moved;
- *
- * B)
- * - or... actually blindly drain the data from kernel here;
- *   and act as a prebuffer/ gracefully return flow back to `udx.c:on_uv_poll`
- *   - B it is.
- *
- *
- * Next up:
- * - [x] need a small queue for control signals.
- * - [ ] how to thread-safe without stdatomic.h?
- * - [?] malloc/free ctrl queue or pre-allocatte?
- * - [ ] drain kernel buffer / prove multi-threaded poll works
- */
-
-// TODO: remove after verify multithreaded poll works
+// borrowed from udx.c:on_uv_poll()
 static void
 stub_on_uv_poll (uv_poll_t *handle, int status, int events) {
   UDX_UNUSED(status);
   udx_socket_t *socket = handle->data;
-  // uv_loop_t *loop = &socket->udx->worker.loop;
 
-  printf("event: %i, socket->events: %i\n", events, socket->events);
+  udx_t *udx = socket->udx;
+  udx_reader_t *worker = &udx->worker;
 
-  // borrowed from udx.c:on_uv_poll()
+  if (!(events & UV_READABLE)) goto reset_poll;
+
   ssize_t size;
-  if (events & UV_READABLE) {
-    struct sockaddr_storage addr;
-    int addr_len = sizeof(addr);
-    uv_buf_t buf;
+  int current;
+  udx__drain_slot_t *slot;
+  uv_buf_t buf;
 
-    memset(&addr, 0, addr_len);
+  // drain socket buffers
+  do {
+    if (socket->status & UDX_SOCKET_CLOSED) break;
 
-    char b[2048];
-    buf.base = (char *) &b;
-    buf.len = 2048;
+    current = worker->cursors.read;
+    slot = &worker->buffer[current];
 
-    while (!(socket->status & UDX_SOCKET_CLOSED) && (size = udx__recvmsg(socket, &buf, (struct sockaddr *) &addr, addr_len)) >= 0) {
-      debugger
-      // TODO: stash data into lock-free buffer
+    slot->socket = socket;
+    memset(&slot->addr, 0, sizeof(slot->addr));
+    buf.base = (char *) &slot->buffer;
+    buf.len = sizeof(slot->buffer);
+
+    size = udx__recvmsg(socket, &buf, (struct sockaddr *) &slot->addr, sizeof(slot->addr));
+    if (size < 0) break;
+    // TODO: skip/'contine' when size == 0 or break or process anyway?
+    slot->len = size;
+
+    uv_async_send(&worker->signal_drain);
+
+    int next = (worker->cursors.read + 1) % worker->buffer_len;
+
+    if (worker->cursors.drained == next) {
+      printf("buffer full, packet dropped");
+      continue;
     }
-  }
 
-  // TODO: notify main loop; uv_async_send(loop, miso_drain);
+    worker->cursors.read = next;
+  } while(1);
 
+reset_poll:
   assert(stub_update_poll(socket) == 0);
 }
 
-// TODO: remove
 static int
 stub_update_poll (udx_socket_t *socket) {
+  if (socket->status & UDX_SOCKET_CLOSED) return 0;
+
   uv_poll_t *poll = &socket->drain_poll;
   return uv_poll_start(poll, UV_READABLE, stub_on_uv_poll);
 }
@@ -121,6 +156,7 @@ typedef struct command_s {
   enum command_id type;
   void *data;
   struct command_s *next;
+  // udx_queue_node_t queue; replaces/reuses next/ompfh; assuming udx_queue is not thread safe
 } command_t;
 
 static void
@@ -162,6 +198,7 @@ static inline int
 run_command (udx_t *udx, enum command_id type, void *data) {
   printf("run_command(%i) \t\ttid: %zu\n", type, uv_thread_self());
 
+  // TODO: try to use queue.c instead?
   command_t *cmd = malloc(sizeof(command_t));
   cmd->type = type;
   cmd->data = data;
@@ -202,8 +239,13 @@ __udx_read_poll_setup(udx_t *udx) {
   printf("read_poll_setup() main \ttid: %zu\n", uv_thread_self());
 
   int err;
-  err = uv_async_init(udx->loop, &udx->worker.signal_drain, on_miso);
+  err = uv_async_init(udx->loop, &udx->worker.signal_drain, on_drain);
   if (err) return err;
+
+  // not sure where to allocate drain buffer
+  uint16_t n_slots = 32; // let's do 32 packets for now.
+  udx->worker.buffer = malloc(sizeof(udx__drain_slot_t) * n_slots);
+  udx->worker.buffer_len = n_slots;
 
   udx->worker.signal_drain.data = udx;
 
@@ -237,7 +279,7 @@ __udx_read_poll_stop (udx_t *udx, udx_socket_t *socket) {
 int
 __udx_read_poll_destroy (udx_t *udx) {
   UDX_UNUSED(udx);
-
+  free(udx->worker.buffer);
   // close all handles
   // uv_close((uv_handle_t *) &udx->worker.signals_main.close, reader_signal_close);
 
