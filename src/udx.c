@@ -100,6 +100,28 @@ seq_max (uint32_t a, uint32_t b) {
   return seq_compare(a, b) < 0 ? b : a;
 }
 
+static inline bool
+is_addr_v4_mapped (const struct sockaddr *addr) {
+  return addr->sa_family == AF_INET6 && IN6_IS_ADDR_V4MAPPED(&(((struct sockaddr_in6 *) addr)->sin6_addr));
+}
+
+static inline void
+addr_to_v4 (struct sockaddr_in6 *addr) {
+  struct sockaddr_in in;
+  memset(&in, 0, sizeof(in));
+
+  in.sin_family = AF_INET;
+  in.sin_port = addr->sin6_port;
+#ifdef SIN6_LEN
+  in.sin_len = sizeof(struct sockaddr_in);
+#endif
+
+  // Copy the IPv4 address from the last 4 bytes of the IPv6 address.
+  memcpy(&(in.sin_addr), &(addr->sin6_addr.s6_addr[12]), 4);
+
+  memcpy(addr, &in, sizeof(in));
+}
+
 static inline uint32_t
 max_payload (udx_stream_t *stream) {
   assert(stream->mtu > (AF_INET ? UDX_IPV4_HEADER_SIZE : UDX_IPV6_HEADER_SIZE));
@@ -148,7 +170,11 @@ ref_dec (udx_t *udx) {
 
 static void
 trigger_socket_close (udx_socket_t *socket) {
-  if (--socket->pending_closes) return;
+  if (--socket->pending_closes) {
+
+    printf("trigger_socket_close %i\n", socket->pending_closes);
+    return;
+  }
 
   if (socket->on_close != NULL) {
     socket->on_close(socket);
@@ -1946,7 +1972,7 @@ udx_init (uv_loop_t *loop, udx_t *udx, udx_idle_cb on_idle) {
   udx->loop = loop;
 
 #ifdef THREADED_DRAIN
-  assert(__udx_read_poll_setup(udx) == 0);
+  assert(udx__drainer_setup(udx) == 0);
 #endif
   return 0;
 }
@@ -1987,6 +2013,10 @@ udx_teardown (udx_t *udx) {
   udx__link_foreach(udx->listeners, listener) {
     udx_interface_event_close(listener);
   }
+
+#ifdef THREADED_DRAIN
+  udx__drainer_destroy(udx);
+#endif
 }
 
 int
@@ -2109,7 +2139,7 @@ udx_socket_bind (udx_socket_t *socket, const struct sockaddr *addr, unsigned int
   assert(err == 0);
 
 #ifdef THREADED_DRAIN
-  err = __udx_read_poll_start(socket->udx, socket);
+  err = udx__drainer_poll_start(socket);
   assert(err == 0);
 #endif
 
@@ -2246,6 +2276,11 @@ udx_socket_close (udx_socket_t *socket) {
     socket->pending_closes++;
     uv_poll_stop(&(socket->io_poll));
     uv_close((uv_handle_t *) &(socket->io_poll), on_uv_close);
+
+#ifdef THREADED_DRAIN
+    socket->pending_closes++;
+    udx__drainer_poll_stop(socket);
+#endif
   }
 
   socket->pending_closes++;
@@ -2918,3 +2953,28 @@ udx_interface_event_close (udx_interface_event_t *handle) {
 
   return 0;
 }
+
+#ifdef THREADED_DRAIN
+void
+udx__drainer__on_poll_stop (udx_socket_t *socket) {
+  trigger_socket_close(socket);
+}
+
+void udx__drainer__on_packet(udx__drain_slot_t *slot) {
+  udx_socket_t *socket = slot->socket;
+  struct sockaddr_storage *addr = &slot->addr;
+  if (!process_packet(socket, slot->buffer, slot->len, (struct sockaddr *) addr) && socket->on_recv != NULL) {
+    if (is_addr_v4_mapped((struct sockaddr *) addr)) {
+      addr_to_v4((struct sockaddr_in6 *) addr);
+    }
+
+    uv_buf_t buf = {
+      .base = slot->buffer,
+      .len = slot->len
+    };
+    // TODO: ask, what is the difference between read_len and buf_len?
+    socket->on_recv(socket, slot->len, &buf, (struct sockaddr *) addr);
+  }
+}
+#endif
+

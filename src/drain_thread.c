@@ -13,45 +13,20 @@
  * note to self:
  *
  * Next up:
- * - [x] need a small queue for control signals.
- * - [x] how to thread-safe without stdatomic.h? (atomic allowed, msvc<2017 unsupported)
  * - [ ] threadsafe malloc/free ctrl queue
- * - [x] drain kernel buffer / prove multi-threaded poll works
- * - [x] stash data into buffer
- * - [x] notify drain available
  * - [ ] patch buffer back into on_recv/process_packet()
  */
 
-// TODO: maybe move to udx.c instead of importing multiple deps via internal.h
 static void
 on_drain (uv_async_t *signal) {
   udx_t *udx = signal->data;
   udx_reader_t *worker = &udx->worker;
 
-  struct sockaddr_storage addr = {0};
-
   udx__drain_slot_t *slot;
-  udx_socket_t *socket;
 
   while (worker->cursors.drained != worker->cursors.read) {
     slot = &worker->buffer[worker->cursors.drained];
-
-    socket = slot->socket;
-
-    if (!process_packet(socket, slot->buffer, slot->len, (struct sockaddr *) &addr) && socket->on_recv != NULL) {
-      if (is_addr_v4_mapped((struct sockaddr *) &addr)) {
-        addr_to_v4((struct sockaddr_in6 *) &addr);
-      }
-
-      uv_buf_t buf = {
-        .base = slot->buffer,
-        .len = slot->len
-      };
-
-      // TODO: ask, what is the difference between read_len and buf_len?
-
-      socket->on_recv(socket, slot->len, &buf, (struct sockaddr *) &addr);
-    }
+    udx__drainer__on_packet(slot);
     worker->cursors.drained = (worker->cursors.drained + 1) % worker->buffer_len;
   }
 }
@@ -125,7 +100,8 @@ stub_update_poll (udx_socket_t *socket) {
 }
 
 static void
-read_poll_start (udx_t *udx, udx_socket_t *socket) {
+read_poll_start (udx_socket_t *socket) {
+  udx_t *udx = socket->udx;
   uv_loop_t *loop = &udx->worker.loop;
 
   int err = 0;
@@ -144,6 +120,25 @@ read_poll_start (udx_t *udx, udx_socket_t *socket) {
 
   err = stub_update_poll(socket); // TODO: use main poll updater instead
   assert(err == 0);
+}
+
+static void
+on_poll_uv_close (uv_handle_t *handle) {
+  // TODO: this function runs on the worker thread.
+  // but the callback below must be called on the main thread.
+  // might need to define a command/queue into opposite direction for
+  // responses without affecting the on_packet flow.
+  // TODO: in short use uv_async(cmd_resp);
+  udx__drainer__on_poll_stop(handle->data);
+}
+
+static inline void
+read_poll_stop (udx_socket_t *socket) {
+  printf("read_poll_stop tid: %zu\n", uv_thread_self());
+  int err;
+  err = uv_poll_stop(&socket->drain_poll);
+  assert(err == 0);
+  uv_close((uv_handle_t *) &socket->drain_poll, on_poll_uv_close);
 }
 
 enum command_id {
@@ -173,11 +168,11 @@ on_control (uv_async_t *signal) {
     printf("sub thread: on_control(%i) t: %zu\n", head->type, uv_thread_self());
     switch (head->type) {
       case SOCKET_INIT:
-        read_poll_start(udx, head->data);
+        read_poll_start(head->data);
         break;
 
       case SOCKET_REMOVE:
-        printf("thread.c: stop polling not implemented\n");
+        read_poll_stop(head->data);
         break;
 
       case CLOSE:
@@ -235,7 +230,7 @@ static void reader_thread (void *data) {
  * ======="*/
 
 int
-__udx_read_poll_setup(udx_t *udx) {
+udx__drainer_setup(udx_t *udx) {
   printf("read_poll_setup() main \ttid: %zu\n", uv_thread_self());
 
   int err;
@@ -264,7 +259,8 @@ __udx_read_poll_setup(udx_t *udx) {
 }
 
 int
-__udx_read_poll_start (udx_t *udx, udx_socket_t *socket) {
+udx__drainer_poll_start (udx_socket_t *socket) {
+  udx_t *udx = socket->udx;
   uv_os_fd_t fd;
   assert(0 == uv_fileno((uv_handle_t *) &socket->handle, &fd));
   printf("__poll_start fd: %i \ttid: %zu\n", fd, uv_thread_self());
@@ -272,13 +268,14 @@ __udx_read_poll_start (udx_t *udx, udx_socket_t *socket) {
 }
 
 int
-__udx_read_poll_stop (udx_t *udx, udx_socket_t *socket) {
+udx__drainer_poll_stop (udx_socket_t *socket) {
+  udx_t *udx = socket->udx;
   return run_command(udx, SOCKET_REMOVE, socket);
 }
 
 int
-__udx_read_poll_destroy (udx_t *udx) {
-  UDX_UNUSED(udx);
+udx__drainer_destroy (udx_t *udx) {
+  printf("TODO: destroy drain thread not implemented\n");
   free(udx->worker.buffer);
   // close all handles
   // uv_close((uv_handle_t *) &udx->worker.signals_main.close, reader_signal_close);

@@ -110,19 +110,7 @@ typedef void (*udx_interface_event_close_cb)(udx_interface_event_t *handle);
 
 #include <stdatomic.h>
 
-int
-__udx_read_poll_setup (udx_t *udx);
-
-int
-__udx_read_poll_start (udx_t *udx, udx_socket_t *socket); // uv_os_fd_t fd, uv_async_t on_data);
-
-int
-__udx_read_poll_stop (udx_t *udx, udx_socket_t *socket); // uv_os_fd_t fd);
-
-int
-__udx_read_poll_destroy (udx_t *udx);
-
-typedef struct { // TODO: reuse some existing packet struct?
+typedef struct {
   udx_socket_t *socket;
   struct sockaddr_storage addr;
   uint16_t len;
@@ -135,6 +123,8 @@ typedef struct udx_reader_s {
 
     // signals sub->main
     uv_async_t signal_drain;
+    uv_async_t signal_poll_stopped;
+    uv_async_t signal_thread_stopped;
 
     // signals main->sub
     uv_async_t signal_control;
@@ -143,12 +133,34 @@ typedef struct udx_reader_s {
     udx__drain_slot_t *buffer;
     uint16_t buffer_len; // slot_count?
 
-    struct { // TODO: maybe use cibuf.c instead
+    struct {
       atomic_int read;
       atomic_int drained;
     } cursors;
 } udx_reader_t;
-#endif
+
+int
+udx__drainer_setup (udx_t *udx);
+
+int
+udx__drainer_destroy (udx_t *udx);
+
+int
+udx__drainer_poll_start (udx_socket_t *socket);
+
+int
+udx__drainer_poll_stop (udx_socket_t *socket);
+
+void
+udx__drainer__on_packet(udx__drain_slot_t *slot);
+
+void
+udx__drainer__on_poll_stop (udx_socket_t *socket);
+
+void
+udx__drainer__on_thread_stop ();
+
+#endif // THREADED_DRAIN
 
 struct udx_s {
   uv_loop_t *loop;

@@ -31,35 +31,4 @@ addr_to_v6 (struct sockaddr_in *addr) {
 void
 udx__close_handles (udx_socket_t *socket);
 
-// TODO: hmm..
-
-static inline bool
-is_addr_v4_mapped (const struct sockaddr *addr) {
-  return addr->sa_family == AF_INET6 && IN6_IS_ADDR_V4MAPPED(&(((struct sockaddr_in6 *) addr)->sin6_addr));
-}
-
-static inline void
-addr_to_v4 (struct sockaddr_in6 *addr) {
-  struct sockaddr_in in;
-  memset(&in, 0, sizeof(in));
-
-  in.sin_family = AF_INET;
-  in.sin_port = addr->sin6_port;
-#ifdef SIN6_LEN
-  in.sin_len = sizeof(struct sockaddr_in);
-#endif
-
-  // Copy the IPv4 address from the last 4 bytes of the IPv6 address.
-  memcpy(&(in.sin_addr), &(addr->sin6_addr.s6_addr[12]), 4);
-
-  memcpy(addr, &in, sizeof(in));
-}
-
-#ifdef THREADED_DRAIN
-
-int
-process_packet (udx_socket_t *socket, char *buf, ssize_t buf_len, struct sockaddr *addr);
-
-#endif
-
 #endif // UDX_INTERNAL_H

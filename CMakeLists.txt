@@ -36,7 +36,7 @@ target_sources(
     src/queue.h
     src/link.h
     src/io.h
-    src/thread.c
+    src/drain_thread.c
     src/udx.c
 )
 
