@@ -53,7 +53,7 @@ extern "C" {
 #define UDX_STREAM_WRITE_WANT_DESTROY 0b0100
 #define UDX_STREAM_WRITE_WANT_ZWP     0b1000
 
-#define THREADED_DRAIN // experimental
+// #define USE_DRAIN_THREAD // experimental
 
 typedef struct {
   uint32_t seq;
@@ -106,7 +106,7 @@ typedef void (*udx_lookup_cb)(udx_lookup_t *handle, int status, const struct soc
 typedef void (*udx_interface_event_cb)(udx_interface_event_t *handle, int status);
 typedef void (*udx_interface_event_close_cb)(udx_interface_event_t *handle);
 
-#ifdef THREADED_DRAIN
+#ifdef USE_DRAIN_THREAD
 
 #include <stdatomic.h>
 
@@ -160,7 +160,7 @@ udx__drainer__on_poll_stop (udx_socket_t *socket);
 void
 udx__drainer__on_thread_stop ();
 
-#endif // THREADED_DRAIN
+#endif // USE_DRAIN_THREAD
 
 struct udx_s {
   uv_loop_t *loop;
@@ -185,8 +185,9 @@ struct udx_s {
 
   int64_t packets_dropped_by_kernel;
 
-#ifdef THREADED_DRAIN
+#ifdef USE_DRAIN_THREAD
   udx_reader_t worker;
+  int64_t packets_dropped_by_worker;
 #endif
 };
 
@@ -235,8 +236,10 @@ struct udx_socket_s {
 
   int64_t packets_dropped_by_kernel;
 
-#ifdef THREADED_DRAIN
+#ifdef USE_DRAIN_THREAD
   uv_poll_t drain_poll;
+
+  int64_t packets_dropped_by_worker;
 #endif
 };
 

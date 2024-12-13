@@ -4,6 +4,9 @@
 #include <memory.h>
 
 #include "../include/udx.h"
+
+#ifdef USE_DRAIN_THREAD
+
 #include "io.h"
 #include "internal.h"
 
@@ -40,11 +43,10 @@ command_close (uv_handle_t *signal) {
 }
 */
 
-static int stub_update_poll (udx_socket_t *socket);
+static int update_read_poll (udx_socket_t *socket);
 
-// borrowed from udx.c:on_uv_poll()
 static void
-stub_on_uv_poll (uv_poll_t *handle, int status, int events) {
+on_uv_read_poll (uv_poll_t *handle, int status, int events) {
   UDX_UNUSED(status);
   udx_socket_t *socket = handle->data;
 
@@ -80,7 +82,8 @@ stub_on_uv_poll (uv_poll_t *handle, int status, int events) {
     int next = (worker->cursors.read + 1) % worker->buffer_len;
 
     if (worker->cursors.drained == next) {
-      printf("buffer full, packet dropped");
+      udx->packets_dropped_by_worker++;
+      socket->packets_dropped_by_worker++;
       continue;
     }
 
@@ -88,15 +91,15 @@ stub_on_uv_poll (uv_poll_t *handle, int status, int events) {
   } while(1);
 
 reset_poll:
-  assert(stub_update_poll(socket) == 0);
+  assert(update_read_poll(socket) == 0);
 }
 
 static int
-stub_update_poll (udx_socket_t *socket) {
+update_read_poll (udx_socket_t *socket) {
   if (socket->status & UDX_SOCKET_CLOSED) return 0;
 
   uv_poll_t *poll = &socket->drain_poll;
-  return uv_poll_start(poll, UV_READABLE, stub_on_uv_poll);
+  return uv_poll_start(poll, UV_READABLE, on_uv_read_poll);
 }
 
 static void
@@ -118,7 +121,7 @@ read_poll_start (udx_socket_t *socket) {
 
   poll->data = socket;
 
-  err = stub_update_poll(socket); // TODO: use main poll updater instead
+  err = update_read_poll(socket);
   assert(err == 0);
 }
 
@@ -286,3 +289,4 @@ udx__drainer_destroy (udx_t *udx) {
   printf("sub thread end\n");
   return 0;
 }
+#endif // USE_DRAIN_THREAD
