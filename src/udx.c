@@ -14,8 +14,8 @@
 #include "debug.h"
 #include "endian.h"
 #include "io.h"
-#include "queue.h"
 #include "link.h"
+#include "queue.h"
 
 #define UDX_STREAM_ALL_ENDED (UDX_STREAM_ENDED | UDX_STREAM_ENDED_REMOTE)
 #define UDX_STREAM_DEAD      (UDX_STREAM_DESTROYING | UDX_STREAM_CLOSED)
@@ -2313,6 +2313,8 @@ udx_stream_init (udx_t *udx, udx_stream_t *stream, uint32_t local_id, udx_stream
 
   stream->seq = 0;
   stream->ack = 0;
+  stream->send_wl1 = 0;
+  stream->send_wl2 = 0;
   stream->remote_acked = 0;
 
   stream->srtt = 0;
@@ -2408,6 +2410,7 @@ int
 udx_stream_set_seq (udx_stream_t *stream, uint32_t seq) {
   stream->seq = seq;
   stream->remote_acked = seq;
+  stream->send_wl2 = seq; // ensure the next ack will be a valid wl2
   return 0;
 }
 
@@ -2420,6 +2423,7 @@ udx_stream_get_ack (udx_stream_t *stream, uint32_t *ack) {
 int
 udx_stream_set_ack (udx_stream_t *stream, uint32_t ack) {
   stream->ack = ack;
+  stream->send_wl1 = ack; // ensure the next seq will be a valid wl1
   return 0;
 }
 
