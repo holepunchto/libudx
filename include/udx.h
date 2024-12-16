@@ -137,6 +137,9 @@ typedef struct udx_reader_s {
       atomic_int read;
       atomic_int drained;
     } cursors;
+
+    int64_t perf_load;
+    int64_t perf_ndrains;
 } udx_reader_t;
 
 int
@@ -160,6 +163,8 @@ udx__drainer__on_poll_stop (udx_socket_t *socket);
 void
 udx__drainer__on_thread_stop ();
 
+// test
+double udx__drainer_read_load(udx_t *udx);
 #endif // USE_DRAIN_THREAD
 
 struct udx_s {

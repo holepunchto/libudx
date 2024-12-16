@@ -12,6 +12,18 @@
 
 #define debugger __builtin_debugtrap();
 
+#define N_SLOTS 12000
+
+double udx__drainer_read_load (udx_t *udx) {
+  udx_reader_t *w = &udx->worker;
+  if (!w->perf_ndrains) return 0;
+
+  double load = (w->perf_load / (double) w->perf_ndrains) / w->buffer_len;
+
+  w->perf_load = w->perf_ndrains = 0;
+
+  return load;
+}
 /**
  * note to self:
  *
@@ -24,6 +36,9 @@ static void
 on_drain (uv_async_t *signal) {
   udx_t *udx = signal->data;
   udx_reader_t *worker = &udx->worker;
+
+  worker->perf_load += (worker->buffer_len + worker->cursors.read - worker->cursors.drained) % worker->buffer_len;
+  worker->perf_ndrains++;
 
   udx__drain_slot_t *slot;
 
@@ -240,10 +255,9 @@ udx__drainer_setup(udx_t *udx) {
   err = uv_async_init(udx->loop, &udx->worker.signal_drain, on_drain);
   if (err) return err;
 
-  // not sure where to allocate drain buffer
-  uint16_t n_slots = 32; // let's do 32 packets for now.
-  udx->worker.buffer = malloc(sizeof(udx__drain_slot_t) * n_slots);
-  udx->worker.buffer_len = n_slots;
+  // do we allocate 1 drain buffer per socket?
+  udx->worker.buffer = malloc(sizeof(udx__drain_slot_t) * N_SLOTS);
+  udx->worker.buffer_len = N_SLOTS;
 
   udx->worker.signal_drain.data = udx;
 
