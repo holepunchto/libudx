@@ -1125,7 +1125,8 @@ process_data_packet (udx_stream_t *stream, int type, uint32_t seq, char *data, s
 }
 
 static int
-relay_packet (udx_stream_t *stream, char *buf, ssize_t buf_len, int type, uint8_t data_offset, uint32_t seq, uint32_t ack, uint32_t rwnd) {
+relay_packet (udx_stream_t *stream, char *buf, ssize_t buf_len, int type, uint32_t seq) {
+
   stream->seq = seq_max(stream->seq, seq);
 
   udx_stream_t *relay = stream->relay_to;
@@ -1136,9 +1137,15 @@ relay_packet (udx_stream_t *stream, char *buf, ssize_t buf_len, int type, uint8_
 
     uv_buf_t b = uv_buf_init(buf, buf_len);
 
-    int err = udx__sendmsg(relay->socket, &b, 1, (struct sockaddr *) &relay->remote_addr, relay->remote_addr_len);
+    int err;
 
-    if (err == EAGAIN) {
+    if (stream->udx->debug_flags & UDX_DEBUG_FORCE_RELAY_SLOW_PATH) {
+      err = UV_EAGAIN;
+    } else {
+      err = udx__sendmsg(relay->socket, &b, 1, (struct sockaddr *) &relay->remote_addr, relay->remote_addr_len);
+    }
+
+    if (err == UV_EAGAIN) {
       // create a socket_send_t with no callback to send this packet on the relay's send_queue
 
       udx_socket_send_t *req = malloc(sizeof(udx_socket_send_t) + b.len);
@@ -1151,20 +1158,7 @@ relay_packet (udx_stream_t *stream, char *buf, ssize_t buf_len, int type, uint8_
       udx_packet_t *pkt = &req->pkt;
 
       memcpy(&pkt->dest, &relay->remote_addr, relay->remote_addr_len);
-
-      uint8_t *p = (uint8_t *) data;
-
-      // 8 bit magic byte + 8 bit version + 8 bit type + 8 bit extensions
-      *(p++) = UDX_MAGIC_BYTE;
-      *(p++) = UDX_VERSION;
-      *(p++) = (uint8_t) type;
-      *(p++) = data_offset; // data offset
-
-      uint32_t *i = (uint32_t *) p;
-      *(i++) = udx__swap_uint32_if_be(stream->remote_id);
-      *(i++) = udx__swap_uint32_if_be(rwnd);
-      *(i++) = udx__swap_uint32_if_be(seq);
-      *(i++) = udx__swap_uint32_if_be(ack);
+      pkt->dest_len = relay->remote_addr_len;
 
       pkt->nbufs = 1;
       pkt->size = b.len;
@@ -1244,7 +1238,7 @@ process_packet (udx_socket_t *socket, char *buf, ssize_t buf_len, struct sockadd
     if (stream->on_firewall(stream, socket, addr)) return 1;
   }
 
-  if (stream->relay_to) return relay_packet(stream, buf, buf_len, type, data_offset, seq, ack, rwnd);
+  if (stream->relay_to) return relay_packet(stream, buf, buf_len, type, seq);
 
   buf += UDX_HEADER_SIZE;
   buf_len -= UDX_HEADER_SIZE;
@@ -1961,6 +1955,8 @@ udx_init (uv_loop_t *loop, udx_t *udx, udx_idle_cb on_idle) {
 
   udx->packets_dropped_by_kernel = -1;
   udx->loop = loop;
+
+  udx->debug_flags = 0;
 
   return 0;
 }

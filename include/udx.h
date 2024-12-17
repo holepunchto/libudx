@@ -53,6 +53,8 @@ extern "C" {
 #define UDX_STREAM_WRITE_WANT_DESTROY 0b0100
 #define UDX_STREAM_WRITE_WANT_ZWP     0b1000
 
+#define UDX_DEBUG_FORCE_RELAY_SLOW_PATH 0x01
+
 typedef struct {
   uint32_t seq;
 } udx_cirbuf_val_t;
@@ -106,6 +108,8 @@ typedef void (*udx_interface_event_close_cb)(udx_interface_event_t *handle);
 
 struct udx_s {
   uv_loop_t *loop;
+
+  uint32_t debug_flags;
 
   int refs;
   bool teardown;
