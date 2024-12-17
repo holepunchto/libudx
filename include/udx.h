@@ -164,7 +164,7 @@ void
 udx__drainer__on_thread_stop ();
 
 // test
-double udx__drainer_read_load(udx_t *udx);
+double udx__drainer_read_load(udx_t *udx, uint64_t *n_packets_buffered, uint64_t *n_drains);
 #endif // USE_DRAIN_THREAD
 
 struct udx_s {

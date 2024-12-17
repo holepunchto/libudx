@@ -280,12 +280,14 @@ print_interval (udxperf_client_t *client, uint64_t bytes, uint64_t start, uint64
 
   int64_t k_drop = stream->socket->packets_dropped_by_kernel || udx.packets_dropped_by_kernel;
   int64_t t_drop = -1;
+  double q_load = 0;
 
 #ifdef USE_DRAIN_THREAD
   t_drop = stream->socket->packets_dropped_by_worker || udx.packets_dropped_by_worker;
+  q_load = udx__drainer_read_load(&udx, NULL, NULL);
 #endif
 
-  printf("[%3d] %6.4f-%6.4f sec %s %s/sec \t(%zi/%zi)", stream->local_id, (start - client->start_time) / 1000.0, (end - client->start_time) / 1000.0, bytes_buf, bps_buf, k_drop, t_drop);
+  printf("[%3d] %6.4f-%6.4f sec %s %s/sec \t(kD %zi, wD %zi) q_load: %f", stream->local_id, (start - client->start_time) / 1000.0, (end - client->start_time) / 1000.0, bytes_buf, bps_buf, k_drop, t_drop, q_load);
 
   if (is_client && extra_wanted) {
     printf(" cwnd=%d ssthresh=%d fast_recovery_count=%d rto_count=%d rtx_count=%d", stream->cwnd, stream->ssthresh, stream->fast_recovery_count, stream->rto_count, stream->retransmit_count);

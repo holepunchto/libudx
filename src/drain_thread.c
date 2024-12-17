@@ -12,13 +12,16 @@
 
 #define debugger __builtin_debugtrap();
 
-#define N_SLOTS 12000
+#define N_SLOTS 1024
 
-double udx__drainer_read_load (udx_t *udx) {
+double udx__drainer_read_load (udx_t *udx, uint64_t *n_packets_buffered, uint64_t *n_drains) {
   udx_reader_t *w = &udx->worker;
   if (!w->perf_ndrains) return 0;
 
   double load = (w->perf_load / (double) w->perf_ndrains) / w->buffer_len;
+
+  if (n_drains != NULL) *n_drains = w->perf_ndrains;
+  if (n_packets_buffered != NULL) *n_packets_buffered = w->perf_load;
 
   w->perf_load = w->perf_ndrains = 0;
 

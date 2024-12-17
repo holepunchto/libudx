@@ -1,7 +1,9 @@
 #include <inttypes.h>
+#include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <uv.h>
+#include <assert.h>
 
 #include "../include/udx.h"
 #ifdef _WIN32
@@ -9,6 +11,23 @@
 #else
 #include <unistd.h>
 #endif
+
+/**
+ * Don't merge!!
+ * I've destroyed the simplicity of the original
+ * server/client example while doing throughput tests.
+ * If retained then should be moved/renamed otherwise will restore later.
+ */
+#define PLOT
+#define LOG_INTERVAL 300
+
+#ifdef USE_DRAIN_THREAD
+#define THREADS_ENABLED 1
+#else
+#define THREADS_ENABLED 0
+#endif
+
+FILE *plot_fd;
 
 static uv_loop_t loop;
 static udx_t udx;
@@ -20,12 +39,23 @@ static udx_stream_t stream;
 static struct sockaddr_in dest_addr;
 
 static size_t bytes_recv = 0;
+static size_t bytes_recv_round = 0;
 static uint64_t started = 0;
+static uint64_t round_start = 0;
 
 static uint32_t client_id = 1;
 static uint32_t server_id = 2;
 
 static uv_timer_t timer;
+
+static uint64_t jitter_interval = 0;  // max cpu block
+static uv_timer_t jitter_timer;
+static uint64_t jitter_time = 0;
+static uint64_t packets_recv = 0;
+static uint64_t packets_recv_round = 0;
+
+static int round_i = 0;
+#define saturation 1
 
 static uint64_t
 get_milliseconds () {
@@ -34,15 +64,86 @@ get_milliseconds () {
 
 static void
 on_uv_interval (uv_timer_t *handle) {
-  printf("received %zu bytes in %" PRIu64 " ms\n", bytes_recv, get_milliseconds() - started);
+  uint64_t now = get_milliseconds();
+  uint64_t delta = now - round_start;
+  round_start = now;
+
+  uint64_t prgm_delta =  now - started;
+
+  float bps = 8 * (bytes_recv - bytes_recv_round) / (delta / 1000.);
+  float avg_bps = 8 * bytes_recv / (prgm_delta / 1000.);
+
+  uint64_t p = packets_recv - packets_recv_round;
+  float pps = p / (delta / 1000.);
+
+  int64_t k_drop = sock.packets_dropped_by_kernel || udx.packets_dropped_by_kernel;
+  int64_t t_drop = 0;
+  double q_load = 0;
+  uint64_t n_packets_buffered = 0;
+  uint64_t n_drains = 0;
+
+#ifdef USE_DRAIN_THREAD
+  t_drop = stream.socket->packets_dropped_by_worker || udx.packets_dropped_by_worker;
+  q_load = udx__drainer_read_load(&udx, &n_packets_buffered, &n_drains);
+#endif
+
+  printf("%02i> received %0.2f Mbit/s (avg %0.3f), packets %zu (pps %01f),  jitter %zums, [Kd%zi] thread-load: %0.2f%%\n",
+      round_i, bps / pow(1024, 2), avg_bps / pow(1024, 2), p, pps, jitter_time, k_drop, q_load * 100);
+
+#ifdef PLOT
+  fprintf(plot_fd, "%i %f %f %zu %f %zu %zi %zi %f %zu %zu %zu\n",
+      round_i, bps, avg_bps, p, pps, jitter_time, k_drop, t_drop, q_load, n_packets_buffered, n_drains, now);
+#endif
+
+  jitter_time = 0;
+  bytes_recv_round = bytes_recv;
+  packets_recv_round = packets_recv;
+
+  round_i += 1;
+  if (round_i > (60000 / LOG_INTERVAL)) exit(0); // unclean exit after 1 min
+}
+
+static void
+on_uv_interval_jitter (uv_timer_t *handle) {
+  uint64_t start = uv_hrtime();
+  uint64_t ns;
+  // int i = 0;
+  do {
+    // sqrt(++i);
+    uv_sleep(1); // blocking main-loop seems to be enough
+    ns = uv_hrtime() - start;
+  } while (ns < jitter_interval * saturation * 1000000);
+  jitter_time += ns / 1000000;
 }
 
 static void
 on_read (udx_stream_t *handle, ssize_t read_len, const uv_buf_t *buf) {
   if (started == 0) {
-    started = get_milliseconds();
+    started = round_start = get_milliseconds();
     uv_timer_init(&loop, &timer);
-    uv_timer_start(&timer, on_uv_interval, 5000, 5000);
+    uv_timer_start(&timer, on_uv_interval, LOG_INTERVAL, LOG_INTERVAL);
+
+#ifdef PLOT
+    char fname[255] = {0};
+    sprintf(fname, "logs/data-jitter%zu_%s_logfreq%i_run%zu.txt",
+        jitter_interval, THREADS_ENABLED ? "thread" : "nothread", LOG_INTERVAL, started);
+
+    plot_fd = fopen(fname, "w");
+    if (plot_fd == NULL) {
+      printf("Failed creating log file: %s\n", fname);
+      perror("Error");
+      exit(1);
+    }
+    fprintf(plot_fd, "# thread enabled: %i, jitter interval: %zu ms, initial rwnd %i, log interval: %i\n", THREADS_ENABLED, jitter_interval, handle->recv_rwnd, LOG_INTERVAL);
+    fprintf(plot_fd, "# recv_mbps avg_recv_mbps packets packets_per_second load_ms kernel_drop thread_drop thread_que_load n_packets_buffered n_drains clock\n");
+#endif
+
+    if (jitter_interval > 0) {
+      printf("enabling jitter timer %zu\n", jitter_interval);
+
+      uv_timer_init(&loop, &jitter_timer);
+      uv_timer_start(&jitter_timer, on_uv_interval_jitter, 4000, jitter_interval);
+    }
   }
 
   if (read_len < 0) {
@@ -52,6 +153,7 @@ on_read (udx_stream_t *handle, ssize_t read_len, const uv_buf_t *buf) {
   }
 
   bytes_recv += read_len;
+  packets_recv++;
 }
 
 static void
@@ -66,6 +168,10 @@ main (int argc, char **argv) {
   if (argc < 2) return 1;
 
   uv_ip4_addr(argv[1], 18081, &dest_addr);
+
+  if (argc > 2) {
+    jitter_interval = atoi(argv[2]);
+  }
 
   uv_loop_init(&loop);
 
