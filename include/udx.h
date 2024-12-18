@@ -53,7 +53,7 @@ extern "C" {
 #define UDX_STREAM_WRITE_WANT_DESTROY 0b0100
 #define UDX_STREAM_WRITE_WANT_ZWP     0b1000
 
-// #define USE_DRAIN_THREAD // experimental
+#define USE_DRAIN_THREAD // experimental
 
 typedef struct {
   uint32_t seq;

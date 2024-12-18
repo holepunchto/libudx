@@ -76,7 +76,9 @@ on_uv_interval (uv_timer_t *handle) {
   uint64_t p = packets_recv - packets_recv_round;
   float pps = p / (delta / 1000.);
 
-  int64_t k_drop = sock.packets_dropped_by_kernel || udx.packets_dropped_by_kernel;
+  // stupid.... this converts the integer into a bool, does not retain integer value! hence k-drop = 1
+  // int64_t k_drop = sock.packets_dropped_by_kernel || udx.packets_dropped_by_kernel;
+  int64_t k_drop = udx.packets_dropped_by_kernel;
   int64_t t_drop = 0;
   double q_load = 0;
   uint64_t n_packets_buffered = 0;
@@ -124,9 +126,20 @@ on_read (udx_stream_t *handle, ssize_t read_len, const uv_buf_t *buf) {
     uv_timer_start(&timer, on_uv_interval, LOG_INTERVAL, LOG_INTERVAL);
 
 #ifdef PLOT
-    char fname[255] = {0};
-    sprintf(fname, "logs/data-jitter%zu_%s_logfreq%i_run%zu.txt",
-        jitter_interval, THREADS_ENABLED ? "thread" : "nothread", LOG_INTERVAL, started);
+    char target[INET_ADDRSTRLEN] = {0};
+
+    inet_ntop(AF_INET, &(dest_addr.sin_addr), target, INET_ADDRSTRLEN);
+   
+    char datestr[32] = {0};
+    { // want to know when data was recorded
+      time_t tstamp = time(NULL);
+      struct tm *ltime = localtime(&tstamp);
+      strftime(datestr, sizeof(datestr), "%y%m%d-%H%M%S", ltime);
+    }
+
+    char fname[1024] = {0};
+    sprintf(fname, "logs/dest%s-load%zu_%s_logfreq%i_run%s.txt",
+        target, jitter_interval, THREADS_ENABLED ? "thread" : "nothread", LOG_INTERVAL, datestr);
 
     plot_fd = fopen(fname, "w");
     if (plot_fd == NULL) {
@@ -134,6 +147,7 @@ on_read (udx_stream_t *handle, ssize_t read_len, const uv_buf_t *buf) {
       perror("Error");
       exit(1);
     }
+    printf("dumping data into %s\n", fname);
     fprintf(plot_fd, "# thread enabled: %i, jitter interval: %zu ms, initial rwnd %i, log interval: %i\n", THREADS_ENABLED, jitter_interval, handle->recv_rwnd, LOG_INTERVAL);
     fprintf(plot_fd, "# recv_mbps avg_recv_mbps packets packets_per_second load_ms kernel_drop thread_drop thread_que_load n_packets_buffered n_drains clock\n");
 #endif

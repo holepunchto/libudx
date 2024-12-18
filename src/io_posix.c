@@ -145,6 +145,7 @@ udx__recvmsg (udx_socket_t *handle, uv_buf_t *buf, struct sockaddr *addr, int ad
 
     if (packets_dropped_by_kernel) {
       uint32_t delta = packets_dropped_by_kernel - handle->packets_dropped_by_kernel;
+      // if (delta) printf("K-Dropped!!!: delta: %i, n: %i\n", delta, packets_dropped_by_kernel);
       handle->udx->packets_dropped_by_kernel += delta;
       handle->packets_dropped_by_kernel = packets_dropped_by_kernel;
     }

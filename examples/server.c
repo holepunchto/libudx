@@ -133,7 +133,7 @@ main (int argc, char **argv) {
   udx_socket_bind(&sock, (struct sockaddr *) &addr, 0);
 
   udx_socket_recv_start(&sock, on_recv);
-
+  printf("server started\n");
   uv_run(&loop, UV_RUN_DEFAULT);
   return 0;
 }
