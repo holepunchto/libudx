@@ -1070,12 +1070,16 @@ ack_packet (udx_stream_t *stream, uint32_t seq, int sack) {
 
     if (write->bytes_acked == write->size && write->on_ack) {
       write->on_ack(write, 0, sack);
+
+      // reentry from write->on_ack
+      if (stream->status & UDX_STREAM_DEAD) {
+        free(pkt);
+        return 2;
+      }
     }
   }
 
   free(pkt);
-
-  if (stream->status & UDX_STREAM_DEAD) return 2; // reentry from write->on_ack
 
   // TODO: the end condition needs work here to be more "stateless"
   // ie if the remote has acked all our writes, then instead of waiting for retransmits, we should
