@@ -15,15 +15,17 @@
 
 /**
  * Don't merge!!
- * TODO: rename to jitter_client.c
- * $ ./jitter_client.c IP_ADDR JITTER_MS
+ *
+ * todo:
+ * - [ ] use ns for consistency
  */
+
 #define PLOT
 
 #define LOG_INTERVAL 100
 
-#define m2ns(ms) (ms * 1000000)
-#define n2ms(ns) (ns / 1000000)
+#define m2ns(ms) ((ms) * 1000000)
+#define n2ms(ns) ((ns) / 1000000)
 #define get_milliseconds(t) (uv_hrtime() / (t) 1000000)
 
 #ifdef USE_DRAIN_THREAD
@@ -51,21 +53,32 @@ static uint64_t round_start = 0;
 static uint32_t client_id = 1;
 static uint32_t server_id = 2;
 
-static uv_timer_t timer;
+// static uv_timer_t timer;
 
 static uv_timer_t jitter_timer;
-static int jitter_interval = 0;  // max cpu block
-static uint64_t jitter_time = 0;
+
+static uint32_t j_block_ms = 0;
+static uint64_t j_time_blocked = 0;
+
+static uint32_t j_wait_ms = 0;
+static uint64_t j_time_waited = 0;
+
+static uint64_t j_count = 0;
+static bool j_enable = 0;
+
 static uint64_t packets_recv = 0;
 static uint64_t packets_recv_round = 0;
 
 static int round_i = 0;
-static float saturation = 1; // 0..1
 
+// This has to run on the jitter timer
+// otherwise this interval get's jittered to.
 static void
-on_report (uv_timer_t *handle) {
-  double_t now = get_milliseconds(double);
+log_report (uint64_t now_ns) {
+  double_t now = n2ms((double) now_ns);
   double_t delta = now - round_start;
+  if (delta < LOG_INTERVAL) return;
+
   round_start = now;
 
   uint64_t prgm_delta =  now - started;
@@ -87,75 +100,95 @@ on_report (uv_timer_t *handle) {
   q_load = udx__drainer_read_load(&udx, &n_packets_buffered, &n_drains);
 #endif
 
-  printf("%02i> received %0.2f Mbit/s (avg %0.3f), packets %zu (pps %0.1f, drop:%zi), jitter %zums (%0.0f%%) TrxQ-load: %0.2f%%\n",
-      round_i, bps / pow(1024, 2), avg_bps / pow(1024, 2), p, pps, k_drop, n2ms(jitter_time), saturation * 100, q_load * 100);
-
-  // if (prgm_delta > 5000) __builtin_debugtrap();
+  double_t delayed = delta - LOG_INTERVAL;
+  printf("%02i:%0.0f> received %0.2f Mbit/s (avg %0.1f), pkts/dropped: %zu/%zi, loadsim(%i){ %zums / %zu } tRXQ-load: %0.2f%%\n",
+      round_i,
+      delayed,
+      bps / pow(1024, 2),
+      avg_bps / pow(1024, 2),
+      p,
+      k_drop,
+      j_enable,
+      n2ms(j_time_blocked),
+      j_count,
+      q_load * 100);
 
 #ifdef PLOT
-  fprintf(plot_fd, "%i %f %f %zu %f %zu %zi %zi %f %zu %zu %f %i %i %f %f\n",
-      round_i, bps, avg_bps, p, pps, n2ms(jitter_time), k_drop, t_drop, q_load, n_packets_buffered, n_drains, prgm_delta / 1000., stream.seq, jitter_interval, saturation, delta);
+  // TODO: sensibly reorder
+  fprintf(plot_fd, "%i %f %f %zu %f %zu %zi %zi %f %zu %zu %f %i %i %i %f %i %zu %i\n",
+      round_i,
+      bps,
+      avg_bps,
+      p,
+      pps,
+      n2ms(j_time_blocked),
+      k_drop,
+      t_drop,
+      q_load,
+      n_packets_buffered,
+      n_drains,
+      prgm_delta / 1000.,
+      stream.ack,
+      j_block_ms,
+      j_enable,
+      delta,
+      j_wait_ms,
+      j_count,
+      LOG_INTERVAL); // timing reference
 #endif
 
-  jitter_time = 0;
+  j_time_blocked = 0;
+  j_count = 0;
   bytes_recv_round = bytes_recv;
   packets_recv_round = packets_recv;
 
   round_i += 1;
   if (round_i > (60000 / LOG_INTERVAL)) exit(0); // unclean exit after 1 min
 
-  // increase jitter time every 10 rounds
-  if (jitter_interval && !(round_i % 30)) {
-    saturation = !saturation;
+  // toggle jitter/ cpu-load every 30th round
+  if (j_block_ms && !(round_i % 30)) {
+    j_enable = !j_enable;
+    j_block_ms += 5;
   }
 }
 
 void uv_sleep_nano(uint64_t nsec);
 
-/**
- * Simulating slow JS;
- * "Jitter" describes a function that saturates
- * the loop with blocking calls:
- *
- * function jitter (ms) {
- *   const start = Date.now()
- *   while (Date.now() - start < ms) {} // block loop
- *
- *   // release / let udx drain & flush
- *   setTimeout(() => jitter(ms), 0)
- * }
- *
- * jitter(5)
- */
 static void
 on_jitter (uv_timer_t *handle) {
+  j_count++;
   uint64_t start = uv_hrtime();
-  // uint64_t prgm_delta =  n2ms(start) - started; // TODO: sweep saturation using prgm_delta
 
-  // TODO: remodel simload,
-  // target = block_ms, next = wait_ms
-  // -- or --
+  uint64_t target = m2ns(j_block_ms * j_enable);
+  do {
+    log_report(start);
+    if (target > 0) uv_sleep_nano(target);
+  } while (uv_hrtime() - start < target);
+
+  // timers are scheduled from `loop->time + timeout` not `now() + timeout`
+  // uv_sleep() does of course not update timers;
+  // so correct timeout is blocked_ms + wait
+  uint64_t wait = j_wait_ms + j_block_ms;
+  uv_timer_start(&jitter_timer, on_jitter, wait, 0);
+  // uv_update_time();
+  j_time_blocked += uv_hrtime() - start;
+}
+
+
+
+inline static void
+calc_cpusim_timings(float load, float divsor, uint32_t *block, uint32_t *wait) {
+  *block = ((load * LOG_INTERVAL) / divsor);
+  *wait = (((1. - load) * LOG_INTERVAL) / divsor);
   // target = (cpu * block_ms) / divisors, next = ((1-cpu) * wait_ms) / divisor
-
-  uint64_t target = m2ns(jitter_interval * saturation);
-
-  if (target) {
-    uv_sleep_nano(target); // block main-loop
-  }
-
-  // try to align next run onto jitter_interval
-  uint64_t next = MAX(jitter_interval - n2ms(target), 1);
-  uv_timer_start(&jitter_timer, on_jitter, next, 0);
-
-  jitter_time += uv_hrtime() - start;
 }
 
 static void
 on_read (udx_stream_t *handle, ssize_t read_len, const uv_buf_t *buf) {
   if (started == 0) {
     started = round_start = get_milliseconds(double);
-    uv_timer_init(&loop, &timer);
-    uv_timer_start(&timer, on_report, LOG_INTERVAL, LOG_INTERVAL);
+    // uv_timer_init(&loop, &timer);
+    // uv_timer_start(&timer, on_uv_report, LOG_INTERVAL, LOG_INTERVAL);
 
 #ifdef PLOT
     // Warn opening file an doing blocking writes causes jitters.
@@ -165,7 +198,7 @@ on_read (udx_stream_t *handle, ssize_t read_len, const uv_buf_t *buf) {
 
     char datestr[32] = {0};
     char datestr_human[32] = {0};
-    { // want to know when data was recorded
+    {
       time_t tstamp = time(NULL);
       struct tm *ltime = localtime(&tstamp);
       strftime(datestr, sizeof(datestr), "%y%m%d_%H%M", ltime);
@@ -174,7 +207,7 @@ on_read (udx_stream_t *handle, ssize_t read_len, const uv_buf_t *buf) {
 
     char fname[1024] = {0};
     sprintf(fname, "logs/run%s_dst%s-load%i_%s.txt",
-        datestr, target, jitter_interval, THREADS_ENABLED ? "thread" : "nothread");
+        datestr, target, j_block_ms, THREADS_ENABLED ? "thread" : "nothread");
 
     plot_fd = fopen(fname, "w");
     if (plot_fd == NULL) {
@@ -185,15 +218,14 @@ on_read (udx_stream_t *handle, ssize_t read_len, const uv_buf_t *buf) {
     printf("dumping data into %s\n", fname);
 
     fprintf(plot_fd, "# remote: %s, date: %s\n", target, datestr_human);
-    fprintf(plot_fd, "# thread enabled: %i, jitter interval: %i ms, initial rwnd %i, log interval: %i\n", THREADS_ENABLED, jitter_interval, handle->recv_rwnd, LOG_INTERVAL);
+    fprintf(plot_fd, "# thread enabled: %i, jitter interval: %i ms, initial rwnd %i, log interval: %i\n", THREADS_ENABLED, j_block_ms, handle->recv_rwnd, LOG_INTERVAL);
     fprintf(plot_fd, "# recv_mbps avg_recv_mbps packets packets_per_second load_ms kernel_drop thread_drop thread_que_load n_packets_buffered n_drains clock stream_seq jitter_interval saturation delta\n");
 #endif
 
-    if (jitter_interval > 0) {
-      printf("enabling jitter timer %i\n", jitter_interval);
-
+    if (j_block_ms > 0) {
+      printf("enabling load simulation: block %ims, wait: %ims\n", j_block_ms, j_wait_ms);
       uv_timer_init(&loop, &jitter_timer);
-      uv_timer_start(&jitter_timer, on_jitter, 4000, 0);
+      uv_timer_start(&jitter_timer, on_jitter, 0, 0);
     }
   }
 
@@ -220,9 +252,27 @@ main (int argc, char **argv) {
 
   uv_ip4_addr(argv[1], 18081, &dest_addr);
 
+
   if (argc > 2) {
-    jitter_interval = atoi(argv[2]);
+    j_block_ms = atof(argv[2]);
+    j_wait_ms = 10;
   }
+
+  if (argc > 3) {
+    j_wait_ms = atof(argv[3]);
+  }
+
+  /* theory yes, in practice no
+  float simload = 0;
+  float n_times = 10.;
+  if (argc > 2) {
+    simload = atof(argv[2]);
+    assert(simload <= 1);
+    assert(simload >= 0);
+  }
+  if (simload > 0) {
+    calc_cpusim_timings(simload, n_times, &j_block_ms, &j_wait_ms);
+  }*/
 
   uv_loop_init(&loop);
 
