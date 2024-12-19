@@ -102,6 +102,7 @@ on_uv_interval (uv_timer_t *handle) {
   packets_recv_round = packets_recv;
 
   round_i += 1;
+  jitter_time += 2;
   if (round_i > (60000 / LOG_INTERVAL)) exit(0); // unclean exit after 1 min
 }
 
