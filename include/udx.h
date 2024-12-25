@@ -54,6 +54,7 @@ extern "C" {
 #define UDX_STREAM_WRITE_WANT_ZWP     0b1000
 
 #define UDX_DEBUG_FORCE_RELAY_SLOW_PATH 0x01
+#define UDX_DEBUG_FORCE_DROP_DATA       0x04
 
 typedef struct {
   uint32_t seq;

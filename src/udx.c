@@ -1775,17 +1775,25 @@ send_stream_packets (udx_socket_t *socket, udx_stream_t *stream) {
 
     bool mtu_probe = stream->mtu_probe_wanted && mtu_probeify_packet(pkt, stream->mtu_probe_size);
 
-    ssize_t rc = send_packet(socket, pkt);
+    ssize_t rc;
+
+    const uint32_t drop_every_n = 2;
+    static uint32_t n;
+    if ((socket->udx->debug_flags & UDX_DEBUG_FORCE_DROP_DATA) && (n++ % drop_every_n == 0)) {
+      rc = UV_EAGAIN;
+    } else {
+      rc = send_packet(socket, pkt);
+    }
 
     if (rc == UV_EAGAIN) {
       int i = nwbufs;
-      while (nwbufs--) {
+      while (i--) {
         udx_stream_write_buf_t *wbuf = wbufs[i];
         if (wbuf->bytes_acked + wbuf->bytes_inflight == wbuf->buf.len) {
+          // debug_printf("restoring wbuf back to inflight, wbuf->bytes_acked=%ld wbuf->bytes_inflight=%ld wbuf->buf.len=%ld buf.len=%ld\n", wbuf->bytes_acked, wbuf->bytes_inflight, wbuf->buf.len, bufs[i].len);
           udx__queue_head(&stream->write_queue, &wbuf->queue);
         }
-
-        wbuf->bytes_inflight -= bufs[i + 1].len;
+        wbuf->bytes_inflight -= bufs[i].len;
       }
 
       free(pkt);
