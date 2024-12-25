@@ -1790,7 +1790,6 @@ send_stream_packets (udx_socket_t *socket, udx_stream_t *stream) {
       while (i--) {
         udx_stream_write_buf_t *wbuf = wbufs[i];
         if (wbuf->bytes_acked + wbuf->bytes_inflight == wbuf->buf.len) {
-          // debug_printf("restoring wbuf back to inflight, wbuf->bytes_acked=%ld wbuf->bytes_inflight=%ld wbuf->buf.len=%ld buf.len=%ld\n", wbuf->bytes_acked, wbuf->bytes_inflight, wbuf->buf.len, bufs[i].len);
           udx__queue_head(&stream->write_queue, &wbuf->queue);
         }
         wbuf->bytes_inflight -= bufs[i].len;
