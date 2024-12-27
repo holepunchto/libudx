@@ -1941,6 +1941,9 @@ on_uv_poll (uv_poll_t *handle, int status, int events) {
     buf.len = 2048;
 
     while (!(socket->status & UDX_SOCKET_CLOSED) && (size = udx__recvmsg(socket, &buf, (struct sockaddr *) &addr, addr_len)) >= 0) {
+
+      if (socket->debug_force_recv_drop && !(socket->debug_force_recv_drop++ % 2)) continue;
+
       if (!process_packet(socket, b, size, (struct sockaddr *) &addr) && socket->on_recv != NULL) {
         buf.len = size;
 

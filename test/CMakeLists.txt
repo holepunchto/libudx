@@ -22,6 +22,7 @@ list(APPEND tests
   stream-change-remote
   stream-multiple
   stream-write-read-receive-window
+  stream-lossy-recv
 )
 
 list(APPEND skipped_tests
