@@ -24,7 +24,7 @@ on_read (udx_stream_t *handle, ssize_t read_len, const uv_buf_t *buf) {
   while (o < read_len) {
     if (!(read_offset % STRIDE)) {
       int i = *(uint32_t *)(buf->base + o);
-      printf("on_a_read, read_offset=%zu len=%zi i=%i\n", read_offset, read_len, i);
+      // printf("on_a_read, read_offset=%zu len=%zi i=%i\n", read_offset, read_len, i);
       if (i == N_SAMPLES - 1) {
         udx_stream_destroy(handle);
       }
@@ -52,11 +52,12 @@ on_a_stream_close () {
 static void
 on_b_stream_close () {
   printf("tx stream closed\n");
+  // exit test w/ success
+  exit(0);
 }
 
 static void
 on_ack (udx_stream_write_t *req, int status, int unordered) {
-  // printf("ack status=%i unordered=%i\n", status, unordered);
   free(req);
 }
 

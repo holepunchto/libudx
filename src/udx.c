@@ -760,6 +760,12 @@ rack_detect_loss (udx_stream_t *stream) {
     udx_packet_t *pkt = udx__queue_data(p, udx_packet_t, queue);
     assert(pkt->transmits > 0);
 
+    if (pkt->transmits == 254) {
+      debug_printf("pkt seq=%i, max retransmits reached.\n", pkt->seq);
+      close_stream(stream, UV_ETIMEDOUT);
+      return 0;
+    }
+
     if (pkt->time_sent > stream->rack_time_sent) {
       break;
     }
