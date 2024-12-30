@@ -298,6 +298,7 @@ struct udx_stream_s {
   // congestion state
   udx_cong_t cong;
 
+  udx_queue_t wbuf_queue;
   udx_queue_t write_queue;
 
   udx_cirbuf_t outgoing;
@@ -365,6 +366,7 @@ struct udx_stream_write_buf_s {
 
 struct udx_stream_write_s {
   size_t size;
+  udx_queue_node_t queue;
   size_t bytes_acked;
   bool is_write_end;
 
