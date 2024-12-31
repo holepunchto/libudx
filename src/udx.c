@@ -1494,7 +1494,12 @@ send_packet (udx_socket_t *socket, udx_packet_t *pkt) {
     nbufs = nbufs + 1;
   }
 
-  ssize_t rc = udx__sendmsg(socket, bufs, nbufs, (struct sockaddr *) &(pkt->dest), pkt->dest_len);
+  ssize_t rc;
+  if (socket->udx->debug_flags & UDX_DEBUG_FORCE_DROP_PROBES && pkt->is_mtu_probe) {
+    rc = 1;
+  } else {
+    rc = udx__sendmsg(socket, bufs, nbufs, (struct sockaddr *) &(pkt->dest), pkt->dest_len);
+  }
 
   if (adjust_ttl) uv_udp_set_ttl((uv_udp_t *) socket, socket->ttl);
 
