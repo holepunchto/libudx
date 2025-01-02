@@ -760,10 +760,11 @@ rack_detect_loss (udx_stream_t *stream) {
     udx_packet_t *pkt = udx__queue_data(p, udx_packet_t, queue);
     assert(pkt->transmits > 0);
 
-    if (pkt->transmits == 254) {
-      debug_printf("pkt seq=%i, max retransmits reached.\n", pkt->seq);
-      close_stream(stream, UV_ETIMEDOUT);
-      return 0;
+    if (pkt->transmits == 254 || pkt->transmits == 0) {
+      printf("pkt seq=%i, reached max transmits=%i.\n", pkt->seq, pkt->transmits);
+      exit(1); // testing production builds.
+      // close_stream(stream, UV_ETIMEDOUT);
+      // return 0;
     }
 
     if (pkt->time_sent > stream->rack_time_sent) {
@@ -1929,6 +1930,8 @@ send_packets (udx_socket_t *socket) {
   }
 }
 
+static int drop_counter = 0;
+
 static void
 on_uv_poll (uv_poll_t *handle, int status, int events) {
   UDX_UNUSED(status);
@@ -1947,8 +1950,11 @@ on_uv_poll (uv_poll_t *handle, int status, int events) {
     buf.len = 2048;
 
     while (!(socket->status & UDX_SOCKET_CLOSED) && (size = udx__recvmsg(socket, &buf, (struct sockaddr *) &addr, addr_len)) >= 0) {
-
-      if (socket->debug_force_recv_drop && !(socket->debug_force_recv_drop++ % 2)) continue;
+      // (debug) simulate receiver loss
+      if (socket->debug_force_recv_drop) {
+        uint8_t half = 4;
+        if ((drop_counter++ % (half * 2)) < half) continue;
+      }
 
       if (!process_packet(socket, b, size, (struct sockaddr *) &addr) && socket->on_recv != NULL) {
         buf.len = size;

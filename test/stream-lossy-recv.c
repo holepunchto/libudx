@@ -1,3 +1,13 @@
+/**
+ * Test a faulty receiver.
+ *
+ * The transmitter sends 1k messages over a stream each
+ * earmarked with an incrementing counter.
+ *
+ * The receiving end was patched to drop every odd packet
+ * or first 4 packets of every 8.
+ */
+
 #include "assert.h"
 #include <stdlib.h>
 #include <memory.h>
@@ -17,15 +27,21 @@ udx_stream_t bstream;
 #define N_SAMPLES 1024
 
 static size_t read_offset = 0;
+static uint64_t time_start = 0;
 void
 on_read (udx_stream_t *handle, ssize_t read_len, const uv_buf_t *buf) {
+  if (time_start == 0) time_start = uv_hrtime();
+
   size_t o = 0;
 
   while (o < read_len) {
     if (!(read_offset % STRIDE)) {
       int i = *(uint32_t *)(buf->base + o);
       // printf("on_a_read, read_offset=%zu len=%zi i=%i\n", read_offset, read_len, i);
-      if (i == N_SAMPLES - 1) {
+      double delta = (uv_hrtime() - time_start) / 1000000. / 1000.; // seconds
+      printf("received message=%i e2e-packets/sec=%0.2f\n", i, i / delta);
+
+      if (i == N_SAMPLES - 1) { // last message
         udx_stream_destroy(handle);
       }
     }
@@ -36,24 +52,25 @@ on_read (udx_stream_t *handle, ssize_t read_len, const uv_buf_t *buf) {
 
 static void
 on_a_sock_close () {
-  printf("receiving socket closed\n");
+  printf("rx socket closed\n");
 }
 
 static void
 on_b_sock_close () {
-  printf("transmitting socket closing\n");
+  printf("tx socket closed\n");
 }
 
 static void
 on_a_stream_close () {
-  printf("rx stream closed, teardown\n");
+  printf("rx stream closed\n");
+  udx_socket_close(&asock);
 }
+
 
 static void
 on_b_stream_close () {
   printf("tx stream closed\n");
-  // exit test w/ success
-  exit(0);
+  udx_socket_close(&bsock);
 }
 
 static void
@@ -69,7 +86,6 @@ send_data (udx_stream_t *stream) {
 int
 main () {
   int e;
-
   e = uv_loop_init(&loop);
   assert(e == 0);
 
@@ -78,7 +94,7 @@ main () {
 
   e = udx_socket_init(&udx, &asock, on_a_sock_close);
   assert(e == 0);
-  asock.debug_force_recv_drop = 2;
+  asock.debug_force_recv_drop = 1;
 
   e = udx_socket_init(&udx, &bsock, on_b_sock_close);
   assert(e == 0);
