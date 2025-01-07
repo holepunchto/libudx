@@ -53,7 +53,7 @@ extern "C" {
 #define UDX_STREAM_WRITE_WANT_DESTROY 0b0100
 #define UDX_STREAM_WRITE_WANT_ZWP     0b1000
 
-// #define USE_DRAIN_THREAD // experimental
+#define USE_DRAIN_THREAD // experimental
 
 typedef struct {
   uint32_t seq;
@@ -128,7 +128,7 @@ typedef struct udx_reader_s {
 
     // signals main->sub
     uv_async_t signal_control;
-    void *commands;
+    void * _Atomic ctrl_queue;
 
     udx__drain_slot_t *buffer;
     uint16_t buffer_len; // slot_count?
@@ -143,16 +143,16 @@ typedef struct udx_reader_s {
 } udx_reader_t;
 
 int
-udx__drainer_setup (udx_t *udx);
+udx__drainer_init (udx_t *udx);
 
 int
 udx__drainer_destroy (udx_t *udx);
 
 int
-udx__drainer_poll_start (udx_socket_t *socket);
+udx__drainer_socket_init (udx_socket_t *socket);
 
 int
-udx__drainer_poll_stop (udx_socket_t *socket);
+udx__drainer_socket_stop (udx_socket_t *socket);
 
 void
 udx__drainer__on_packet(udx__drain_slot_t *slot);

@@ -1972,7 +1972,7 @@ udx_init (uv_loop_t *loop, udx_t *udx, udx_idle_cb on_idle) {
   udx->loop = loop;
 
 #ifdef USE_DRAIN_THREAD
-  assert(udx__drainer_setup(udx) == 0);
+  assert(udx__drainer_init(udx) == 0);
 #endif
   return 0;
 }
@@ -2010,13 +2010,13 @@ udx_teardown (udx_t *udx) {
     udx_stream_destroy(stream);
   }
 
-  udx__link_foreach(udx->listeners, listener) {
-    udx_interface_event_close(listener);
-  }
-
 #ifdef USE_DRAIN_THREAD
   udx__drainer_destroy(udx);
 #endif
+
+  udx__link_foreach(udx->listeners, listener) {
+    udx_interface_event_close(listener);
+  }
 }
 
 int
@@ -2139,7 +2139,7 @@ udx_socket_bind (udx_socket_t *socket, const struct sockaddr *addr, unsigned int
   assert(err == 0);
 
 #ifdef USE_DRAIN_THREAD
-  err = udx__drainer_poll_start(socket);
+  err = udx__drainer_socket_init(socket);
   assert(err == 0);
 #endif
 
@@ -2279,7 +2279,7 @@ udx_socket_close (udx_socket_t *socket) {
 
 #ifdef USE_DRAIN_THREAD
     socket->pending_closes++;
-    udx__drainer_poll_stop(socket);
+    udx__drainer_socket_stop(socket);
 #endif
   }
 

@@ -12,7 +12,9 @@
 
 #define debugger __builtin_debugtrap();
 
-#define N_SLOTS 1024
+// upfront allocated receive buffer size in amount of packets
+// size = N_SLOTS * sizeof(udx__drain_slot_t)
+#define N_SLOTS 2048 // ~4MB
 
 double udx__drainer_read_load (udx_t *udx, uint64_t *n_packets_buffered, uint64_t *n_drains) {
   udx_reader_t *w = &udx->worker;
@@ -150,6 +152,7 @@ on_poll_uv_close (uv_handle_t *handle) {
   // might need to define a command/queue into opposite direction for
   // responses without affecting the on_packet flow.
   // TODO: in short use uv_async(cmd_resp);
+  printf("poll handle closed\n");
   udx__drainer__on_poll_stop(handle->data);
 }
 
@@ -179,10 +182,8 @@ static void
 on_control (uv_async_t *signal) {
   udx_t *udx = signal->data;
 
-  command_t *head;
-  // TODO: not threadsafe
-  head = udx->worker.commands;
-  udx->worker.commands = NULL;
+  command_t *head = atomic_exchange(&udx->worker.ctrl_queue, NULL);
+  assert(head != NULL);
 
   // process queue
   while (head != NULL) {
@@ -214,19 +215,18 @@ static inline int
 run_command (udx_t *udx, enum command_id type, void *data) {
   printf("run_command(%i) \t\ttid: %zu\n", type, uv_thread_self());
 
-  // TODO: try to use queue.c instead?
   command_t *cmd = malloc(sizeof(command_t));
   cmd->type = type;
   cmd->data = data;
   cmd->next = NULL;
 
-  // TODO: not threadsafe
-  command_t *head = udx->worker.commands;
-  if (head != NULL) {
+  command_t *head = atomic_load(&udx->worker.ctrl_queue);
+
+  if (head == NULL) {
+    atomic_store(&udx->worker.ctrl_queue, cmd);
+  } else {
     while (head->next != NULL) head = head->next;
     head->next = cmd;
-  } else {
-    udx->worker.commands = cmd;
   }
 
   return uv_async_send(&udx->worker.signal_control);
@@ -251,7 +251,7 @@ static void reader_thread (void *data) {
  * ======="*/
 
 int
-udx__drainer_setup(udx_t *udx) {
+udx__drainer_init(udx_t *udx) {
   printf("read_poll_setup() main \ttid: %zu\n", uv_thread_self());
 
   int err;
@@ -279,7 +279,7 @@ udx__drainer_setup(udx_t *udx) {
 }
 
 int
-udx__drainer_poll_start (udx_socket_t *socket) {
+udx__drainer_socket_init (udx_socket_t *socket) {
   udx_t *udx = socket->udx;
   uv_os_fd_t fd;
   assert(0 == uv_fileno((uv_handle_t *) &socket->handle, &fd));
@@ -288,7 +288,7 @@ udx__drainer_poll_start (udx_socket_t *socket) {
 }
 
 int
-udx__drainer_poll_stop (udx_socket_t *socket) {
+udx__drainer_socket_stop (udx_socket_t *socket) {
   udx_t *udx = socket->udx;
   return run_command(udx, SOCKET_REMOVE, socket);
 }
@@ -301,8 +301,8 @@ udx__drainer_destroy (udx_t *udx) {
   // uv_close((uv_handle_t *) &udx->worker.signals_main.close, reader_signal_close);
 
   // run on subloop uv_close((uv_handle_t *) &udx->worker.miso, reader_signal_close);
-
   // TODO: uv_thread_join()
+  uv_thread_join(&udx->worker.thread_id);
   printf("sub thread end\n");
   return 0;
 }
