@@ -1507,7 +1507,9 @@ send_packet (udx_socket_t *socket, udx_packet_t *pkt) {
   }
 
   pkt->time_sent = uv_now(socket->udx->loop);
-  pkt->transmits++;
+  if (pkt->transmits < 255) {
+    pkt->transmits++;
+  }
   pkt->lost = false;
   if (pkt->transmits > 1) {
     pkt->retransmitted = true;
@@ -1721,37 +1723,31 @@ send_stream_packets (udx_socket_t *socket, udx_stream_t *stream) {
 
     int header_flag = 0;
 
-    uint32_t mss = max_payload(stream);
-
-    uint64_t capacity = mss;
+    uint32_t capacity = max_payload(stream);
 
     uv_buf_t bufs[UDX_MAX_COMBINED_WRITES];
     udx_stream_write_buf_t *wbufs[UDX_MAX_COMBINED_WRITES];
 
     int nwbufs = 0;
-    size_t size = 0;
 
     while (capacity > 0 && nwbufs < UDX_MAX_COMBINED_WRITES && stream->write_queue.len > 0) {
       udx_stream_write_buf_t *wbuf = udx__queue_data(udx__queue_peek(&stream->write_queue), udx_stream_write_buf_t, queue);
 
-      uv_buf_t *buf = &wbuf->buf;
-
-      uint64_t writesz = buf->len - wbuf->bytes_acked - wbuf->bytes_inflight;
+      uint64_t writesz = wbuf->buf.len - wbuf->bytes_acked - wbuf->bytes_inflight;
 
       size_t len = min_uint64(capacity, writesz);
       // printf("len=%lu capacity=%lu writesz=%lu\n", len, capacity, writesz);
 
-      uv_buf_t partial = uv_buf_init(buf->base + wbuf->bytes_acked + wbuf->bytes_inflight, len);
+      uv_buf_t partial = uv_buf_init(wbuf->buf.base + wbuf->bytes_acked + wbuf->bytes_inflight, len);
       wbuf->bytes_inflight += len;
       capacity -= len;
 
       bufs[nwbufs] = partial;
       wbufs[nwbufs] = wbuf;
 
-      size += len;
       nwbufs++;
 
-      if (size > 0) {
+      if (len > 0) {
         header_flag |= UDX_HEADER_DATA;
       }
 
