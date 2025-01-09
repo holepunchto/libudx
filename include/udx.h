@@ -118,28 +118,28 @@ typedef struct {
 } udx__drain_slot_t;
 
 typedef struct udx_reader_s {
-    uv_thread_t thread_id;
-    uv_loop_t loop;
+  int status;
+  uv_thread_t thread_id;
+  uv_loop_t loop;
 
-    // signals sub->main
-    uv_async_t signal_drain;
-    uv_async_t signal_poll_stopped;
-    uv_async_t signal_thread_stopped;
+  // signals sub->main
+  uv_async_t signal_drain;
+  uv_async_t signal_thread_stopped;
 
-    // signals main->sub
-    uv_async_t signal_control;
-    void * _Atomic ctrl_queue;
+  // signals main->sub
+  uv_async_t signal_control;
+  void * _Atomic ctrl_queue;
 
-    udx__drain_slot_t *buffer;
-    uint16_t buffer_len; // slot_count?
+  udx__drain_slot_t *buffer;
+  uint16_t buffer_len; // slot_count?
 
-    struct {
-      atomic_int read;
-      atomic_int drained;
-    } cursors;
+  struct {
+    atomic_int read;
+    atomic_int drained;
+  } cursors;
 
-    int64_t perf_load;
-    int64_t perf_ndrains;
+  int64_t perf_load;
+  int64_t perf_ndrains;
 } udx_reader_t;
 
 int
@@ -243,7 +243,7 @@ struct udx_socket_s {
 
 #ifdef USE_DRAIN_THREAD
   uv_poll_t drain_poll;
-
+  uv_async_t signal_poll_stopped;
   int64_t packets_dropped_by_worker;
 #endif
 };

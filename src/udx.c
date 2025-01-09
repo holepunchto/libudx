@@ -163,6 +163,10 @@ ref_dec (udx_t *udx) {
     udx->has_streams = false;
   }
 
+#ifdef USE_DRAIN_THREAD
+  udx__drainer_destroy(udx);
+#endif
+
   if (udx->on_idle != NULL) {
     udx->on_idle(udx);
   }
@@ -170,11 +174,7 @@ ref_dec (udx_t *udx) {
 
 static void
 trigger_socket_close (udx_socket_t *socket) {
-  if (--socket->pending_closes) {
-    // TODO: restore to one-liner
-    printf("trigger_socket_close %i\n", socket->pending_closes);
-    return;
-  }
+  if (--socket->pending_closes) return;
 
   if (socket->on_close != NULL) {
     socket->on_close(socket);
@@ -1971,9 +1971,6 @@ udx_init (uv_loop_t *loop, udx_t *udx, udx_idle_cb on_idle) {
   udx->packets_dropped_by_kernel = -1;
   udx->loop = loop;
 
-#ifdef USE_DRAIN_THREAD
-  assert(udx__drainer_init(udx) == 0);
-#endif
   return 0;
 }
 
@@ -2022,6 +2019,10 @@ udx_teardown (udx_t *udx) {
 int
 udx_socket_init (udx_t *udx, udx_socket_t *socket, udx_socket_close_cb cb) {
   if (udx->teardown) return UV_EINVAL;
+
+#ifdef USE_DRAIN_THREAD
+  assert(udx__drainer_init(udx) == 0);
+#endif
 
   udx->refs++;
 
@@ -2956,7 +2957,7 @@ udx_interface_event_close (udx_interface_event_t *handle) {
 
 #ifdef USE_DRAIN_THREAD
 void
-udx__drainer__on_poll_stop (udx_socket_t *socket) {
+udx__drainer__on_poll_stop (udx_socket_t *socket) { // identical to on_uv_close(handle) ?
   trigger_socket_close(socket);
 }
 
