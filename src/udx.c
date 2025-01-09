@@ -2156,7 +2156,7 @@ udx_socket_bind (udx_socket_t *socket, const struct sockaddr *addr, unsigned int
   err = uv_send_buffer_size((uv_handle_t *) handle, &send_buffer_size);
   assert(err == 0);
 
-  int recv_buffer_size = UDX_DEFAULT_BUFFER_SIZE; // TODO: move to other thread
+  int recv_buffer_size = UDX_DEFAULT_BUFFER_SIZE;
   err = uv_recv_buffer_size((uv_handle_t *) handle, &recv_buffer_size);
   assert(err == 0);
 
@@ -2306,7 +2306,7 @@ udx_socket_close (udx_socket_t *socket) {
     uv_close((uv_handle_t *) &(socket->io_poll), on_uv_close);
 
 #ifdef USE_DRAIN_THREAD
-    socket->pending_closes++;
+    socket->pending_closes++; // also close separate read poll
     udx__drainer_socket_stop(socket);
 #endif
   }
@@ -3017,7 +3017,6 @@ void udx__drainer__on_packet(udx__drain_slot_t *slot) {
       .base = slot->buffer,
       .len = slot->len
     };
-    // TODO: ask, what is the difference between read_len and buf_len?
     socket->on_recv(socket, slot->len, &buf, (struct sockaddr *) addr);
   }
 }

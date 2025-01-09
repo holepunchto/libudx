@@ -27,14 +27,6 @@ static void
 pump_stream ();
 
 static void
-on_finalize (udx_stream_t *stream) {
-  // __builtin_debugtrap();
-  // client_id = server_id = 0;
-  printf("finalized cid: %i, sid: %i\n", client_id, server_id);
-  exit(0); // $ while true; do ./build/examples/server; done
-}
-
-static void
 on_close (udx_stream_t *stream, int status) {
   printf("stream closed with status %i\n", status);
 
@@ -83,7 +75,7 @@ pump_stream () {
 
   printf("pumping %d bytes to stream to %s...\n", PUMP_BYTES, dst_ip);
 
-  udx_stream_init(&udx, &stream, server_id, on_close, on_finalize);
+  udx_stream_init(&udx, &stream, server_id, on_close, NULL);
   udx_stream_connect(&stream, &sock, client_id, (struct sockaddr *) &dest_addr);
 
   pump_writes();
@@ -133,7 +125,7 @@ main (int argc, char **argv) {
   udx_socket_bind(&sock, (struct sockaddr *) &addr, 0);
 
   udx_socket_recv_start(&sock, on_recv);
-  printf("server started\n");
+
   uv_run(&loop, UV_RUN_DEFAULT);
   return 0;
 }

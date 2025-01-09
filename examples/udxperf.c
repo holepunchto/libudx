@@ -58,7 +58,6 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <uv.h>
-#include <time.h>
 
 #include "../include/udx.h"
 // options
@@ -86,8 +85,6 @@ static udx_socket_send_t handshake_req;
 
 static uv_timer_t client_complete_timer;
 
-static bool simulate_load = false;
-
 typedef struct {
   udx_stream_t stream;
   uint64_t start_time;
@@ -96,7 +93,6 @@ typedef struct {
   uint64_t time_last_report;
   uint64_t bytes_last_report;
   uv_timer_t report_timer;
-  uv_timer_t load_timer;
 } udxperf_client_t;
 
 uint32_t client_id = 1;
@@ -278,17 +274,7 @@ print_interval (udxperf_client_t *client, uint64_t bytes, uint64_t start, uint64
   byte_snprintf(bps_buf, sizeof bps_buf, bytes / time_sec, 'a');
   bps_buf[19] = '\0';
 
-  int64_t k_drop = stream->socket->packets_dropped_by_kernel || udx.packets_dropped_by_kernel;
-  int64_t t_drop = -1;
-  double q_load = 0;
-
-#ifdef USE_DRAIN_THREAD
-  t_drop = stream->socket->packets_dropped_by_worker || udx.packets_dropped_by_worker;
-  q_load = udx__drainer_read_load(&udx, NULL, NULL);
-#endif
-
-  printf("[%3d] %6.4f-%6.4f sec %s %s/sec \t(kD %zi, wD %zi) q_load: %f", stream->local_id, (start - client->start_time) / 1000.0, (end - client->start_time) / 1000.0, bytes_buf, bps_buf, k_drop, t_drop, q_load);
-
+  printf("[%3d] %6.4f-%6.4f sec %s %s/sec", stream->local_id, (start - client->start_time) / 1000.0, (end - client->start_time) / 1000.0, bytes_buf, bps_buf);
   if (is_client && extra_wanted) {
     printf(" cwnd=%d ssthresh=%d fast_recovery_count=%d rto_count=%d rtx_count=%d", stream->cwnd, stream->ssthresh, stream->fast_recovery_count, stream->rto_count, stream->retransmit_count);
   }
@@ -318,19 +304,9 @@ server_on_read (udx_stream_t *stream, ssize_t read_len, const uv_buf_t *buf) {
       uv_timer_stop(&c->report_timer);
       uv_close((uv_handle_t *) &c->report_timer, NULL);
     }
-
-    if (simulate_load) {
-      uv_timer_stop(&c->load_timer);
-      uv_close((uv_handle_t *) &c->load_timer, NULL);
-    }
   }
 
   return;
-}
-
-static void
-produce_heat (uv_timer_t *timer) {
-  for (int i = 0; i < 10000000LLU; i++) sqrt(i); // steals ~46ms
 }
 
 static void
@@ -388,14 +364,6 @@ server_handshake (udx_socket_t *sock, ssize_t read_len, const uv_buf_t *buf, con
     c->time_last_report = uv_now(&loop);
     uv_timer_start(&c->report_timer, server_report_interval, interval_ms, interval_ms);
   }
-
-  if (simulate_load) {
-    printf("loop stress enabled\n");
-    uv_timer_init(&loop, &c->load_timer);
-    c->report_timer.data = c;
-    uv_timer_start(&c->load_timer, produce_heat, 0, 1);
-  }
-
   printf("[%3d] %s:%d connected with %s:%d\n", server_id, lstring, port, rstring, rport);
 }
 
@@ -431,11 +399,6 @@ pump_writes (udx_stream_t *stream) {
     int wm = udx_stream_write(req, stream, &chunk, 1, on_ack);
     assert(wm >= 0 && "udx_stream_write");
     if (wm == 0) break;
-    /* if (wm == UV_EPIPE) {
-      // assuming caused by premature close
-      printf("pump_write aborted, stream closed\n");
-      break;
-    } */ // memleakd
     udx_stream_write_resume(stream, pump_writes);
   }
 }
@@ -490,7 +453,6 @@ client_handshake_response (udx_socket_t *sock, ssize_t read_len, const uv_buf_t 
 
   if (read_len != 4) {
     printf("bad handshake response\n");
-    free(c);
     return;
   }
 
@@ -564,8 +526,7 @@ typedef enum {
   SW_C,
   SW_T,
   SW_I,
-  SW_P,
-  SW_L // simulate load on main thread
+  SW_P
 } switch_type_t;
 
 int
@@ -595,10 +556,6 @@ main (int argc, char **argv) {
         break;
       case 'x':
         extra_wanted = true;
-        break;
-      case 'l':
-        sw = SW_L;
-        simulate_load = true;
         break;
       default:
         printf("unrecognized switch '%s'\n", argv[i]);
@@ -636,9 +593,6 @@ main (int argc, char **argv) {
           printf("invalid -p option: %s\n", argv[i]);
           return 0;
         }
-        break;
-      case SW_L:
-        sw = SW_NONE;
         break;
       }
     }

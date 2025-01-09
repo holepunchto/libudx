@@ -68,6 +68,5 @@ main () {
 
   assert(send_called && recv_called);
 
-  udx_teardown(&udx);
   return 0;
 }
