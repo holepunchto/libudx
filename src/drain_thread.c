@@ -15,25 +15,23 @@
 // size = N_SLOTS * sizeof(udx__drain_slot_t)
 #define N_SLOTS 2048 // ~4MB
 
-enum thread_status { // TODO: verify
+enum thread_status {
   STOPPED = 0,
   INITIALIZED = 1,
   RUNNING = 2,
 };
 
-double udx__drainer_read_load (udx_t *udx, uint64_t *n_packets_buffered, uint64_t *n_drains) {
-  udx_reader_t *w = &udx->worker;
-  if (!w->perf_ndrains) return 0;
+enum command_id {
+  SOCKET_INIT = 0,
+  SOCKET_REMOVE,
+  THREAD_STOP
+};
 
-  double load = (w->perf_load / (double) w->perf_ndrains) / w->buffer_len;
-
-  if (n_drains != NULL) *n_drains = w->perf_ndrains;
-  if (n_packets_buffered != NULL) *n_packets_buffered = w->perf_load;
-
-  w->perf_load = w->perf_ndrains = 0;
-
-  return load;
-}
+typedef struct command_s {
+  enum command_id type;
+  void *data;
+  struct command_s *next;
+} command_t;
 
 static void
 on_drain (uv_async_t *signal) {
@@ -52,7 +50,8 @@ on_drain (uv_async_t *signal) {
   }
 }
 
-static int update_read_poll (udx_socket_t *socket);
+static int
+update_read_poll (udx_socket_t *socket);
 
 static void
 on_uv_read_poll (uv_poll_t *handle, int status, int events) {
@@ -86,7 +85,8 @@ on_uv_read_poll (uv_poll_t *handle, int status, int events) {
 
     slot->len = size;
 
-    uv_async_send(&worker->signal_drain);
+    int err = uv_async_send(&worker->signal_drain);
+    assert(err == 0);
 
     int next = (worker->cursors.read + 1) % worker->buffer_len;
 
@@ -112,7 +112,7 @@ update_read_poll (udx_socket_t *socket) {
 }
 
 static void
-_on_jump_close (uv_handle_t *handle) { // main loop
+_on_jump_handle_close (uv_handle_t *handle) { // main loop
   udx_socket_t *socket = handle->data;
 
   debug_printf("drain thread=%zu socket poll stopped\n", uv_thread_self());
@@ -122,7 +122,7 @@ _on_jump_close (uv_handle_t *handle) { // main loop
 static void
 _on_stop_jump_main (uv_async_t *signal) { // main loop
   // close the jump signal
-  uv_close((uv_handle_t *) signal, _on_jump_close);
+  uv_close((uv_handle_t *) signal, _on_jump_handle_close);
 }
 
 static void
@@ -156,7 +156,6 @@ read_poll_start (udx_socket_t *socket) { // aka drainer_socket_init
 
 static void
 on_uv_poll_close (uv_handle_t *handle) { // sub loop
-  printf("sub: socket poll closed\n");
   udx_socket_t *socket = handle->data;
   int err = uv_async_send(&socket->signal_poll_stopped);
   assert(err == 0);
@@ -165,29 +164,12 @@ on_uv_poll_close (uv_handle_t *handle) { // sub loop
 static inline void
 read_poll_stop (udx_socket_t *socket) { // sub loop
   int err;
-  printf("sub: closing socket poll (%zu)\n", uv_thread_self());
 
   err = uv_poll_stop(&socket->drain_poll);
   assert(err == 0);
 
   uv_close((uv_handle_t *) &socket->drain_poll, on_uv_poll_close);
 }
-
-enum command_id {
-  SOCKET_INIT = 0,
-  SOCKET_REMOVE,
-  THREAD_STOP
-};
-
-typedef struct command_s {
-  enum command_id type;
-  void *data;
-  struct command_s *next;
-  // udx_queue_node_t queue; replaces/reuses next/ompfh; assuming udx_queue is not thread safe
-} command_t;
-
-static void
-on_async_sig_ctrl_close (uv_handle_t *handle);
 
 static void
 on_control (uv_async_t *signal) {
@@ -208,7 +190,8 @@ on_control (uv_async_t *signal) {
         break;
 
       case THREAD_STOP:
-        uv_close((uv_handle_t *) &udx->worker.signal_control, on_async_sig_ctrl_close);
+        // close control handle that keeps subloop active.
+        uv_close((uv_handle_t *) &udx->worker.signal_control, NULL);
         break;
 
       default:
@@ -241,6 +224,16 @@ run_command (udx_t *udx, enum command_id type, void *data) {
 }
 
 static void
+on_thread_stop(uv_async_t *signal) {
+  udx_t *udx = signal->data;
+
+  assert(udx->worker.status == RUNNING);
+  udx->worker.status = STOPPED;
+
+  uv_close((uv_handle_t *) signal, NULL); // release main loop
+}
+
+static void
 reader_thread (void *data) {
   debug_printf("drain thread=%zu start\n", uv_thread_self());
   udx_t *udx = data;
@@ -259,21 +252,11 @@ reader_thread (void *data) {
 
   debug_printf("drain thread=%zu exit\n", uv_thread_self());
 
-  uv_async_send(&udx->worker.signal_thread_stopped); // notify main
+  err = uv_async_send(&udx->worker.signal_thread_stopped); // notify main
+  assert(err == 0);
 }
 
-void on_thread_stop(uv_async_t *signal) {
-  udx_t *udx = signal->data;
-
-  assert(udx->worker.status == RUNNING);
-  udx->worker.status = STOPPED;
-
-  uv_close((uv_handle_t *) signal, NULL); // release main loop
-}
-
-/* =======.
- * exports |
- * ======="*/
+/// exports
 
 int
 udx__drainer_init(udx_t *udx) {
@@ -318,43 +301,10 @@ udx__drainer_socket_stop (udx_socket_t *socket) {
   return run_command(udx, SOCKET_REMOVE, socket);
 }
 
-/*
-static void
-list_handle(uv_handle_t *handle, void *arg) {
-  udx_t *udx = arg;
-  printf("loop=%s handle=%p type=%i\n", handle->loop == udx->loop ? "main" : "sub", handle, handle->type);
-}
-*/
-
-static void
-on_async_sig_ctrl_close (uv_handle_t *handle) {
-  udx_t *udx = handle->data;
-  // TODO: jump back onto main
-  printf("ctrl sig closed\n");
-  // printf("###\n# SUB open handles\n###\n");
-
-  // uv_walk(&udx->worker.loop, list_handle, udx);
-  // printf("known ptrs drain: %p, ctrl: %p\n", &udx->worker.signal_drain, &udx->worker.signal_control);
-
-  // TODO: maybe ignore this callback?
-}
-
 int
 udx__drainer_destroy (udx_t *udx) {
-  // printf("udx__drainer_destroy\n");
-
   uv_close((uv_handle_t *) &udx->worker.signal_drain, NULL);
 
-  run_command(udx, THREAD_STOP, NULL);
-
-  // printf("###\n# MAIN open handles\n###\n");
-  // uv_walk(udx->loop, list_handle, udx);
-  // printf("main: waiting subthread exit\n");
-
-  // TODO: Don't block/join, instead close thread_stopped handle to release main loop.
-  // uv_thread_join(&udx->worker.thread_id);
-  // printf("main: resume\n");
-
-  return 0;
+  return run_command(udx, THREAD_STOP, NULL);
 }
 #endif // USE_DRAIN_THREAD
