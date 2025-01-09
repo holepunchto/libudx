@@ -14,8 +14,8 @@
 #include "debug.h"
 #include "endian.h"
 #include "io.h"
-#include "queue.h"
 #include "link.h"
+#include "queue.h"
 
 #define UDX_STREAM_ALL_ENDED (UDX_STREAM_ENDED | UDX_STREAM_ENDED_REMOTE)
 #define UDX_STREAM_DEAD      (UDX_STREAM_DESTROYING | UDX_STREAM_CLOSED)
@@ -46,7 +46,7 @@
 #define UDX_CONG_MAX_CWND    65536
 #define UDX_RTO_MAX_MS       30000
 #define UDX_RTT_MAX_MS       30000
-#define UDX_INIT_RWND_BYTES  131072 // arbitrary, ~90 1500 mtu packets, 52mbits/sec at 20millis latency
+#define UDX_DEFAULT_RWND_MAX (256 * 1024) // arbitrary, ~175 1500 mtu packets, @20ms latency = 104 mbits/sec
 
 #define UDX_HIGH_WATERMARK 262144
 
@@ -483,6 +483,25 @@ clear_outgoing_packets (udx_stream_t *stream) {
   }
 }
 
+// returns the rwnd to advertise to the sender
+// to provide a rwnd value the user provides two values
+// 1. a maximum buffer size. default is UDX_DEFAULT_RWND_MAX
+// 2. a callback to return the number of bytes already in the buffer.
+// the window is then set to the
+
+static uint32_t
+get_recv_rwnd (udx_stream_t *stream) {
+  uint32_t bufsize = 0;
+  if (stream->get_read_buffer_size) {
+    bufsize = stream->get_read_buffer_size(stream);
+  }
+  if (stream->recv_rwnd_max > bufsize) {
+    return stream->recv_rwnd_max - bufsize;
+  } else {
+    return 0;
+  }
+}
+
 static void
 init_stream_packet (udx_packet_t *pkt, int type, udx_stream_t *stream, const uv_buf_t *userbufs, int nuserbufs) {
   uint8_t *b = (uint8_t *) &(pkt->header);
@@ -498,7 +517,7 @@ init_stream_packet (udx_packet_t *pkt, int type, udx_stream_t *stream, const uv_
   // 32 bit (le) remote id
   *(i++) = udx__swap_uint32_if_be(stream->remote_id);
   // 32 bit (le) recv window
-  *(i++) = udx__swap_uint32_if_be(stream->recv_rwnd);
+  *(i++) = udx__swap_uint32_if_be(get_recv_rwnd(stream));
   // 32 bit (le) seq
   *(i++) = udx__swap_uint32_if_be(stream->seq);
   // 32 bit (le) ack
@@ -1060,12 +1079,16 @@ ack_packet (udx_stream_t *stream, uint32_t seq, int sack) {
 
     if (write->bytes_acked == write->size && write->on_ack) {
       write->on_ack(write, 0, sack);
+
+      // reentry from write->on_ack
+      if (stream->status & UDX_STREAM_DEAD) {
+        free(pkt);
+        return 2;
+      }
     }
   }
 
   free(pkt);
-
-  if (stream->status & UDX_STREAM_DEAD) return 2; // reentry from write->on_ack
 
   // TODO: the end condition needs work here to be more "stateless"
   // ie if the remote has acked all our writes, then instead of waiting for retransmits, we should
@@ -1134,7 +1157,8 @@ process_data_packet (udx_stream_t *stream, int type, uint32_t seq, char *data, s
 }
 
 static int
-relay_packet (udx_stream_t *stream, char *buf, ssize_t buf_len, int type, uint8_t data_offset, uint32_t seq, uint32_t ack, uint32_t rwnd) {
+relay_packet (udx_stream_t *stream, char *buf, ssize_t buf_len, int type, uint32_t seq) {
+
   stream->seq = seq_max(stream->seq, seq);
 
   udx_stream_t *relay = stream->relay_to;
@@ -1145,9 +1169,15 @@ relay_packet (udx_stream_t *stream, char *buf, ssize_t buf_len, int type, uint8_
 
     uv_buf_t b = uv_buf_init(buf, buf_len);
 
-    int err = udx__sendmsg(relay->socket, &b, 1, (struct sockaddr *) &relay->remote_addr, relay->remote_addr_len);
+    int err;
 
-    if (err == EAGAIN) {
+    if (stream->udx->debug_flags & UDX_DEBUG_FORCE_RELAY_SLOW_PATH) {
+      err = UV_EAGAIN;
+    } else {
+      err = udx__sendmsg(relay->socket, &b, 1, (struct sockaddr *) &relay->remote_addr, relay->remote_addr_len);
+    }
+
+    if (err == UV_EAGAIN) {
       // create a socket_send_t with no callback to send this packet on the relay's send_queue
 
       udx_socket_send_t *req = malloc(sizeof(udx_socket_send_t) + b.len);
@@ -1160,20 +1190,7 @@ relay_packet (udx_stream_t *stream, char *buf, ssize_t buf_len, int type, uint8_
       udx_packet_t *pkt = &req->pkt;
 
       memcpy(&pkt->dest, &relay->remote_addr, relay->remote_addr_len);
-
-      uint8_t *p = (uint8_t *) data;
-
-      // 8 bit magic byte + 8 bit version + 8 bit type + 8 bit extensions
-      *(p++) = UDX_MAGIC_BYTE;
-      *(p++) = UDX_VERSION;
-      *(p++) = (uint8_t) type;
-      *(p++) = data_offset; // data offset
-
-      uint32_t *i = (uint32_t *) p;
-      *(i++) = udx__swap_uint32_if_be(stream->remote_id);
-      *(i++) = udx__swap_uint32_if_be(rwnd);
-      *(i++) = udx__swap_uint32_if_be(seq);
-      *(i++) = udx__swap_uint32_if_be(ack);
+      pkt->dest_len = relay->remote_addr_len;
 
       pkt->nbufs = 1;
       pkt->size = b.len;
@@ -1253,7 +1270,7 @@ process_packet (udx_socket_t *socket, char *buf, ssize_t buf_len, struct sockadd
     if (stream->on_firewall(stream, socket, addr)) return 1;
   }
 
-  if (stream->relay_to) return relay_packet(stream, buf, buf_len, type, data_offset, seq, ack, rwnd);
+  if (stream->relay_to) return relay_packet(stream, buf, buf_len, type, seq);
 
   buf += UDX_HEADER_SIZE;
   buf_len -= UDX_HEADER_SIZE;
@@ -1486,7 +1503,12 @@ send_packet (udx_socket_t *socket, udx_packet_t *pkt) {
     nbufs = nbufs + 1;
   }
 
-  ssize_t rc = udx__sendmsg(socket, bufs, nbufs, (struct sockaddr *) &(pkt->dest), pkt->dest_len);
+  ssize_t rc;
+  if (socket->udx->debug_flags & UDX_DEBUG_FORCE_DROP_PROBES && pkt->is_mtu_probe) {
+    rc = 1;
+  } else {
+    rc = udx__sendmsg(socket, bufs, nbufs, (struct sockaddr *) &(pkt->dest), pkt->dest_len);
+  }
 
   if (adjust_ttl) uv_udp_set_ttl((uv_udp_t *) socket, socket->ttl);
 
@@ -1499,7 +1521,9 @@ send_packet (udx_socket_t *socket, udx_packet_t *pkt) {
   }
 
   pkt->time_sent = uv_now(socket->udx->loop);
-  pkt->transmits++;
+  if (pkt->transmits < 255) {
+    pkt->transmits++;
+  }
   pkt->lost = false;
   if (pkt->transmits > 1) {
     pkt->retransmitted = true;
@@ -1713,37 +1737,31 @@ send_stream_packets (udx_socket_t *socket, udx_stream_t *stream) {
 
     int header_flag = 0;
 
-    uint32_t mss = max_payload(stream);
-
-    uint64_t capacity = mss;
+    uint32_t capacity = max_payload(stream);
 
     uv_buf_t bufs[UDX_MAX_COMBINED_WRITES];
     udx_stream_write_buf_t *wbufs[UDX_MAX_COMBINED_WRITES];
 
     int nwbufs = 0;
-    size_t size = 0;
 
     while (capacity > 0 && nwbufs < UDX_MAX_COMBINED_WRITES && stream->write_queue.len > 0) {
       udx_stream_write_buf_t *wbuf = udx__queue_data(udx__queue_peek(&stream->write_queue), udx_stream_write_buf_t, queue);
 
-      uv_buf_t *buf = &wbuf->buf;
-
-      uint64_t writesz = buf->len - wbuf->bytes_acked - wbuf->bytes_inflight;
+      uint64_t writesz = wbuf->buf.len - wbuf->bytes_acked - wbuf->bytes_inflight;
 
       size_t len = min_uint64(capacity, writesz);
       // printf("len=%lu capacity=%lu writesz=%lu\n", len, capacity, writesz);
 
-      uv_buf_t partial = uv_buf_init(buf->base + wbuf->bytes_acked + wbuf->bytes_inflight, len);
+      uv_buf_t partial = uv_buf_init(wbuf->buf.base + wbuf->bytes_acked + wbuf->bytes_inflight, len);
       wbuf->bytes_inflight += len;
       capacity -= len;
 
       bufs[nwbufs] = partial;
       wbufs[nwbufs] = wbuf;
 
-      size += len;
       nwbufs++;
 
-      if (size > 0) {
+      if (len > 0) {
         header_flag |= UDX_HEADER_DATA;
       }
 
@@ -1767,17 +1785,24 @@ send_stream_packets (udx_socket_t *socket, udx_stream_t *stream) {
 
     bool mtu_probe = stream->mtu_probe_wanted && mtu_probeify_packet(pkt, stream->mtu_probe_size);
 
-    ssize_t rc = send_packet(socket, pkt);
+    ssize_t rc;
+
+    const uint32_t drop_every_n = 2;
+    static uint32_t n;
+    if ((socket->udx->debug_flags & UDX_DEBUG_FORCE_DROP_DATA) && (n++ % drop_every_n == 0)) {
+      rc = UV_EAGAIN;
+    } else {
+      rc = send_packet(socket, pkt);
+    }
 
     if (rc == UV_EAGAIN) {
       int i = nwbufs;
-      while (nwbufs--) {
+      while (i--) {
         udx_stream_write_buf_t *wbuf = wbufs[i];
         if (wbuf->bytes_acked + wbuf->bytes_inflight == wbuf->buf.len) {
           udx__queue_head(&stream->write_queue, &wbuf->queue);
         }
-
-        wbuf->bytes_inflight -= bufs[i + 1].len;
+        wbuf->bytes_inflight -= bufs[i].len;
       }
 
       free(pkt);
@@ -1970,6 +1995,8 @@ udx_init (uv_loop_t *loop, udx_t *udx, udx_idle_cb on_idle) {
 
   udx->packets_dropped_by_kernel = -1;
   udx->loop = loop;
+
+  udx->debug_flags = 0;
 
   return 0;
 }
@@ -2341,6 +2368,8 @@ udx_stream_init (udx_t *udx, udx_stream_t *stream, uint32_t local_id, udx_stream
 
   stream->seq = 0;
   stream->ack = 0;
+  stream->send_wl1 = 0;
+  stream->send_wl2 = 0;
   stream->remote_acked = 0;
 
   stream->srtt = 0;
@@ -2389,14 +2418,15 @@ udx_stream_init (udx_t *udx, udx_stream_t *stream, uint32_t local_id, udx_stream
   stream->ssthresh = 255;
   stream->cwnd = UDX_CONG_INIT_CWND;
   stream->cwnd_cnt = 0;
-  stream->recv_rwnd = UDX_INIT_RWND_BYTES;
-  stream->send_rwnd = UDX_INIT_RWND_BYTES;
+  stream->recv_rwnd_max = UDX_DEFAULT_RWND_MAX;
+  stream->send_rwnd = UDX_DEFAULT_RWND_MAX;
   stream->on_firewall = NULL;
   stream->on_read = NULL;
   stream->on_recv = NULL;
   stream->on_drain = NULL;
   stream->on_close = close_cb;
   stream->on_finalize = finalize_cb;
+  stream->get_read_buffer_size = NULL;
 
   // Clear congestion state
   memset(&(stream->cong), 0, sizeof(udx_cong_t));
@@ -2436,6 +2466,7 @@ int
 udx_stream_set_seq (udx_stream_t *stream, uint32_t seq) {
   stream->seq = seq;
   stream->remote_acked = seq;
+  stream->send_wl2 = seq; // ensure the next ack will be a valid wl2
   return 0;
 }
 
@@ -2448,6 +2479,19 @@ udx_stream_get_ack (udx_stream_t *stream, uint32_t *ack) {
 int
 udx_stream_set_ack (udx_stream_t *stream, uint32_t ack) {
   stream->ack = ack;
+  stream->send_wl1 = ack; // ensure the next seq will be a valid wl1
+  return 0;
+}
+
+int
+udx_stream_get_rwnd_max (udx_stream_t *stream, uint32_t *size) {
+  *size = stream->recv_rwnd_max;
+  return 0;
+}
+
+int
+udx_stream_set_rwnd_max (udx_stream_t *stream, uint32_t size) {
+  stream->recv_rwnd_max = size;
   return 0;
 }
 

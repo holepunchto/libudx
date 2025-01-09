@@ -53,6 +53,10 @@ extern "C" {
 #define UDX_STREAM_WRITE_WANT_DESTROY 0b0100
 #define UDX_STREAM_WRITE_WANT_ZWP     0b1000
 
+#define UDX_DEBUG_FORCE_RELAY_SLOW_PATH 0x01
+#define UDX_DEBUG_FORCE_DROP_PROBES     0x02
+#define UDX_DEBUG_FORCE_DROP_DATA       0x04
+
 #define USE_DRAIN_THREAD // experimental
 
 typedef struct {
@@ -100,6 +104,7 @@ typedef void (*udx_stream_send_cb)(udx_stream_send_t *req, int status);
 typedef void (*udx_stream_recv_cb)(udx_stream_t *stream, ssize_t read_len, const uv_buf_t *buf);
 typedef void (*udx_stream_close_cb)(udx_stream_t *stream, int status);
 typedef void (*udx_stream_finalize_cb)(udx_stream_t *stream);
+typedef uint32_t (*udx_stream_get_read_buffer_size_cb)(udx_stream_t *stream);
 
 typedef void (*udx_lookup_cb)(udx_lookup_t *handle, int status, const struct sockaddr *addr, int addr_len);
 
@@ -131,7 +136,7 @@ typedef struct udx_reader_s {
   void * _Atomic ctrl_queue;
 
   udx__drain_slot_t *buffer;
-  uint16_t buffer_len; // slot_count?
+  uint16_t buffer_len;
 
   struct {
     atomic_int read;
@@ -163,12 +168,12 @@ udx__drainer__on_poll_stop (udx_socket_t *socket);
 void
 udx__drainer__on_thread_stop ();
 
-// test
-double udx__drainer_read_load(udx_t *udx, uint64_t *n_packets_buffered, uint64_t *n_drains);
 #endif // USE_DRAIN_THREAD
 
 struct udx_s {
   uv_loop_t *loop;
+
+  uint32_t debug_flags;
 
   int refs;
   bool teardown;
@@ -310,6 +315,7 @@ struct udx_stream_s {
   udx_stream_drain_cb on_drain;
   udx_stream_close_cb on_close;
   udx_stream_finalize_cb on_finalize;
+  udx_stream_get_read_buffer_size_cb get_read_buffer_size;
 
   // mtu. RFC8899 5.1.1 and 5.1.3
   int mtu_state; // MTU_STATE_*
@@ -356,8 +362,8 @@ struct udx_stream_s {
   uint32_t ssthresh;
   uint32_t cwnd; // packets
   uint32_t cwnd_cnt;
-  uint32_t recv_rwnd; // tcp: rcv.wnd. bytes
-  uint32_t send_rwnd; // remote advertised rwnd
+  uint32_t send_rwnd;     // remote advertised rwnd
+  uint32_t recv_rwnd_max; // default: UDX_DEFAULT_RWND_MAX
 
   uint32_t send_wl1; // seq at last window update
   uint32_t send_wl2; // ack at last window update
@@ -567,6 +573,12 @@ udx_stream_get_ack (udx_stream_t *stream, uint32_t *ack);
 
 int
 udx_stream_set_ack (udx_stream_t *stream, uint32_t ack);
+
+int
+udx_stream_get_rwnd_max (udx_stream_t *stream, uint32_t *rwnd_max);
+
+int
+udx_stream_set_rwnd_max (udx_stream_t *stream, uint32_t rwnd_max);
 
 int
 udx_stream_connect (udx_stream_t *stream, udx_socket_t *socket, uint32_t remote_id, const struct sockaddr *remote_addr);

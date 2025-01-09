@@ -11,9 +11,12 @@ list(APPEND tests
   stream-preconnect
   stream-preconnect-same-socket
   stream-relay
+  stream-relay-force-slow-path
   stream-send-recv
   stream-send-recv-ipv6
   stream-write-read
+  stream-write-read-force-drop
+  stream-write-read-and-drop-probes
   stream-write-read-multiple
   stream-write-read-ipv6
   stream-write-read-perf
