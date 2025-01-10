@@ -112,17 +112,13 @@ update_read_poll (udx_socket_t *socket) {
 }
 
 static void
-_on_jump_handle_close (uv_handle_t *handle) { // main loop
-  udx_socket_t *socket = handle->data;
+_on_stop_jump_main (uv_async_t *signal) { // main loop
+  udx_socket_t *socket = signal->data;
+
+  uv_close((uv_handle_t *) signal, NULL); // close the jump signal
 
   debug_printf("drain thread=%zu socket poll stopped\n", uv_thread_self());
   udx__drainer__on_poll_stop(socket); // return to udx.c
-}
-
-static void
-_on_stop_jump_main (uv_async_t *signal) { // main loop
-  // close the jump signal
-  uv_close((uv_handle_t *) signal, _on_jump_handle_close);
 }
 
 static void
@@ -300,17 +296,20 @@ udx__drainer_init(udx_t *udx) {
   assert(err == 0);
   udx->worker.signal_thread_stopped.data = udx;
 
+  // queue thread start onto main loop
+  // (ensure loop is running / don't launch sub before main)
+  err = uv_async_init(udx->loop, &a_launch_thread, launch_thread); // mainloop
+  assert(err == 0);
+  a_launch_thread.data = udx;
+
+  // sub-loop initialized on main thread.
+  // but uv_run() on sub-thread.
   err = uv_loop_init(&udx->worker.loop);
   assert(err == 0);
 
   err = uv_async_init(&udx->worker.loop, &udx->worker.signal_control, on_control); // subloop // TODO: wrong thread
   assert(err == 0);
   udx->worker.signal_control.data = udx;
-
-  // queue thread start onto main loop, (ensure loop is actually running)
-  err = uv_async_init(udx->loop, &a_launch_thread, launch_thread); // mainloop
-  assert(err == 0);
-  a_launch_thread.data = udx;
 
   udx->worker.status = INITIALIZED;
 
@@ -335,6 +334,8 @@ udx__drainer_socket_stop (udx_socket_t *socket) {
 
 int
 udx__drainer_destroy (udx_t *udx) {
+  if (udx->worker.status == STOPPED) return 0;
+
   uv_close((uv_handle_t *) &udx->worker.signal_drain, NULL);
 
   return run_command(udx, THREAD_STOP, NULL);
