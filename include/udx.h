@@ -248,6 +248,7 @@ struct udx_socket_s {
 
 #ifdef USE_DRAIN_THREAD
   uv_poll_t drain_poll;
+  bool drain_poll_initialized;
   uv_async_t signal_poll_stopped;
   int64_t packets_dropped_by_worker;
 #endif

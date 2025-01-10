@@ -127,10 +127,16 @@ _on_stop_jump_main (uv_async_t *signal) { // main loop
 
 static void
 read_poll_start (udx_socket_t *socket) { // aka drainer_socket_init
+  int err = 0;
+
+  assert(socket->udx->worker.status == RUNNING);
+  assert(socket->drain_poll_initialized == false);
+
+  if (socket->status & UDX_SOCKET_CLOSED) return;
+
   udx_t *udx = socket->udx;
   uv_loop_t *loop = &udx->worker.loop;
 
-  int err = 0;
   uv_poll_t *poll = &socket->drain_poll;
   uv_os_fd_t fd;
 
@@ -148,10 +154,12 @@ read_poll_start (udx_socket_t *socket) { // aka drainer_socket_init
   assert(err == 0);
 
   // initialize poll close signal
-  err = uv_async_init(socket->udx->loop, &socket->signal_poll_stopped, _on_stop_jump_main);
+  err = uv_async_init(socket->udx->loop, &socket->signal_poll_stopped, _on_stop_jump_main); // TODO: wrong thread;
   assert(err == 0);
 
   socket->signal_poll_stopped.data = socket;
+
+  socket->drain_poll_initialized = true;
 }
 
 static void
@@ -164,6 +172,16 @@ on_uv_poll_close (uv_handle_t *handle) { // sub loop
 static inline void
 read_poll_stop (udx_socket_t *socket) { // sub loop
   int err;
+
+  if (!socket->drain_poll_initialized) {
+    err = uv_async_init(socket->udx->loop, &socket->signal_poll_stopped, _on_stop_jump_main); // TODO: wrong thread;
+    assert(err == 0);
+
+    socket->signal_poll_stopped.data = socket;
+    err = uv_async_send(&socket->signal_poll_stopped);
+    assert(err == 0);
+    return;
+  }
 
   err = uv_poll_stop(&socket->drain_poll);
   assert(err == 0);
@@ -256,6 +274,17 @@ reader_thread (void *data) {
   assert(err == 0);
 }
 
+static uv_async_t a_launch_thread;
+static void launch_thread (uv_async_t *signal) {
+  udx_t *udx = signal->data;
+  uv_close((uv_handle_t *) signal, NULL);
+
+  int err = uv_thread_create(&udx->worker.thread_id, reader_thread, udx);
+  assert(err == 0);
+
+  debug_printf("thread launched, id=%zu loop=%p handles{ drain=%p, ctrl=%p }\n", udx->worker.thread_id, &udx->worker.loop, &udx->worker.signal_drain, &udx->worker.signal_control);
+}
+
 /// exports
 
 int
@@ -274,16 +303,19 @@ udx__drainer_init(udx_t *udx) {
   err = uv_loop_init(&udx->worker.loop);
   assert(err == 0);
 
-  err = uv_async_init(&udx->worker.loop, &udx->worker.signal_control, on_control); // subloop
+  err = uv_async_init(&udx->worker.loop, &udx->worker.signal_control, on_control); // subloop // TODO: wrong thread
   assert(err == 0);
   udx->worker.signal_control.data = udx;
 
+  // queue thread start onto main loop, (ensure loop is actually running)
+  err = uv_async_init(udx->loop, &a_launch_thread, launch_thread); // mainloop
+  assert(err == 0);
+  a_launch_thread.data = udx;
+
   udx->worker.status = INITIALIZED;
 
-  err = uv_thread_create(&udx->worker.thread_id, reader_thread, udx);
-  if (err) return err;
+  uv_async_send(&a_launch_thread);
 
-  debug_printf("thread launched, id=%zu loop=%p handles{ drain=%p, ctrl=%p }\n", udx->worker.thread_id, &udx->worker.loop, &udx->worker.signal_drain, &udx->worker.signal_control);
   return 0;
 }
 
