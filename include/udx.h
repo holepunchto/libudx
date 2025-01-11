@@ -123,7 +123,7 @@ typedef struct {
 } udx__drain_slot_t;
 
 typedef struct udx_reader_s {
-  int status;
+  atomic_int status;
   uv_thread_t thread_id;
   uv_loop_t loop;
 
