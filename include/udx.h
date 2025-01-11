@@ -127,6 +127,9 @@ typedef struct udx_reader_s {
   uv_thread_t thread_id;
   uv_loop_t loop;
 
+  // signals main->main
+  uv_async_t launch_thread;
+
   // signals sub->main
   uv_async_t signal_drain;
   uv_async_t signal_thread_stopped;
@@ -196,8 +199,8 @@ struct udx_s {
   int64_t packets_dropped_by_kernel;
 
 #ifdef USE_DRAIN_THREAD
-  udx_reader_t worker;
-  int64_t packets_dropped_by_worker;
+  udx_reader_t thread;
+  int64_t packets_dropped_by_thread;
 #endif
 };
 
@@ -250,7 +253,7 @@ struct udx_socket_s {
   uv_poll_t drain_poll;
   bool drain_poll_initialized;
   uv_async_t signal_poll_stopped;
-  int64_t packets_dropped_by_worker;
+  int64_t packets_dropped_by_thread;
 #endif
 };
 
