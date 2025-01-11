@@ -57,7 +57,7 @@ extern "C" {
 #define UDX_DEBUG_FORCE_DROP_PROBES     0x02
 #define UDX_DEBUG_FORCE_DROP_DATA       0x04
 
-#define USE_DRAIN_THREAD // experimental
+// #define USE_DRAIN_THREAD // experimental
 
 typedef struct {
   uint32_t seq;
