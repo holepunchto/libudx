@@ -1224,7 +1224,7 @@ detect_loss_repaired_by_loss_probe (udx_stream_t *stream, uint32_t ack) {
   }
 }
 
-int
+static int
 process_packet (udx_socket_t *socket, char *buf, ssize_t buf_len, struct sockaddr *addr) {
   udx_t *udx = socket->udx;
 
@@ -2130,7 +2130,6 @@ udx_socket_set_ttl (udx_socket_t *socket, int ttl) {
 int
 udx_socket_bind (udx_socket_t *socket, const struct sockaddr *addr, unsigned int flags) {
   uv_udp_t *handle = &(socket->handle);
-
   uv_poll_t *poll = &(socket->io_poll);
   uv_os_fd_t fd;
 
