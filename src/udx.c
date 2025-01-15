@@ -2629,6 +2629,9 @@ udx_stream_connect (udx_stream_t *stream, udx_socket_t *socket, uint32_t remote_
 
   if (mtu == -1 || mtu > UDX_MTU_MAX) {
     mtu = UDX_MTU_MAX;
+  } else if (mtu <= UDX_MTU_BASE) {
+    debug_printf("mtu: OS-Discovered pMTU to host is less than UDX_MTU_BASE (%u < %u), disabling MTU discovery\n", mtu, UDX_MTU_BASE);
+    stream->mtu_state = UDX_MTU_STATE_SEARCH_COMPLETE;
   }
 
   stream->mtu_max = mtu;
