@@ -163,6 +163,10 @@ ref_dec (udx_t *udx) {
     udx->has_streams = false;
   }
 
+#ifdef USE_DRAIN_THREAD
+  udx__drainer_destroy(udx);
+#endif
+
   if (udx->on_idle != NULL) {
     udx->on_idle(udx);
   }
@@ -229,7 +233,12 @@ update_poll (udx_socket_t *socket) {
     assert(!uv_is_active((uv_handle_t *) &socket->io_poll));
     return 0;
   }
-  int events = UV_READABLE;
+
+  int events = 0;
+
+#ifndef USE_DRAIN_THREAD
+  events = UV_READABLE;
+#endif
 
   if (socket_write_wanted(socket)) {
     events |= UV_WRITABLE;
@@ -2025,6 +2034,10 @@ udx_teardown (udx_t *udx) {
     udx_stream_destroy(stream);
   }
 
+#ifdef USE_DRAIN_THREAD
+  udx__drainer_destroy(udx);
+#endif
+
   udx__link_foreach(udx->listeners, listener) {
     udx_interface_event_close(listener);
   }
@@ -2033,6 +2046,10 @@ udx_teardown (udx_t *udx) {
 int
 udx_socket_init (udx_t *udx, udx_socket_t *socket, udx_socket_close_cb cb) {
   if (udx->teardown) return UV_EINVAL;
+
+#ifdef USE_DRAIN_THREAD
+  assert(udx__drainer_init(udx) == 0);
+#endif
 
   udx->refs++;
 
@@ -2147,6 +2164,11 @@ udx_socket_bind (udx_socket_t *socket, const struct sockaddr *addr, unsigned int
 
   err = uv_poll_init_socket(socket->udx->loop, poll, (uv_os_sock_t) fd);
   assert(err == 0);
+
+#ifdef USE_DRAIN_THREAD
+  err = udx__drainer_socket_init(socket);
+  assert(err == 0);
+#endif
 
   err = udx__udp_set_rxq_ovfl((uv_os_sock_t) fd);
   if (!err) {
@@ -2281,6 +2303,11 @@ udx_socket_close (udx_socket_t *socket) {
     socket->pending_closes++;
     uv_poll_stop(&(socket->io_poll));
     uv_close((uv_handle_t *) &(socket->io_poll), on_uv_close);
+
+#ifdef USE_DRAIN_THREAD
+    socket->pending_closes++; // also close separate read poll
+    udx__drainer_socket_stop(socket);
+#endif
   }
 
   socket->pending_closes++;
@@ -2973,3 +3000,27 @@ udx_interface_event_close (udx_interface_event_t *handle) {
 
   return 0;
 }
+
+#ifdef USE_DRAIN_THREAD
+void
+udx__drainer__on_poll_stop (udx_socket_t *socket) { // identical to on_uv_close(handle) ?
+  trigger_socket_close(socket);
+}
+
+void udx__drainer__on_packet(udx__drain_slot_t *slot) {
+  udx_socket_t *socket = slot->socket;
+  struct sockaddr_storage *addr = &slot->addr;
+  if (!process_packet(socket, slot->buffer, slot->len, (struct sockaddr *) addr) && socket->on_recv != NULL) {
+    if (is_addr_v4_mapped((struct sockaddr *) addr)) {
+      addr_to_v4((struct sockaddr_in6 *) addr);
+    }
+
+    uv_buf_t buf = {
+      .base = slot->buffer,
+      .len = slot->len
+    };
+    socket->on_recv(socket, slot->len, &buf, (struct sockaddr *) addr);
+  }
+}
+#endif
+

@@ -57,6 +57,8 @@ extern "C" {
 #define UDX_DEBUG_FORCE_DROP_PROBES     0x02
 #define UDX_DEBUG_FORCE_DROP_DATA       0x04
 
+// #define USE_DRAIN_THREAD // experimental
+
 typedef struct {
   uint32_t seq;
 } udx_cirbuf_val_t;
@@ -109,6 +111,68 @@ typedef void (*udx_lookup_cb)(udx_lookup_t *handle, int status, const struct soc
 typedef void (*udx_interface_event_cb)(udx_interface_event_t *handle, int status);
 typedef void (*udx_interface_event_close_cb)(udx_interface_event_t *handle);
 
+#ifdef USE_DRAIN_THREAD
+
+#include <stdatomic.h>
+
+typedef struct {
+  udx_socket_t *socket;
+  struct sockaddr_storage addr;
+  uint16_t len;
+  char buffer[2048];
+} udx__drain_slot_t;
+
+typedef struct udx_reader_s {
+  atomic_int status;
+  uv_thread_t thread_id;
+  uv_loop_t loop;
+
+  // signals main->main
+  uv_async_t launch_thread;
+
+  // signals sub->main
+  uv_async_t signal_drain;
+  uv_async_t signal_thread_stopped;
+
+  // signals main->sub
+  uv_async_t signal_control;
+  void * _Atomic ctrl_queue;
+
+  udx__drain_slot_t *buffer;
+  uint16_t buffer_len;
+
+  struct {
+    atomic_int read;
+    atomic_int drained;
+  } cursors;
+
+  int64_t perf_load;
+  int64_t perf_ndrains;
+} udx_reader_t;
+
+int
+udx__drainer_init (udx_t *udx);
+
+int
+udx__drainer_destroy (udx_t *udx);
+
+int
+udx__drainer_socket_init (udx_socket_t *socket);
+
+int
+udx__drainer_socket_stop (udx_socket_t *socket);
+
+void
+udx__drainer__on_packet(udx__drain_slot_t *slot);
+
+void
+udx__drainer__on_poll_stop (udx_socket_t *socket);
+
+void
+udx__drainer__on_thread_stop ();
+
+#endif // USE_DRAIN_THREAD
+
 struct udx_s {
   uv_loop_t *loop;
 
@@ -133,6 +197,11 @@ struct udx_s {
   uint64_t packets_tx;
 
   int64_t packets_dropped_by_kernel;
+
+#ifdef USE_DRAIN_THREAD
+  udx_reader_t thread;
+  int64_t packets_dropped_by_thread;
+#endif
 };
 
 struct udx_queue_node_s {
@@ -179,6 +248,13 @@ struct udx_socket_s {
   uint64_t packets_tx;
 
   int64_t packets_dropped_by_kernel;
+
+#ifdef USE_DRAIN_THREAD
+  uv_poll_t drain_poll;
+  bool drain_poll_initialized;
+  uv_async_t signal_poll_stopped;
+  int64_t packets_dropped_by_thread;
+#endif
 };
 
 typedef struct udx_cong_s {
