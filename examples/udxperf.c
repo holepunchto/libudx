@@ -394,11 +394,21 @@ pump_writes (udx_stream_t *stream) {
   uv_buf_t chunk = uv_buf_init((char *) chunk_bytes, sizeof(chunk_bytes));
 
   while (1) {
+    udxperf_client_t *c = (udxperf_client_t *) stream;
+
+    if (c->end_time) {
+      // client has ended
+      break;
+    }
     udx_stream_write_t *req = malloc(udx_stream_write_sizeof(1));
     bytes_queued += chunk.len;
-    int wm = udx_stream_write(req, stream, &chunk, 1, on_ack);
-    assert(wm >= 0 && "udx_stream_write");
-    if (wm == 0) break;
+    // returns 0 if
+    int rc = udx_stream_write(req, stream, &chunk, 1, on_ack);
+    if (rc < 0) {
+      printf("udx_stream_write error=%d (%s)\n", rc, uv_strerror(rc));
+    }
+    assert(rc >= 0 && "udx_stream_write");
+    if (rc == 0) break;
     udx_stream_write_resume(stream, pump_writes);
   }
 }
