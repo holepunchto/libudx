@@ -46,7 +46,7 @@
 #define UDX_CONG_MAX_CWND    65536
 #define UDX_RTO_MAX_MS       30000
 #define UDX_RTT_MAX_MS       30000
-#define UDX_DEFAULT_RWND_MAX (256 * 1024) // arbitrary, ~175 1500 mtu packets, @20ms latency = 104 mbits/sec
+#define UDX_DEFAULT_RWND_MAX (4 * 1024 * 1024) // arbitrary, ~175 1500 mtu packets, @20ms latency = 416 mbits/sec
 
 #define UDX_HIGH_WATERMARK 262144
 
