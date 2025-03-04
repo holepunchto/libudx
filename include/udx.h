@@ -32,15 +32,17 @@ extern "C" {
 #define UDX_SOCKET_BOUND     0b0010
 #define UDX_SOCKET_CLOSED    0b0100
 
-#define UDX_STREAM_CONNECTED     0b000000001
-#define UDX_STREAM_RECEIVING     0b000000010
-#define UDX_STREAM_READING       0b000000100
-#define UDX_STREAM_ENDING        0b000001000
-#define UDX_STREAM_ENDING_REMOTE 0b000010000
-#define UDX_STREAM_ENDED         0b000100000
-#define UDX_STREAM_ENDED_REMOTE  0b001000000
-#define UDX_STREAM_DESTROYING    0b010000000
-#define UDX_STREAM_CLOSED        0b100000000
+#define UDX_STREAM_CONNECTED      0b00000000001
+#define UDX_STREAM_RECEIVING      0b00000000010
+#define UDX_STREAM_READING        0b00000000100
+#define UDX_STREAM_ENDING         0b00000001000
+#define UDX_STREAM_ENDING_REMOTE  0b00000010000
+#define UDX_STREAM_ENDED          0b00000100000
+#define UDX_STREAM_ENDED_REMOTE   0b00001000000
+#define UDX_STREAM_NEED_TIME_WAIT 0b00010000000
+#define UDX_STREAM_TIME_WAIT      0b00100000000
+#define UDX_STREAM_DESTROYING     0b01000000000
+#define UDX_STREAM_CLOSED         0b10000000000
 
 #define UDX_HEADER_DATA    0b00001
 #define UDX_HEADER_END     0b00010
@@ -258,6 +260,8 @@ struct udx_stream_s {
   uint32_t remote_acked; // tcp snd.una
   uint32_t remote_ended;
 
+  uint32_t timewait_timeout_ms;
+
   uint32_t srtt;
   uint32_t rttvar;
   uint32_t rto;
@@ -279,6 +283,7 @@ struct udx_stream_s {
 
   // optimize: use one timer and a action (RTO, RACK_REO, TLP) variable
   int nrefs;
+
   uv_timer_t rto_timer;
   uv_timer_t rack_reo_timer;
   uv_timer_t tlp_timer;
@@ -501,6 +506,12 @@ udx_stream_get_ack (udx_stream_t *stream, uint32_t *ack);
 
 int
 udx_stream_set_ack (udx_stream_t *stream, uint32_t ack);
+
+int
+udx_stream_set_timewait_timeout_ms (udx_stream_t *stream, uint32_t timewait_timeout_ms);
+
+int
+udx_stream_get_timewait_timeout_ms (udx_stream_t *stream, uint32_t *timewait_timeout_ms);
 
 int
 udx_stream_get_rwnd_max (udx_stream_t *stream, uint32_t *rwnd_max);

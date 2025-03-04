@@ -23,12 +23,6 @@
 #define UDX_STREAM_SHOULD_READ (UDX_STREAM_ENDED_REMOTE | UDX_STREAM_DEAD)
 #define UDX_STREAM_READ        0
 
-#define UDX_STREAM_SHOULD_END (UDX_STREAM_ENDING | UDX_STREAM_ENDED | UDX_STREAM_DEAD)
-#define UDX_STREAM_END        UDX_STREAM_ENDING
-
-#define UDX_STREAM_SHOULD_END_REMOTE (UDX_STREAM_ENDED_REMOTE | UDX_STREAM_DEAD | UDX_STREAM_ENDING_REMOTE)
-#define UDX_STREAM_END_REMOTE        UDX_STREAM_ENDING_REMOTE
-
 #define UDX_HEADER_DATA_OR_END (UDX_HEADER_DATA | UDX_HEADER_END)
 
 #define UDX_DEFAULT_TTL         64
@@ -46,7 +40,8 @@
 #define UDX_CONG_MAX_CWND    65536
 #define UDX_RTO_MAX_MS       30000
 #define UDX_RTT_MAX_MS       30000
-#define UDX_DEFAULT_RWND_MAX (4 * 1024 * 1024) // arbitrary, ~175 1500 mtu packets, @20ms latency = 416 mbits/sec
+#define UDX_TIME_WAIT_MS     30000             // 30 seconds
+#define UDX_DEFAULT_RWND_MAX (4 * 1024 * 1024) // 4mb. 139 mbit/s at 240ms latency
 
 #define UDX_HIGH_WATERMARK 262144
 
@@ -599,8 +594,6 @@ close_stream (udx_stream_t *stream, int err) {
   stream->status |= UDX_STREAM_CLOSED;
   stream->status &= ~UDX_STREAM_CONNECTED;
 
-  debug_printf("closing stream local_id=%u \n", stream->local_id);
-
   udx_t *udx = stream->udx;
   udx_socket_t *socket = stream->socket;
 
@@ -838,6 +831,25 @@ udx_zwp_timeout (uv_timer_t *timer) {
     uv_timer_start(&stream->zwp_timer, udx_zwp_timeout, stream->rto, 0);
   }
   update_poll(stream->socket);
+}
+
+static void
+udx_timewait_timeout (uv_timer_t *timer) {
+  udx_stream_t *stream = timer->data;
+  udx_socket_t *socket = stream->socket;
+
+  close_stream(stream, 0);
+
+  update_poll(socket);
+}
+
+static void
+time_wait_stream (udx_stream_t *stream) {
+  stream->status |= UDX_STREAM_TIME_WAIT;
+  uv_timer_stop(&stream->zwp_timer);
+  uv_timer_stop(&stream->tlp_timer);
+  uv_timer_stop(&stream->rack_reo_timer);
+  uv_timer_start(&stream->rto_timer, udx_timewait_timeout, stream->timewait_timeout_ms, 0);
 }
 
 static void
@@ -1081,11 +1093,14 @@ ack_packet (udx_stream_t *stream, uint32_t seq, int sack) {
 
   free(pkt);
 
-  // TODO: the end condition needs work here to be more "stateless"
-  // ie if the remote has acked all our writes, then instead of waiting for retransmits, we should
-  // clear those and mark as local ended NOW.
-  if ((stream->status & UDX_STREAM_SHOULD_END) == UDX_STREAM_END && stream->inflight_queue.len == 0 && stream->retransmit_queue.len == 0 && stream->write_queue.len == 0) {
+  const int UDX_STREAM_SHOULD_END = UDX_STREAM_ENDING | UDX_STREAM_ENDED | UDX_STREAM_DEAD;
+
+  if ((stream->status & UDX_STREAM_SHOULD_END) == UDX_STREAM_ENDING && stream->inflight_queue.len == 0 && stream->retransmit_queue.len == 0 && stream->write_queue.len == 0) {
     stream->status |= UDX_STREAM_ENDED;
+    // received the final ack, and we are the passive side (no TIME_WAIT)
+    if ((stream->status & (UDX_STREAM_ENDED_REMOTE | UDX_STREAM_NEED_TIME_WAIT)) == UDX_STREAM_ENDED_REMOTE) {
+      close_stream(stream, 0);
+    }
     return 2;
   }
 
@@ -1399,22 +1414,26 @@ process_packet (udx_socket_t *socket, char *buf, ssize_t buf_len, struct sockadd
     }
 
     if (a == 0 || a == 1) continue;
-    if (a == 2) { // it ended, so ack that and trigger close
-      // TODO: make this work as well, if the ack packet is lost, ie
-      // have some internal (capped) queue of "gracefully closed" streams (TIME_WAIT)
+    if (a == 2) {
 
       if (stream->status & UDX_STREAM_DEAD) {
-        return 1;
-      }
-
-      if ((stream->status & UDX_STREAM_ALL_ENDED) == UDX_STREAM_ALL_ENDED) {
-        close_stream(stream, 0);
         return 1;
       }
 
       if (stream->remote_acked == stream->seq) {
         uv_timer_stop(&stream->rto_timer);
         uv_timer_stop(&stream->tlp_timer);
+      }
+
+      if ((stream->status & UDX_STREAM_ALL_ENDED) == UDX_STREAM_ALL_ENDED) {
+        if (stream->status & UDX_STREAM_NEED_TIME_WAIT) {
+          // CLOSING -> TIME_WAIT
+          time_wait_stream(stream);
+          return 1;
+        } else {
+          close_stream(stream, 0);
+          return 1;
+        }
       }
 
       // send a final state packet to make sure we've acked the end packet
@@ -1640,8 +1659,10 @@ send_stream_packets (udx_socket_t *socket, udx_stream_t *stream) {
       return false;
     }
 
+    const int UDX_STREAM_SHOULD_END_REMOTE = UDX_STREAM_ENDED_REMOTE | UDX_STREAM_DEAD | UDX_STREAM_ENDING_REMOTE;
+
     // if this ACK packet acks the remote's END packet, advance from ENDING_REMOTE -> ENDED_REMOTE
-    if ((stream->status & UDX_STREAM_SHOULD_END_REMOTE) == UDX_STREAM_END_REMOTE && seq_compare(stream->remote_ended, stream->ack) <= 0) {
+    if ((stream->status & UDX_STREAM_SHOULD_END_REMOTE) == UDX_STREAM_ENDING_REMOTE && seq_compare(stream->remote_ended, stream->ack) <= 0) {
       stream->status |= UDX_STREAM_ENDED_REMOTE;
       if (stream->on_read != NULL) {
         uv_buf_t b = uv_buf_init(NULL, 0);
@@ -1655,9 +1676,16 @@ send_stream_packets (udx_socket_t *socket, udx_stream_t *stream) {
     stream->write_wanted &= ~UDX_STREAM_WRITE_WANT_STATE;
 
     if ((stream->status & UDX_STREAM_ALL_ENDED) == UDX_STREAM_ALL_ENDED) {
+
       assert(stream->retransmit_queue.len == 0);
       assert(stream->write_queue.len == 0);
-      close_stream(stream, 0);
+
+      if (stream->status & UDX_STREAM_NEED_TIME_WAIT) {
+        // FIN_WAIT -> TIME_WAIT
+        time_wait_stream(stream);
+      } else {
+        close_stream(stream, 0);
+      }
       return true;
     }
   }
@@ -2344,6 +2372,8 @@ udx_stream_init (udx_t *udx, udx_stream_t *stream, uint32_t local_id, udx_stream
   stream->send_wl2 = 0;
   stream->remote_acked = 0;
 
+  stream->timewait_timeout_ms = UDX_TIME_WAIT_MS;
+
   stream->srtt = 0;
   stream->rttvar = 0;
   stream->rto = 1000;
@@ -2452,6 +2482,18 @@ int
 udx_stream_set_ack (udx_stream_t *stream, uint32_t ack) {
   stream->ack = ack;
   stream->send_wl1 = ack; // ensure the next seq will be a valid wl1
+  return 0;
+}
+
+int
+udx_stream_get_timewait_timeout_ms (udx_stream_t *stream, uint32_t *timeout_ms) {
+  *timeout_ms = stream->timewait_timeout_ms;
+  return 0;
+}
+
+int
+udx_stream_set_timewait_timeout_ms (udx_stream_t *stream, uint32_t timeout_ms) {
+  stream->timewait_timeout_ms = timeout_ms;
   return 0;
 }
 
@@ -2765,6 +2807,11 @@ udx_stream_write_end (udx_stream_write_t *req, udx_stream_t *stream, const uv_bu
   }
 
   stream->status |= UDX_STREAM_ENDING;
+
+  // only the 'active' closer must enter TIME_WAIT
+  if ((stream->status & UDX_STREAM_ENDED_REMOTE) == 0) {
+    stream->status |= UDX_STREAM_NEED_TIME_WAIT;
+  }
 
   if (bufs_len > 0) {
     req->nwbufs = bufs_len;
