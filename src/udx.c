@@ -1998,6 +1998,10 @@ udx_init (uv_loop_t *loop, udx_t *udx, udx_idle_cb on_idle) {
 
   udx->debug_flags = 0;
 
+#ifdef USE_DRAIN_THREAD
+  memset(&udx->thread, 0, sizeof(udx_reader_t));
+#endif
+
   return 0;
 }
 
@@ -2047,10 +2051,6 @@ int
 udx_socket_init (udx_t *udx, udx_socket_t *socket, udx_socket_close_cb cb) {
   if (udx->teardown) return UV_EINVAL;
 
-#ifdef USE_DRAIN_THREAD
-  assert(udx__drainer_init(udx) == 0);
-#endif
-
   udx->refs++;
 
   udx__link_add(udx->sockets, socket);
@@ -2086,6 +2086,17 @@ udx_socket_init (udx_t *udx, udx_socket_t *socket, udx_socket_close_cb cb) {
   assert(err == 0);
 
   handle->data = socket;
+
+#ifdef USE_DRAIN_THREAD
+  socket->drain_poll_initialized = false;
+  socket->packets_dropped_by_thread = 0;
+
+  // not needed; temporary initialization trace
+  memset(&socket->drain_poll, 0, sizeof(socket->drain_poll));
+
+  err = udx__drainer_init(udx);
+  assert(err == 0);
+#endif
 
   return err;
 }

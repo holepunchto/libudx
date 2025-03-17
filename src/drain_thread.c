@@ -11,9 +11,10 @@
 #include "io.h"
 #include "internal.h"
 
-// upfront allocated receive buffer size in amount of packets
-// size = N_SLOTS * sizeof(udx__drain_slot_t)
-#define N_SLOTS 2048 // ~4MB
+#ifndef N_SLOTS
+// Allocate on-thread read buffer
+#define N_SLOTS 2048
+#endif
 
 enum thread_status {
   STOPPED = 0,
@@ -56,6 +57,7 @@ thread_update_read_poll (udx_socket_t *socket);
 static void
 thread_on_uv_read_poll (uv_poll_t *handle, int status, int events) {
   UDX_UNUSED(status);
+  int err;
   udx_socket_t *socket = handle->data;
 
   udx_t *udx = socket->udx;
@@ -85,7 +87,7 @@ thread_on_uv_read_poll (uv_poll_t *handle, int status, int events) {
 
     slot->len = size;
 
-    int err = uv_async_send(&thread->signal_drain);
+    err = uv_async_send(&thread->signal_drain);
     assert(err == 0);
 
     int next = (thread->cursors.read + 1) % thread->buffer_len;
@@ -100,7 +102,9 @@ thread_on_uv_read_poll (uv_poll_t *handle, int status, int events) {
   } while(1);
 
 reset_poll:
-  assert(thread_update_read_poll(socket) == 0);
+
+  err = thread_update_read_poll(socket);
+  assert(err == 0);
 }
 
 static int
@@ -113,8 +117,8 @@ thread_update_read_poll (udx_socket_t *socket) {
 
 static void
 _on_poll_stopped_main (uv_async_t *signal) { // main loop
-  debug_printf("drain thread=%zu socket poll stopped\n", uv_thread_self());
   udx_socket_t *socket = signal->data;
+  debug_printf("drain thread=%zu socket=%p poll stopped\n", uv_thread_self(), socket);
 
   uv_close((uv_handle_t *) signal, NULL); // close the jump signal
 
@@ -133,16 +137,14 @@ thread_read_poll_start (udx_socket_t *socket) { // aka drainer_socket_init
   udx_t *udx = socket->udx;
   uv_loop_t *subloop = &udx->thread.loop;
 
-  uv_poll_t *poll = &socket->drain_poll;
-  uv_os_fd_t fd;
-
+  uv_os_fd_t fd; // copy file descriptor from main thread
   err = uv_fileno((const uv_handle_t *) &socket->handle, &fd);
   assert(err == 0);
 
-  debug_printf("drain thread=%zu socket poll fd=%i start\n", uv_thread_self(), fd);
+  uv_poll_t *poll = &socket->drain_poll;
 
   err = uv_poll_init_socket(subloop, poll, (uv_os_sock_t) fd);
-  assert(err == 0);
+  assert(err == 0 && "init read poll failed");
 
   poll->data = socket;
 
@@ -150,6 +152,7 @@ thread_read_poll_start (udx_socket_t *socket) { // aka drainer_socket_init
   assert(err == 0);
 
   socket->drain_poll_initialized = true;
+  debug_printf("drain thread=%zu socket=%p poll fd=%i start\n", uv_thread_self(), socket, fd);
 }
 
 static void
@@ -180,8 +183,10 @@ thread_on_control (uv_async_t *signal) {
   udx_t *udx = signal->data;
 
   command_t *head = atomic_exchange(&udx->thread.ctrl_queue, NULL);
-  assert(head != NULL);
+  assert(head != NULL && "empty cmd stack"); // should be fine
+  if (head == NULL) return; 
 
+  // printf("<-- steal head=%p\n", head);
   // process queue
   while (head != NULL) {
     switch (head->type) {
@@ -204,8 +209,10 @@ thread_on_control (uv_async_t *signal) {
 
     command_t *prev = head;
     head = prev->next;
+    // printf("free cmd=%p\n", prev);
     free(prev);
   }
+  // printf("<-- done\n");
 }
 
 static inline int
@@ -216,11 +223,16 @@ run_command (udx_t *udx, enum command_id type, void *data) {
   cmd->next = NULL;
 
   command_t *head = atomic_load(&udx->thread.ctrl_queue);
-
+  // printf("--> push head=%p\n", head);
   if (head == NULL) {
     atomic_store(&udx->thread.ctrl_queue, cmd);
   } else {
-    while (head->next != NULL) head = head->next;
+    // find tail
+    while (head->next != NULL) {
+      // printf("next cmd=%p\n", head->next);
+      head = head->next;
+    }
+
     head->next = cmd;
   }
 
@@ -243,9 +255,10 @@ on_thread_stop(uv_async_t *signal) { // main loop
 
 static void
 reader_thread (void *data) {
-  debug_printf("drain thread=%zu start\n", uv_thread_self());
   udx_t *udx = data;
   int err;
+
+  debug_printf("drain thread=%zu start, udx=%p\n", uv_thread_self(), udx);
 
   uv_loop_t *subloop = &udx->thread.loop;
 
@@ -266,11 +279,11 @@ reader_thread (void *data) {
   assert(err == 0);
 
   err = uv_run(subloop, UV_RUN_DEFAULT);
-  assert(err == 0);
+  assert(err == 0 && "uv_run failed");
 
   free(udx->thread.buffer);
 
-  debug_printf("drain thread=%zu exit\n", uv_thread_self());
+  debug_printf("drain thread=%zu exit, udx=%p\n", uv_thread_self(), udx);
 
   err = uv_async_send(&udx->thread.signal_thread_stopped); // notify main
   assert(err == 0);
@@ -317,12 +330,10 @@ udx__drainer_init(udx_t *udx) {
 int
 udx__drainer_socket_init (udx_socket_t *socket) {
   udx_t *udx = socket->udx;
-  uv_os_fd_t fd;
-  assert(0 == uv_fileno((uv_handle_t *) &socket->handle, &fd));
 
-  // initialize poll close signal
   int err = uv_async_init(udx->loop, &socket->signal_poll_stopped, _on_poll_stopped_main);
   assert(err == 0);
+
   socket->signal_poll_stopped.data = socket;
 
   return run_command(udx, SOCKET_INIT, socket);
