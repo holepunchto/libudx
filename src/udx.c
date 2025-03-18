@@ -164,7 +164,7 @@ ref_dec (udx_t *udx) {
   }
 
 #ifdef USE_DRAIN_THREAD
-  udx__drainer_destroy(udx);
+  udx__thread_destroy(udx);
 #endif
 
   if (udx->on_idle != NULL) {
@@ -174,6 +174,7 @@ ref_dec (udx_t *udx) {
 
 static void
 trigger_socket_close (udx_socket_t *socket) {
+  printf("pending_closes %i\n", socket->pending_closes - 1);
   if (--socket->pending_closes) return;
 
   if (socket->on_close != NULL) {
@@ -1999,7 +2000,9 @@ udx_init (uv_loop_t *loop, udx_t *udx, udx_idle_cb on_idle) {
   udx->debug_flags = 0;
 
 #ifdef USE_DRAIN_THREAD
-  memset(&udx->thread, 0, sizeof(udx_reader_t));
+  memset(&udx->thread, 0, sizeof(udx_thread_t));
+  int err = udx__thread_init(udx);
+  assert(err == 0);
 #endif
 
   return 0;
@@ -2017,6 +2020,7 @@ udx_is_idle (udx_t *udx) {
 
 void
 udx_teardown (udx_t *udx) {
+  printf("udx_teardown()\n");
   udx->teardown = true;
 
   udx_socket_t *socket;
@@ -2039,7 +2043,7 @@ udx_teardown (udx_t *udx) {
   }
 
 #ifdef USE_DRAIN_THREAD
-  udx__drainer_destroy(udx);
+  udx__thread_destroy(udx);
 #endif
 
   udx__link_foreach(udx->listeners, listener) {
@@ -2088,13 +2092,14 @@ udx_socket_init (udx_t *udx, udx_socket_t *socket, udx_socket_close_cb cb) {
   handle->data = socket;
 
 #ifdef USE_DRAIN_THREAD
-  socket->drain_poll_initialized = false;
+  socket->poll_initialized = false;
   socket->packets_dropped_by_thread = 0;
 
   // not needed; temporary initialization trace
-  memset(&socket->drain_poll, 0, sizeof(socket->drain_poll));
+  memset(&socket->poll_drain, 0, sizeof(socket->poll_drain));
 
-  err = udx__drainer_init(udx);
+  // restart thread if stopped
+  err = udx__thread_init(udx);
   assert(err == 0);
 #endif
 
@@ -2177,7 +2182,7 @@ udx_socket_bind (udx_socket_t *socket, const struct sockaddr *addr, unsigned int
   assert(err == 0);
 
 #ifdef USE_DRAIN_THREAD
-  err = udx__drainer_socket_init(socket);
+  err = udx__thread_poll_init(socket);
   assert(err == 0);
 #endif
 
@@ -2317,7 +2322,7 @@ udx_socket_close (udx_socket_t *socket) {
 
 #ifdef USE_DRAIN_THREAD
     socket->pending_closes++; // also close separate read poll
-    udx__drainer_socket_stop(socket);
+    udx__thread_poll_destroy(socket);
 #endif
   }
 

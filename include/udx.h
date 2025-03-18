@@ -115,6 +115,8 @@ typedef void (*udx_interface_event_close_cb)(udx_interface_event_t *handle);
 
 #include <stdatomic.h>
 
+#define CMD_QUEUE_SIZE 64
+
 typedef struct {
   udx_socket_t *socket;
   struct sockaddr_storage addr;
@@ -122,21 +124,33 @@ typedef struct {
   char buffer[2048];
 } udx__drain_slot_t;
 
+enum udx__tcmd_type {
+  SOCKET_INIT = 0,
+  SOCKET_REMOVE,
+  THREAD_STOP
+};
+
+typedef struct command_s {
+  enum udx__tcmd_type type;
+  void *data;
+  struct command_s *next;
+} udx__tcmd_t;
+
 typedef struct udx_reader_s {
   atomic_int status;
   uv_thread_t thread_id;
+  uv_thread_t _main_id; //dbg
   uv_loop_t loop;
 
   // signals main->main
-  uv_async_t launch_thread;
+  uv_async_t async_thread_start;
 
   // signals sub->main
-  uv_async_t signal_drain;
-  uv_async_t signal_thread_stopped;
+  uv_async_t async_in_drain;
+  uv_async_t async_in_thread_stopped;
 
   // signals main->sub
-  uv_async_t signal_control;
-  void * _Atomic ctrl_queue;
+  uv_async_t async_out_ctrl;
 
   udx__drain_slot_t *buffer;
   uint16_t buffer_len;
@@ -148,19 +162,23 @@ typedef struct udx_reader_s {
 
   int64_t perf_load;
   int64_t perf_ndrains;
-} udx_reader_t;
+
+  atomic_int head;
+  atomic_int tail;
+  udx__tcmd_t queue[64];
+} udx_thread_t;
 
 int
-udx__drainer_init (udx_t *udx);
+udx__thread_init (udx_t *udx);
 
 int
-udx__drainer_destroy (udx_t *udx);
+udx__thread_destroy (udx_t *udx);
 
 int
-udx__drainer_socket_init (udx_socket_t *socket);
+udx__thread_poll_init (udx_socket_t *socket);
 
 int
-udx__drainer_socket_stop (udx_socket_t *socket);
+udx__thread_poll_destroy (udx_socket_t *socket);
 
 void
 udx__drainer__on_packet(udx__drain_slot_t *slot);
@@ -199,7 +217,7 @@ struct udx_s {
   int64_t packets_dropped_by_kernel;
 
 #ifdef USE_DRAIN_THREAD
-  udx_reader_t thread;
+  udx_thread_t thread;
   int64_t packets_dropped_by_thread;
 #endif
 };
@@ -250,10 +268,12 @@ struct udx_socket_s {
   int64_t packets_dropped_by_kernel;
 
 #ifdef USE_DRAIN_THREAD
-  uv_os_fd_t fd;
-  uv_poll_t drain_poll;
-  bool drain_poll_initialized;
-  uv_async_t signal_poll_stopped;
+  uv_poll_t poll_drain;
+  uv_async_t async_in_poll_stopped;
+  uv_os_fd_t _fd;
+
+  bool poll_initialized;
+
   int64_t packets_dropped_by_thread;
 #endif
 };

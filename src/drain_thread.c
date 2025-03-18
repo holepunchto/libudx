@@ -7,37 +7,75 @@
 
 #ifdef USE_DRAIN_THREAD
 
-#include "debug.h"
 #include "io.h"
 #include "internal.h"
+
+#define TRACE 1
+
+#if TRACE
+#define tracef(...) \
+  do { \
+    fprintf(stderr, __VA_ARGS__); \
+  } while (0)
+
+static const char *status_str[4] = { "STOP", "INIT", "RUN", "CLOSE" };
+static const char *type_str[3] = { "SOCKET_INIT", "SOCKET_REMOVE", "THREAD_STOP" };
+#else
+#define tracef(...) {}
+#endif
 
 #ifndef N_SLOTS
 // Allocate on-thread read buffer
 #define N_SLOTS 2048
 #endif
 
+#define ASSERT_RUNS_ON_THREAD \
+  assert(uv_thread_self() == udx->thread.thread_id)
+
+#define ASSERT_RUNS_ON_MAIN \
+  assert(uv_thread_self() == udx->thread._main_id)
+
 enum thread_status {
   STOPPED = 0,
   INITIALIZED = 1,
   RUNNING = 2,
+  CLOSING = 3,
 };
 
-enum command_id {
-  SOCKET_INIT = 0,
-  SOCKET_REMOVE,
-  THREAD_STOP
-};
+static inline void
+set_status(udx_t *udx, enum thread_status status) {
+  udx_thread_t *thread = &udx->thread;
 
-typedef struct command_s {
-  enum command_id type;
-  void *data;
-  struct command_s *next;
-} command_t;
+#if TRACE
+  tracef("thread=%zu udx=%p state transition from=%s to=%s\n", uv_thread_self(), udx, status_str[thread->status], status_str[status]);
+#endif
+
+  switch (status) {
+    case STOPPED:
+      assert(thread->status == CLOSING);
+      break;
+    case INITIALIZED:
+      assert(thread->status == STOPPED);
+      break;
+    case RUNNING:
+      assert(thread->status == INITIALIZED);
+      break;
+    case CLOSING:
+      assert(
+        thread->status == INITIALIZED ||
+        thread->status == RUNNING
+      );
+      break;
+  }
+  thread->status = status;
+}
 
 static void
 on_drain (uv_async_t *signal) {
   udx_t *udx = signal->data;
-  udx_reader_t *thread = &udx->thread;
+  udx_thread_t *thread = &udx->thread;
+
+  ASSERT_RUNS_ON_MAIN;
 
   thread->perf_load += (thread->buffer_len + thread->cursors.read - thread->cursors.drained) % thread->buffer_len;
   thread->perf_ndrains++;
@@ -52,16 +90,17 @@ on_drain (uv_async_t *signal) {
 }
 
 static int
-thread_update_read_poll (udx_socket_t *socket);
+thread_poll_update (udx_socket_t *socket);
 
 static void
-thread_on_uv_read_poll (uv_poll_t *handle, int status, int events) {
+t_on_uv_poll (uv_poll_t *handle, int status, int events) {
   UDX_UNUSED(status);
   int err;
   udx_socket_t *socket = handle->data;
-
   udx_t *udx = socket->udx;
-  udx_reader_t *thread = &udx->thread;
+  udx_thread_t *thread = &udx->thread;
+
+  ASSERT_RUNS_ON_THREAD;
 
   if (!(events & UV_READABLE)) goto reset_poll;
 
@@ -87,7 +126,9 @@ thread_on_uv_read_poll (uv_poll_t *handle, int status, int events) {
 
     slot->len = size;
 
-    err = uv_async_send(&thread->signal_drain);
+    if (uv_is_closing((uv_handle_t *) &thread->async_in_drain)) break;
+
+    err = uv_async_send(&thread->async_in_drain);
     assert(err == 0);
 
     int next = (thread->cursors.read + 1) % thread->buffer_len;
@@ -103,254 +144,315 @@ thread_on_uv_read_poll (uv_poll_t *handle, int status, int events) {
 
 reset_poll:
 
-  err = thread_update_read_poll(socket);
+  err = thread_poll_update(socket);
   assert(err == 0);
 }
 
 static int
-thread_update_read_poll (udx_socket_t *socket) {
-  if (socket->status & UDX_SOCKET_CLOSED) return 0;
+thread_poll_update (udx_socket_t *socket) {
+  udx_t *udx = socket->udx;
 
-  uv_poll_t *poll = &socket->drain_poll;
-  return uv_poll_start(poll, UV_READABLE, thread_on_uv_read_poll);
+  ASSERT_RUNS_ON_THREAD;
+
+  if (socket->status & UDX_SOCKET_CLOSED) {
+    assert(!uv_is_active((uv_handle_t *) &socket->poll_drain));
+    return 0;
+  }
+
+  uv_poll_t *poll = &socket->poll_drain;
+  return uv_poll_start(poll, UV_READABLE, t_on_uv_poll);
 }
 
 static void
-_on_poll_stopped_main (uv_async_t *signal) { // main loop
+on_poll_stop (uv_async_t *signal) {
   udx_socket_t *socket = signal->data;
-  debug_printf("drain thread=%zu socket=%p poll stopped\n", uv_thread_self(), socket);
+  udx_t *udx = socket->udx;
 
+  ASSERT_RUNS_ON_MAIN;
+
+  tracef("thread=%zu udx=%p poll=%p fd=%i POLL STOPPED\n", uv_thread_self(), udx, &socket->poll_drain, socket->_fd);
+
+  assert(!uv_is_closing((uv_handle_t *) signal));
   uv_close((uv_handle_t *) signal, NULL); // close the jump signal
 
   udx__drainer__on_poll_stop(socket); // return to udx.c
 }
 
 static void
-thread_read_poll_start (udx_socket_t *socket) { // aka drainer_socket_init
-  int err = 0;
-
-  assert(socket->udx->thread.status == RUNNING);
-  assert(socket->drain_poll_initialized == false);
-
-  if (socket->status & UDX_SOCKET_CLOSED) return;
-
-  udx_t *udx = socket->udx;
-  uv_loop_t *subloop = &udx->thread.loop;
-
-  uv_os_fd_t fd; // copy file descriptor from main thread
-  err = uv_fileno((const uv_handle_t *) &socket->handle, &fd);
-  assert(err == 0);
-
-  uv_poll_t *poll = &socket->drain_poll;
-
-  err = uv_poll_init_socket(subloop, poll, (uv_os_sock_t) fd);
-  assert(err == 0 && "init read poll failed");
-
-  poll->data = socket;
-
-  err = thread_update_read_poll(socket);
-  assert(err == 0);
-
-  socket->drain_poll_initialized = true;
-  debug_printf("drain thread=%zu socket=%p poll fd=%i start\n", uv_thread_self(), socket, fd);
-}
-
-static void
-thread_on_uv_poll_close (uv_handle_t *handle) { // sub loop
+t_on_uv_poll_close (uv_handle_t *handle) {
   udx_socket_t *socket = handle->data;
-  int err = uv_async_send(&socket->signal_poll_stopped);
+  udx_t *udx = socket->udx;
+
+  ASSERT_RUNS_ON_THREAD;
+
+  int err = uv_async_send(&socket->async_in_poll_stopped); // jump to main
   assert(err == 0);
-}
-
-static inline void
-thread_read_poll_stop (udx_socket_t *socket) { // sub loop
-  int err;
-
-  if (!socket->drain_poll_initialized) {
-    err = uv_async_send(&socket->signal_poll_stopped);
-    assert(err == 0);
-    return;
-  }
-
-  err = uv_poll_stop(&socket->drain_poll);
-  assert(err == 0);
-
-  uv_close((uv_handle_t *) &socket->drain_poll, thread_on_uv_poll_close);
 }
 
 static void
-thread_on_control (uv_async_t *signal) {
+t_on_control (uv_async_t *signal) {
   udx_t *udx = signal->data;
+  udx_thread_t *thread = &udx->thread;
 
-  command_t *head = atomic_exchange(&udx->thread.ctrl_queue, NULL);
-  assert(head != NULL && "empty cmd stack"); // should be fine
-  if (head == NULL) return; 
+  ASSERT_RUNS_ON_THREAD;
 
-  // printf("<-- steal head=%p\n", head);
   // process queue
-  while (head != NULL) {
-    switch (head->type) {
-      case SOCKET_INIT:
-        thread_read_poll_start(head->data);
-        break;
+  while (thread->tail != thread->head) {
+    int next = (thread->tail + 1) % CMD_QUEUE_SIZE;
+    udx__tcmd_t *cmd = &thread->queue[next];
 
-      case SOCKET_REMOVE:
-        thread_read_poll_stop(head->data);
-        break;
+    switch (cmd->type) {
+      case SOCKET_INIT: {
+        int err;
+        udx_socket_t *socket = cmd->data;
+        assert(socket->udx == udx);
+
+        assert(thread->status == RUNNING);
+        assert(socket->poll_initialized == false);
+
+        // assert(!(socket->status & UDX_SOCKET_CLOSED));
+        if (socket->status & UDX_SOCKET_CLOSED) break;
+
+        uv_loop_t *subloop = &thread->loop;
+
+        uv_poll_t *poll = &socket->poll_drain;
+
+        err = uv_poll_init_socket(subloop, poll, (uv_os_sock_t) socket->_fd);
+        assert(err == 0 && "init read poll failed");
+
+        poll->data = socket;
+
+        err = thread_poll_update(socket);
+        assert(err == 0);
+
+        socket->poll_initialized = true;
+
+        tracef("thread=%zu udx=%p poll=%p fd=%i POLL START\n", uv_thread_self(), udx, poll, socket->_fd);
+      } break;
+
+      case SOCKET_REMOVE: {
+        int err;
+        udx_socket_t *socket = cmd->data;
+
+        if (!socket->poll_initialized) {
+          err = uv_async_send(&socket->async_in_poll_stopped);
+          assert(err == 0);
+          break;
+        }
+
+        err = uv_poll_stop(&socket->poll_drain);
+        assert(err == 0);
+
+        assert(!uv_is_closing((uv_handle_t *) &socket->poll_drain));
+        uv_close((uv_handle_t *) &socket->poll_drain, t_on_uv_poll_close);
+      } break;
 
       case THREAD_STOP:
+        assert(thread->status == CLOSING);
+        assert(!uv_is_closing((uv_handle_t *) &thread->async_out_ctrl));
         // close control handle that keeps subloop active.
-        uv_close((uv_handle_t *) &udx->thread.signal_control, NULL);
+        uv_close((uv_handle_t *) &thread->async_out_ctrl, NULL);
         break;
 
       default:
         assert(0);
     }
 
-    command_t *prev = head;
-    head = prev->next;
-    // printf("free cmd=%p\n", prev);
-    free(prev);
+    tracef("udx=%p <-- done[%i] cmd=%p t=%s\n", udx, next, cmd, type_str[cmd->type]);
+
+    thread->tail = next;
   }
-  // printf("<-- done\n");
 }
 
 static inline int
-run_command (udx_t *udx, enum command_id type, void *data) {
-  command_t *cmd = malloc(sizeof(command_t));
+run_command (udx_t *udx, enum udx__tcmd_type type, void *data) {
+  ASSERT_RUNS_ON_MAIN;
+
+  udx_thread_t *thread = &udx->thread;
+
+  assert(!uv_is_closing((uv_handle_t *) &thread->async_out_ctrl));
+
+  int next = (thread->head + 1) % CMD_QUEUE_SIZE;
+  assert(next != thread->tail && "command queue overflow");
+
+  udx__tcmd_t *cmd = &thread->queue[next];
   cmd->type = type;
   cmd->data = data;
   cmd->next = NULL;
 
-  command_t *head = atomic_load(&udx->thread.ctrl_queue);
-  // printf("--> push head=%p\n", head);
-  if (head == NULL) {
-    atomic_store(&udx->thread.ctrl_queue, cmd);
-  } else {
-    // find tail
-    while (head->next != NULL) {
-      // printf("next cmd=%p\n", head->next);
-      head = head->next;
-    }
+  thread->head = next;
+  tracef("udx=%p --> push[%i] cmd=%p t=%s\n", udx, next, cmd, type_str[type]);
 
-    head->next = cmd;
-  }
-
-  if (udx->thread.status != RUNNING) {
-    return 0;
+  if (!uv_is_active((uv_handle_t *) &thread->async_out_ctrl)) {
+    return 0; // just queue event, notify triggers on thread run
   } else {
-    return uv_async_send(&udx->thread.signal_control);
+    return uv_async_send(&thread->async_out_ctrl);
   }
 }
 
 static void
-on_thread_stop(uv_async_t *signal) { // main loop
+on_thread_stop(uv_async_t *signal) {
   udx_t *udx = signal->data;
+  udx_thread_t *thread = &udx->thread;
 
-  assert(udx->thread.status == RUNNING);
-  udx->thread.status = STOPPED;
+  ASSERT_RUNS_ON_MAIN;
 
+  set_status(udx, STOPPED);
+
+  assert(!uv_is_closing((uv_handle_t *) &thread->async_in_drain));
+  uv_close((uv_handle_t *) &thread->async_in_drain, NULL);
+
+  assert(!uv_is_closing((uv_handle_t *) signal));
   uv_close((uv_handle_t *) signal, NULL); // release main loop
 }
 
 static void
-reader_thread (void *data) {
-  udx_t *udx = data;
+thread_run (void *data) {
   int err;
+  udx_t *udx = data;
+  udx_thread_t *thread = &udx->thread;
 
-  debug_printf("drain thread=%zu start, udx=%p\n", uv_thread_self(), udx);
+  ASSERT_RUNS_ON_THREAD;
 
-  uv_loop_t *subloop = &udx->thread.loop;
+  if (thread->status == CLOSING) return;
+
+  assert(thread->status == INITIALIZED);
+
+  tracef("thread=%zu udx=%p THREAD LAUNCH\n", uv_thread_self(), udx);
+  uv_loop_t *subloop = &thread->loop;
+  uv_loop_t tmp = {0};
+  assert(memcmp(subloop, &tmp, sizeof(tmp)) == 0);
 
   err = uv_loop_init(subloop);
   assert(err == 0);
 
-  err = uv_async_init(subloop, &udx->thread.signal_control, thread_on_control);
+  err = uv_async_init(subloop, &thread->async_out_ctrl, t_on_control);
   assert(err == 0);
-  udx->thread.signal_control.data = udx;
 
+  thread->async_out_ctrl.data = udx;
 
-  udx->thread.buffer = malloc(sizeof(udx__drain_slot_t) * N_SLOTS);
-  udx->thread.buffer_len = N_SLOTS;
+  thread->buffer = malloc(sizeof(udx__drain_slot_t) * N_SLOTS);
+  thread->buffer_len = N_SLOTS;
 
-  udx->thread.status = RUNNING;
+  set_status(udx, RUNNING);
 
-  err = uv_async_send(&udx->thread.signal_control); // queue pending cmds
+  err = uv_async_send(&thread->async_out_ctrl); // queue pending cmds
   assert(err == 0);
 
   err = uv_run(subloop, UV_RUN_DEFAULT);
-  assert(err == 0 && "uv_run failed");
+  assert(err == 0 && "uv_run(subloop) failed");
 
-  free(udx->thread.buffer);
+  free(thread->buffer);
 
-  debug_printf("drain thread=%zu exit, udx=%p\n", uv_thread_self(), udx);
+  tracef("thread=%zu udx=%p THREAD EXIT\n", uv_thread_self(), udx);
 
-  err = uv_async_send(&udx->thread.signal_thread_stopped); // notify main
+  err = uv_async_send(&thread->async_in_thread_stopped); // notify main
   assert(err == 0);
 }
 
-static void launch_thread (uv_async_t *signal) {
+static void on_thread_start (uv_async_t *signal) {
   udx_t *udx = signal->data;
+  udx_thread_t *thread = &udx->thread;
+
+  ASSERT_RUNS_ON_MAIN;
+
+  assert(!uv_is_closing((uv_handle_t *) signal));
   uv_close((uv_handle_t *) signal, NULL);
 
-  int err = uv_thread_create(&udx->thread.thread_id, reader_thread, udx);
-  assert(err == 0);
+  if (thread->status == CLOSING) return;
 
-  debug_printf("thread launched, id=%zu loop=%p handles{ drain=%p, ctrl=%p }\n", udx->thread.thread_id, &udx->thread.loop, &udx->thread.signal_drain, &udx->thread.signal_control);
+  assert(thread->status == INITIALIZED);
+
+  int err = uv_thread_create(&thread->thread_id, thread_run, udx);
+  assert(err == 0);
 }
 
 /// exports
 
 int
-udx__drainer_init(udx_t *udx) {
-  if (udx->thread.status != STOPPED) return 0; // do nothing
+udx__thread_init(udx_t *udx) {
+  udx_thread_t *thread = &udx->thread;
+
+  if (thread->status != STOPPED) return 0; // do nothing
+
+  assert(thread->_main_id == 0 && "debug thread-restarts");
+
+  thread->_main_id = uv_thread_self();
+
+  ASSERT_RUNS_ON_MAIN;
+
   int err;
   uv_loop_t *loop = udx->loop;
 
-  err = uv_async_init(loop, &udx->thread.signal_drain, on_drain);
+  err = uv_async_init(loop, &thread->async_in_drain, on_drain);
   assert(err == 0);
-  udx->thread.signal_drain.data = udx;
 
-  err = uv_async_init(loop, &udx->thread.signal_thread_stopped, on_thread_stop);
+  thread->async_in_drain.data = udx;
+
+  err = uv_async_init(loop, &thread->async_in_thread_stopped, on_thread_stop);
   assert(err == 0);
-  udx->thread.signal_thread_stopped.data = udx;
 
-  // queue thread start onto main loop (don't spin up subloop before main loop starts)
-  err = uv_async_init(loop, &udx->thread.launch_thread, launch_thread); // mainloop
+  thread->async_in_thread_stopped.data = udx;
+
+  // queue thread start on main-loop (prevent launch before main loop runs)
+  err = uv_async_init(loop, &thread->async_thread_start, on_thread_start);
   assert(err == 0);
-  udx->thread.launch_thread.data = udx;
 
-  udx->thread.status = INITIALIZED;
+  thread->async_thread_start.data = udx;
 
-  uv_async_send(&udx->thread.launch_thread);
+  set_status(udx, INITIALIZED);
+
+  uv_async_send(&thread->async_thread_start);
 
   return 0;
 }
 
 int
-udx__drainer_socket_init (udx_socket_t *socket) {
+udx__thread_destroy (udx_t *udx) {
+  ASSERT_RUNS_ON_MAIN;
+
+  udx_thread_t *thread = &udx->thread;
+
+  if (
+    thread->status == STOPPED ||
+    thread->status == CLOSING
+  ) return 0;
+
+  set_status(udx, CLOSING);
+
+  return run_command(udx, THREAD_STOP, NULL);
+}
+
+int
+udx__thread_poll_init (udx_socket_t *socket) {
   udx_t *udx = socket->udx;
 
-  int err = uv_async_init(udx->loop, &socket->signal_poll_stopped, _on_poll_stopped_main);
+  ASSERT_RUNS_ON_MAIN;
+
+  int err = uv_async_init(udx->loop, &socket->async_in_poll_stopped, on_poll_stop);
   assert(err == 0);
 
-  socket->signal_poll_stopped.data = socket;
+  socket->async_in_poll_stopped.data = socket;
+
+  err = uv_fileno((const uv_handle_t *) &socket->handle, &socket->_fd);
+  assert(err == 0);
 
   return run_command(udx, SOCKET_INIT, socket);
 }
 
 int
-udx__drainer_socket_stop (udx_socket_t *socket) {
+udx__thread_poll_destroy (udx_socket_t *socket) {
   udx_t *udx = socket->udx;
+
+  ASSERT_RUNS_ON_MAIN;
+
+  assert(socket->status & UDX_SOCKET_CLOSED);
+
   return run_command(udx, SOCKET_REMOVE, socket);
 }
 
-int
-udx__drainer_destroy (udx_t *udx) {
-  if (udx->thread.status == STOPPED) return 0;
-
-  uv_close((uv_handle_t *) &udx->thread.signal_drain, NULL);
-
-  return run_command(udx, THREAD_STOP, NULL);
-}
+#undef tracef
+#undef N_SLOTS
+#undef ASSERT_RUNS_ON_THREAD
+#undef ASSERT_RUNS_ON_MAIN
 #endif // USE_DRAIN_THREAD
