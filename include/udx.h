@@ -271,6 +271,10 @@ struct udx_stream_s {
 
   uint32_t pkts_buffered; // how many (data) packets received but not processed (out of order)?
 
+  // pacing (tb = token bucket)
+  uint32_t tb_available;
+  uint64_t tb_last_refill_ms;
+
   // tlp
   bool tlp_is_retrans;  // the probe in-flight was a retransmission
   bool tlp_in_flight;   // if set, tlp_end_seq indicates the seqno
@@ -283,6 +287,7 @@ struct udx_stream_s {
   uv_timer_t rack_reo_timer;
   uv_timer_t tlp_timer;
   uv_timer_t zwp_timer;
+  uv_timer_t refill_pacing_timer;
 
   size_t inflight;
 

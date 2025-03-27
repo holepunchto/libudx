@@ -31,8 +31,9 @@
 
 #define UDX_HEADER_DATA_OR_END (UDX_HEADER_DATA | UDX_HEADER_END)
 
-#define UDX_DEFAULT_TTL         64
-#define UDX_DEFAULT_BUFFER_SIZE 212992
+#define UDX_DEFAULT_TTL                  64
+#define UDX_DEFAULT_BUFFER_SIZE          212992
+#define UDX_PACING_BYTES_PER_MILLISECOND 25000 // 25MB/s, 200mbit
 
 #define UDX_MAX_RTO_TIMEOUTS 6
 
@@ -189,6 +190,8 @@ stream_has_data (udx_stream_t *stream) {
   return stream->write_queue.len > 0 || stream->retransmit_queue.len > 0 || stream->unordered_queue.len > 0;
 }
 
+static void
+update_pacing_time (udx_stream_t *stream);
 static bool
 stream_write_wanted (udx_stream_t *stream) {
   if (!(stream->status & UDX_STREAM_CONNECTED)) {
@@ -204,7 +207,9 @@ stream_write_wanted (udx_stream_t *stream) {
     return true;
   }
 
-  return stream->inflight_queue.len < send_window_in_packets(stream) && stream_has_data(stream);
+  update_pacing_time(stream);
+
+  return stream->inflight_queue.len < send_window_in_packets(stream) && stream->tb_available && stream_has_data(stream);
 }
 
 static bool
@@ -654,11 +659,13 @@ close_stream (udx_stream_t *stream, int err) {
   uv_timer_stop(&stream->rack_reo_timer);
   uv_timer_stop(&stream->tlp_timer);
   uv_timer_stop(&stream->zwp_timer);
+  uv_timer_stop(&stream->refill_pacing_timer);
 
   uv_close((uv_handle_t *) &stream->rto_timer, finalize_maybe);
   uv_close((uv_handle_t *) &stream->rack_reo_timer, finalize_maybe);
   uv_close((uv_handle_t *) &stream->tlp_timer, finalize_maybe);
   uv_close((uv_handle_t *) &stream->zwp_timer, finalize_maybe);
+  uv_close((uv_handle_t *) &stream->refill_pacing_timer, finalize_maybe);
 
   if (udx->teardown && socket != NULL && socket->streams == NULL) {
     udx_socket_close(socket);
@@ -1551,9 +1558,31 @@ send_datagrams (udx_socket_t *socket) {
   return true;
 }
 
+static void
+update_pacing_time (udx_stream_t *stream) {
+  uint64_t now = uv_now(stream->udx->loop); // 1ms granularity
+
+  if (now > stream->tb_last_refill_ms) {
+    stream->tb_available = UDX_PACING_BYTES_PER_MILLISECOND;
+    stream->tb_last_refill_ms = now;
+  }
+}
+
 static bool
 stream_may_send (udx_stream_t *stream) {
+  update_pacing_time(stream);
+  if (stream->tb_available == 0) {
+    return false;
+  }
   return stream->inflight_queue.len < send_window_in_packets(stream) || stream->write_wanted & UDX_STREAM_WRITE_WANT_ZWP;
+}
+
+void
+pacing_timer_timeout (uv_timer_t *timer) {
+  udx_stream_t *stream = timer->data;
+
+  update_pacing_time(stream);
+  update_poll(stream->socket);
 }
 
 static bool
@@ -1704,6 +1733,12 @@ send_stream_packets (udx_socket_t *socket, udx_stream_t *stream) {
     udx__queue_shift(&stream->retransmit_queue);
     udx__queue_tail(&stream->inflight_queue, &pkt->queue);
     stream->inflight += pkt->size;
+    stream->tb_available = pkt->size > stream->tb_available ? 0 : stream->tb_available - pkt->size;
+
+    if (stream->tb_available == 0) {
+
+      uv_timer_start(&stream->refill_pacing_timer, pacing_timer_timeout, 1, 0);
+    }
 
     stream->packets_tx++;
     stream->bytes_tx += pkt->size;
@@ -1817,6 +1852,11 @@ send_stream_packets (udx_socket_t *socket, udx_stream_t *stream) {
     assert(pkt->size > 0 && pkt->size < 1500);
 
     stream->inflight += pkt->size;
+    stream->tb_available = pkt->size > stream->tb_available ? 0 : stream->tb_available - pkt->size;
+
+    if (stream->tb_available == 0) {
+      uv_timer_start(&stream->refill_pacing_timer, pacing_timer_timeout, 1, 0);
+    }
 
     if (tlp) {
       stream->write_wanted &= ~UDX_STREAM_WRITE_WANT_TLP;
@@ -2358,6 +2398,9 @@ udx_stream_init (udx_t *udx, udx_stream_t *stream, uint32_t local_id, udx_stream
   stream->rack_next_seq = 0;
   stream->rack_fack = 0;
 
+  stream->tb_available = UDX_PACING_BYTES_PER_MILLISECOND;
+  stream->tb_last_refill_ms = uv_now(udx->loop);
+
   stream->tlp_in_flight = false;
   stream->tlp_end_seq = 0;
   stream->tlp_is_retrans = false;
@@ -2375,7 +2418,11 @@ udx_stream_init (udx_t *udx, udx_stream_t *stream, uint32_t local_id, udx_stream
   uv_timer_init(udx->loop, &stream->zwp_timer);
   stream->zwp_timer.data = stream;
 
-  stream->nrefs = 4;
+  memset(&stream->refill_pacing_timer, 0, sizeof(uv_timer_t));
+  uv_timer_init(udx->loop, &stream->refill_pacing_timer);
+  stream->refill_pacing_timer.data = stream;
+
+  stream->nrefs = 5;
   stream->deferred_ack = 0;
 
   udx__queue_init(&stream->inflight_queue);
@@ -2387,7 +2434,7 @@ udx_stream_init (udx_t *udx, udx_stream_t *stream, uint32_t local_id, udx_stream
 
   stream->sacks = 0;
   stream->inflight = 0;
-  stream->ssthresh = 255;
+  stream->ssthresh = 0xffff;
   stream->cwnd = UDX_CONG_INIT_CWND;
   stream->cwnd_cnt = 0;
   stream->recv_rwnd_max = UDX_DEFAULT_RWND_MAX;
