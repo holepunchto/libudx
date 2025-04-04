@@ -340,8 +340,8 @@ struct udx_packet_s {
   int dest_len;
 
   // just alloc it in place here, easier to manage
-  char header[UDX_HEADER_SIZE];
-  unsigned short nbufs;
+  uint8_t header[UDX_HEADER_SIZE];
+  uint16_t nbufs;
 };
 
 struct udx_socket_send_s {
