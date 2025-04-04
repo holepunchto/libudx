@@ -1488,7 +1488,7 @@ send_packet (udx_socket_t *socket, udx_packet_t *pkt) {
   uv_buf_t _bufs[UDX_MAX_COMBINED_WRITES + 2];
 
   if (pkt->is_mtu_probe) {
-    int padding_size = pkt->header[3];
+    size_t padding_size = pkt->header[3];
     static char probe_data[256] = {0};
     _bufs[0] = bufs[0];
     _bufs[1].base = probe_data;
