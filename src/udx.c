@@ -1563,7 +1563,8 @@ update_pacing_time (udx_stream_t *stream) {
   uint64_t now = uv_now(stream->udx->loop); // 1ms granularity
 
   if (now > stream->tb_last_refill_ms) {
-    stream->tb_available = UDX_PACING_BYTES_PER_MILLISECOND;
+    uint64_t factor = now - stream->tb_last_refill_ms;
+    stream->tb_available = factor * UDX_PACING_BYTES_PER_MILLISECOND;
     stream->tb_last_refill_ms = now;
   }
 }
