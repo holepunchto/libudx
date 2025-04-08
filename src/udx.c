@@ -32,8 +32,8 @@
 #define UDX_HEADER_DATA_OR_END (UDX_HEADER_DATA | UDX_HEADER_END)
 
 #define UDX_DEFAULT_TTL                  64
-#define UDX_DEFAULT_BUFFER_SIZE          212992
 #define UDX_PACING_BYTES_PER_MILLISECOND 25000 // 25MB/s, 200mbit
+#define UDX_DEFAULT_SNDBUF_SIZE          212992
 
 #define UDX_MAX_RTO_TIMEOUTS 6
 
@@ -2175,13 +2175,40 @@ udx_socket_bind (udx_socket_t *socket, const struct sockaddr *addr, unsigned int
   err = uv_udp_set_ttl(handle, socket->ttl);
   assert(err == 0);
 
-  int send_buffer_size = UDX_DEFAULT_BUFFER_SIZE;
-  err = uv_send_buffer_size((uv_handle_t *) handle, &send_buffer_size);
+  int sndbuf_size = UDX_DEFAULT_SNDBUF_SIZE;
+  err = uv_send_buffer_size((uv_handle_t *) handle, &sndbuf_size);
   assert(err == 0);
 
-  int recv_buffer_size = UDX_DEFAULT_BUFFER_SIZE;
-  err = uv_recv_buffer_size((uv_handle_t *) handle, &recv_buffer_size);
-  assert(err == 0);
+  // setting SO_RCVBUF
+  // on MacOS setsockopt() fails if the user requests more memory than can be allocated;
+  // to accomodate this, we try setting decreasing buffer sizes until we succeed.
+  // on other platforms setsockopt() may succeed even if the full amount of the requested
+  // memory can't be allocated, which is fine.
+
+  int buffer_sizes[] = {
+    1024 * 1024, // 1MB
+    512 * 1024,  // 512k
+    256 * 1024,  // 256k
+    208 * 1024   // 212k this old maximum is known to work well
+  };
+
+  int rcvbuf_size = buffer_sizes[0];
+
+  for (uint32_t i = 0; i < (sizeof(buffer_sizes) / sizeof(buffer_sizes[0])); i++) {
+    rcvbuf_size = buffer_sizes[i];
+
+    err = uv_recv_buffer_size((uv_handle_t *) handle, &rcvbuf_size);
+    if (err == 0) break;
+  }
+
+  assert(err == 0); // only asserts if we can't allocate 212k
+
+  int actual_rcvbuf = 0;
+
+  uv_recv_buffer_size((uv_handle_t *) handle, &actual_rcvbuf);
+  if (actual_rcvbuf < rcvbuf_size) {
+    debug_printf("udx: SO_RCVBUF: less than requested. requested=%d allocated=%d\n", rcvbuf_size, actual_rcvbuf);
+  }
 
   err = uv_fileno((const uv_handle_t *) handle, &fd);
   assert(err == 0);
