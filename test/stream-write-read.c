@@ -21,6 +21,7 @@ bool read_called = false;
 bool eof_received = false;
 
 int nclosed;
+int nfinalized;
 
 void
 on_close (udx_stream_t *s, int status) {
@@ -29,8 +30,8 @@ on_close (udx_stream_t *s, int status) {
   nclosed++;
 
   if (nclosed == 2) {
-    udx_socket_close(&asock);
-    udx_socket_close(&bsock);
+    assert(0 == udx_socket_close(&asock));
+    assert(0 == udx_socket_close(&bsock));
   }
 }
 
@@ -89,6 +90,10 @@ main () {
 
   e = udx_stream_init(&udx, &bstream, 2, on_close, NULL);
   assert(e == 0);
+
+  assert(udx_stream_set_timewait_timeout_ms(&astream, 0) == 0);
+
+  assert(udx_stream_set_timewait_timeout_ms(&bstream, 0) == 0);
 
   e = udx_stream_connect(&astream, &asock, 2, (struct sockaddr *) &baddr);
   assert(e == 0);

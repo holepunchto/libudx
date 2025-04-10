@@ -55,6 +55,7 @@ on_socket_close (udx_socket_t *s) {
 void
 on_finalize (udx_stream_t *stream) {
   nfinalize++;
+
   if (nfinalize == 2) {
     udx_socket_close(&send_sock);
     udx_socket_close(&recv_sock);
@@ -129,8 +130,12 @@ main () {
   e = udx_stream_init(&udx, &recv_stream, 1, on_close, on_finalize);
   assert(e == 0);
 
+  assert(udx_stream_set_timewait_timeout_ms(&recv_stream, 0) == 0);
+
   e = udx_stream_init(&udx, &send_stream, 2, on_close, on_finalize);
   assert(e == 0);
+
+  assert(udx_stream_set_timewait_timeout_ms(&send_stream, 0) == 0);
 
   recv_stream.get_read_buffer_size = &pretend_buffer_is_full;
   send_stream.send_rwnd = 0;
