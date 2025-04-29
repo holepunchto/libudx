@@ -7,53 +7,54 @@ max_uint32 (uint32_t a, uint32_t b) {
   return a < b ? b : a;
 }
 
-// snapshot current delivery information in the packet,
-// to generate a rate sample later when packet is acked
+// store current delivery information in the packet
+// to generate a sample when it is acked
 void
 udx__rate_pkt_sent (udx_stream_t *stream, udx_packet_t *pkt) {
   if (stream->packets_tx == 1) {
     // first packet was just sent
     uint64_t now_ms = uv_now(stream->udx->loop);
 
-    stream->first_time_sent = now_ms;
+    stream->interval_start_time = now_ms;
     stream->delivered_time = now_ms;
   }
 
-  pkt->first_time_sent = stream->first_time_sent;
+  pkt->interval_start_time = stream->interval_start_time;
+  pkt->delivered_time = stream->delivered_time;
+  pkt->delivered = stream->delivered;
+  pkt->is_app_limited = stream->app_limited ? true : false;
+}
+
+static inline uint32_t
+stamp_ms_delta (uint64_t t1, uint64_t t0) {
+  int64_t delta = (int64_t) t1 - (int64_t) t0;
+  return delta > 0 ? delta : 0;
 }
 
 void
-udx__rate_pkt_delivered (udx_stream_t *stream, udx_packet_t *pkt, rate_sample_t *rs) {
+udx__rate_pkt_delivered (udx_stream_t *stream, udx_packet_t *pkt, udx_rate_sample_t *rs) {
 
   if (!pkt->delivered_time) {
     return;
   }
 
-  if (!rs->prior_delivered || rack_sent_after(pkt->time_sent, stream->first_time_sent, pkt->seq, rs->seq)) {
+  if (!rs->prior_delivered || rack_sent_after(pkt->time_sent, pkt->seq, stream->interval_start_time, rs->seq)) {
     rs->prior_delivered = pkt->delivered;
     rs->prior_timestamp = pkt->delivered_time;
     rs->is_app_limited = pkt->is_app_limited;
     rs->is_retrans = pkt->retransmitted;
     rs->seq = pkt->seq;
 
-    stream->first_time_sent = pkt->time_sent;
+    // record send time of most recently ACKed packet
+    stream->interval_start_time = pkt->time_sent;
 
-    rs->interval_ms = stream->first_time_sent - pkt->first_time_sent;
+    rs->interval_ms = stamp_ms_delta(stream->interval_start_time, pkt->interval_start_time);
   }
-
-  // if (pkt->sacked) {
-  //   pkt->delivered_time = 0;
-  // }
-}
-
-static inline uint32_t
-stamp_ms_delta (uint64_t t1, uint64_t t0) {
-  return (int64_t) t1 - (int64_t) t0;
 }
 
 // generate a rate sample and store it in the udx_stream_t
 void
-udx__rate_gen (udx_stream_t *stream, uint32_t delivered, uint32_t lost, bool is_sack_reneg, rate_sample_t *rs) {
+udx__rate_gen (udx_stream_t *stream, uint32_t delivered, uint32_t lost, bool is_sack_reneg, udx_rate_sample_t *rs) {
   uint64_t now_ms = uv_now(stream->udx->loop);
 
   // clear app limited if bubble is acked and gone

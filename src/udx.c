@@ -758,6 +758,7 @@ rack_detect_loss (udx_stream_t *stream) {
 
       if (remaining <= 0) {
         pkt->lost = true;
+        stream->lost++;
 
         assert(pkt->size > 0 && pkt->size < 1500);
         stream->inflight -= pkt->size;
@@ -877,6 +878,7 @@ udx_rto_timeout (uv_timer_t *timer) {
       }
 
       pkt->lost = true;
+      stream->lost++;
       pkt->rto_timeouts++;
       udx__queue_unlink(&stream->inflight_queue, &pkt->queue);
       udx__queue_tail(&stream->retransmit_queue, &pkt->queue);
@@ -951,7 +953,7 @@ clamp_rtt (udx_stream_t *stream, uint64_t rtt) {
 }
 
 static int
-ack_packet (udx_stream_t *stream, uint32_t seq, int sack, rate_sample_t *rs) {
+ack_packet (udx_stream_t *stream, uint32_t seq, int sack, udx_rate_sample_t *rs) {
   udx_cirbuf_t *out = &(stream->outgoing);
   udx_packet_t *pkt = (udx_packet_t *) udx__cirbuf_remove(out, seq);
 
@@ -1346,7 +1348,7 @@ process_packet (udx_socket_t *socket, char *buf, ssize_t buf_len, struct sockadd
 
   bool is_limited = stream->ca_state == UDX_CA_RECOVERY || stream->ca_state == UDX_CA_LOSS;
 
-  if (ack > stream->high_seq && (stream->ca_state == UDX_CA_RECOVERY || stream->ca_state == UDX_CA_LOSS)) {
+  if (seq_compare(ack, stream->high_seq) > 0 && (stream->ca_state == UDX_CA_RECOVERY || stream->ca_state == UDX_CA_LOSS)) {
     if (stream->ca_state == UDX_CA_RECOVERY) {
       stream->cwnd = stream->ssthresh;
     }
@@ -1355,7 +1357,7 @@ process_packet (udx_socket_t *socket, char *buf, ssize_t buf_len, struct sockadd
 
   bool ended = false;
 
-  rate_sample_t rs;
+  udx_rate_sample_t rs;
 
   for (uint32_t p = prior_remote_acked; p != ack; p++) {
     int a = ack_packet(stream, p, 0, &rs);
@@ -2424,7 +2426,8 @@ udx_stream_init (udx_t *udx, udx_stream_t *stream, uint32_t local_id, udx_stream
 
   stream->delivered = 0;
   stream->lost = 0;
-  stream->first_time_sent = 0;
+  stream->app_limited = 0;
+  stream->interval_start_time = 0;
   stream->delivered_time = 0;
   stream->rate_delivered = 0;
   stream->rate_interval_ms = 0;

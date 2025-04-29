@@ -259,13 +259,13 @@ struct udx_stream_s {
   uint32_t remote_ended;
 
   // rate control
-  uint32_t delivered;        // number of packets delivered, including retransmits
-  uint32_t lost;             // number of packets lost, including retransmits
-  uint32_t app_limited;      // we are 'app limited' until delivered reaches this value
-  uint64_t first_time_sent;  // start of window send phase
-  uint64_t delivered_time;   // time we reached 'delivered'
-  uint32_t rate_delivered;   // saved rate sample: packets delivered
-  uint32_t rate_interval_ms; // saved rate sample: time elapsed
+  uint32_t delivered;           // number of packets delivered, including retransmits
+  uint32_t lost;                // number of packets lost, including retransmits
+  uint32_t app_limited;         // we are 'app limited' until delivered reaches this value
+  uint64_t interval_start_time; // start of window send phase
+  uint64_t delivered_time;      // time we reached 'delivered'
+  uint32_t rate_delivered;      // saved rate sample: packets delivered
+  uint32_t rate_interval_ms;    // saved rate sample: time elapsed
   bool rate_sample_is_app_limited;
 
   uint32_t srtt;
@@ -343,14 +343,13 @@ struct udx_packet_s {
   uint8_t transmits;
   uint8_t rto_timeouts;
   bool is_mtu_probe;
-  bool sacked;
   uint16_t size;
 
   uint64_t time_sent;
 
   // rate info
-  uint64_t first_time_sent;
-  uint64_t delivered_time; /* ?? */
+  uint64_t interval_start_time;
+  uint64_t delivered_time;
   uint32_t delivered;
   bool is_app_limited;
 

@@ -24,7 +24,7 @@ typedef struct {
   bool is_app_limited;
   bool is_retrans;
   bool is_ack_delayed;
-} rate_sample_t;
+} udx_rate_sample_t;
 
 static inline int32_t
 seq_diff (uint32_t a, uint32_t b) {
@@ -53,10 +53,10 @@ void
 udx__rate_pkt_sent (udx_stream_t *stream, udx_packet_t *pkt);
 
 void
-udx__rate_pkt_delivered (udx_stream_t *stream, udx_packet_t *pkt, rate_sample_t *rs);
+udx__rate_pkt_delivered (udx_stream_t *stream, udx_packet_t *pkt, udx_rate_sample_t *rs);
 
 void
-udx__rate_gen (udx_stream_t *stream, uint32_t delivered, uint32_t lost, bool is_sack_renege, rate_sample_t *rs);
+udx__rate_gen (udx_stream_t *stream, uint32_t delivered, uint32_t lost, bool is_sack_renege, udx_rate_sample_t *rs);
 
 void
 udx__rate_check_app_limited (udx_stream_t *stream);
