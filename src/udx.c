@@ -1445,7 +1445,7 @@ process_packet (udx_socket_t *socket, char *buf, ssize_t buf_len, struct sockadd
     }
   }
 
-  udx__rate_gen(stream, delivered, lost, false, &rs);
+  udx__rate_gen(stream, delivered, lost, &rs);
   // udx_cong_control(stream, ack, delivered, &rs);
 
   return 1;

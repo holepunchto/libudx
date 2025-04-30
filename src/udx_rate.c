@@ -54,7 +54,7 @@ udx__rate_pkt_delivered (udx_stream_t *stream, udx_packet_t *pkt, udx_rate_sampl
 
 // generate a rate sample and store it in the udx_stream_t
 void
-udx__rate_gen (udx_stream_t *stream, uint32_t delivered, uint32_t lost, bool is_sack_reneg, udx_rate_sample_t *rs) {
+udx__rate_gen (udx_stream_t *stream, uint32_t delivered, uint32_t lost, udx_rate_sample_t *rs) {
   uint64_t now_ms = uv_now(stream->udx->loop);
 
   // clear app limited if bubble is acked and gone
@@ -69,7 +69,7 @@ udx__rate_gen (udx_stream_t *stream, uint32_t delivered, uint32_t lost, bool is_
   rs->acked_sacked = delivered;
   rs->losses = lost;
 
-  if (!rs->prior_timestamp || is_sack_reneg) {
+  if (!rs->prior_timestamp) {
     rs->delivered = -1;
     rs->interval_ms = -1;
     return;

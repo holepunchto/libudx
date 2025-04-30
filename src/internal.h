@@ -56,7 +56,7 @@ void
 udx__rate_pkt_delivered (udx_stream_t *stream, udx_packet_t *pkt, udx_rate_sample_t *rs);
 
 void
-udx__rate_gen (udx_stream_t *stream, uint32_t delivered, uint32_t lost, bool is_sack_renege, udx_rate_sample_t *rs);
+udx__rate_gen (udx_stream_t *stream, uint32_t delivered, uint32_t lost, udx_rate_sample_t *rs);
 
 void
 udx__rate_check_app_limited (udx_stream_t *stream);
