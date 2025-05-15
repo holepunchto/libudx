@@ -10,6 +10,8 @@ extern "C" {
 #include <stdint.h>
 #include <uv.h>
 
+#define UDX_USE_BBR 1
+
 #define UDX_HEADER_SIZE      20
 #define UDX_IPV4_HEADER_SIZE (20 + 8 + UDX_HEADER_SIZE)
 #define UDX_IPV6_HEADER_SIZE (40 + 8 + UDX_HEADER_SIZE)
@@ -207,6 +209,15 @@ typedef struct udx_cong_s {
 #define UDX_CA_RECOVERY 2
 #define UDX_CA_LOSS     3
 
+#ifdef UDX_USE_BBR
+
+typedef struct {
+  uint32_t bw;
+  uint32_t t;
+} udx_minmax_sample_t;
+
+#endif
+
 struct udx_stream_s {
   uint32_t local_id; // must be first entry, so its compat with the cirbuf
   uint32_t remote_id;
@@ -288,6 +299,59 @@ struct udx_stream_s {
   uint64_t rack_time_sent;
   uint32_t rack_next_seq;
   uint32_t rack_fack;
+
+#ifdef UDX_USE_BBR
+
+  // differences from linux
+  // packet delivery rate measured in packets/ms
+
+  struct {
+    uint64_t min_rtt_ms;          // min RTT in past min_rtt_win (10 seconds)
+    uint64_t min_rtt_stamp;       // timestamp min_rtt_ms sample was taken
+    uint64_t probe_rtt_done_time; // end time for UDX_BBR_STATE_PROBE_RTT
+
+    udx_minmax_sample_t minmax_sample[3];
+
+    uint32_t rtt_cnt;
+    uint32_t next_rtt_delivered;
+    uint64_t cycle_mstamp;
+    uint8_t bbr_state;     // UDX_BBR_STATE_* // 3 bits
+    uint8_t prev_ca_state; // 3 bits
+
+    // flags
+    bool use_packet_conservation;
+    bool round_start;
+    bool idle_restart;
+    bool probe_rtt_rnd_done;
+
+    // long term sampling
+
+    bool lt_is_sampling;
+    uint8_t lt_rtt_cnt;
+    bool lt_use_bw;
+
+    uint32_t lt_bw;             // packets / ms
+    uint32_t lt_last_delivered; // lt interval start: stream->delivered
+    uint32_t lt_last_stamp;     // lt interval start: stream->delivered_time
+    uint32_t lt_last_lost;      // lt interval start: stream->lost
+    float pacing_gain;
+    float cwnd_gain;
+    bool full_bw_reached;
+    uint8_t full_bw_cnt;
+    uint8_t cycle_index;
+    bool has_seen_rtt;
+
+    uint32_t prior_cwnd;
+    uint32_t full_bw;
+
+    uint64_t ack_epoch_start;
+    uint16_t extra_acked[2];
+    uint32_t ack_epoch_acked; // packets (S)ACKed in sampling epoch
+    uint8_t extra_acked_win_rtts;
+    uint8_t extra_acked_win_index;
+
+  } bbr;
+#endif
 
   uint32_t pkts_buffered; // how many (data) packets received but not processed (out of order)?
 

@@ -72,21 +72,6 @@ cubic_root (uint64_t a) {
 }
 
 static uint32_t
-max_uint32 (uint32_t a, uint32_t b) {
-  return a < b ? b : a;
-}
-
-static uint32_t
-min_uint32 (uint32_t a, uint32_t b) {
-  return a < b ? a : b;
-}
-
-static uint64_t
-min_uint64 (uint64_t a, uint64_t b) {
-  return a < b ? a : b;
-}
-
-static uint32_t
 seq_max (uint32_t a, uint32_t b) {
   return seq_compare(a, b) < 0 ? b : a;
 }

@@ -26,6 +26,26 @@ typedef struct {
   bool is_ack_delayed;
 } udx_rate_sample_t;
 
+static uint32_t
+max_uint32 (uint32_t a, uint32_t b) {
+  return a < b ? b : a;
+}
+
+static uint32_t
+min_uint32 (uint32_t a, uint32_t b) {
+  return a < b ? a : b;
+}
+
+static uint64_t
+min_uint64 (uint64_t a, uint64_t b) {
+  return a < b ? a : b;
+}
+
+static uint64_t
+max_uint64 (uint64_t a, uint64_t b) {
+  return a < b ? b : a;
+}
+
 static inline int32_t
 seq_diff (uint32_t a, uint32_t b) {
   return a - b;
