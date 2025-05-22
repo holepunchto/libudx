@@ -37,6 +37,7 @@ target_sources(
     src/link.h
     src/io.h
     src/udx.c
+    src/udx_rate.c
 )
 
 target_include_directories(

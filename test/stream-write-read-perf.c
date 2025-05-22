@@ -34,9 +34,12 @@ struct {
 uint64_t read_hash = HASH_INIT;
 uint64_t write_hash = HASH_INIT;
 
+uv_timer_t stat_timer;
+
 void
 on_ack (udx_stream_write_t *r, int status, int unordered) {
   printf("write acked, status=%d %s\n", status, status == UV_ECANCELED ? "(UV_ECANCELED)" : "");
+  uv_timer_stop(&stat_timer);
   udx_stream_destroy(r->stream);
   udx_stream_destroy(&astream);
 }
@@ -77,6 +80,12 @@ on_a_stream_close () {
   printf("receiving stream closing\n");
   int e = udx_socket_close(&asock);
   assert(e == 0 && "udx_socket_close (receiver, 'a')");
+}
+
+static void
+print_rate_on_interval (uv_timer_t *t) {
+  printf("A rate=%9.3f/kpkts/sec %s\n", astream.rate_delivered / (1.0f * astream.rate_interval_ms), astream.rate_sample_is_app_limited ? "(app limited)" : "");
+  printf("B rate=%9.3f/kpkts/sec %s\n", bstream.rate_delivered / (1.0f * bstream.rate_interval_ms), bstream.rate_sample_is_app_limited ? "(app limited)" : "");
 }
 
 int
@@ -134,6 +143,10 @@ main () {
 
   uv_buf_t buf = uv_buf_init((char *) data, options.size_bytes);
   udx_stream_write(req, &bstream, &buf, 1, on_ack);
+
+  uv_timer_init(&loop, &stat_timer);
+
+  uv_timer_start(&stat_timer, print_rate_on_interval, 0, 200);
 
   e = uv_run(&loop, UV_RUN_DEFAULT);
   assert(e == 0 && "UV_RUN");
