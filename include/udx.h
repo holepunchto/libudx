@@ -10,8 +10,6 @@ extern "C" {
 #include <stdint.h>
 #include <uv.h>
 
-#define UDX_USE_BBR 1
-
 #define UDX_HEADER_SIZE      20
 #define UDX_IPV4_HEADER_SIZE (20 + 8 + UDX_HEADER_SIZE)
 #define UDX_IPV6_HEADER_SIZE (40 + 8 + UDX_HEADER_SIZE)
@@ -192,31 +190,14 @@ struct udx_socket_s {
   int64_t packets_dropped_by_kernel;
 };
 
-typedef struct udx_cong_s {
-  uint32_t K;
-  uint32_t ack_cnt;
-  uint32_t origin_point;
-  uint32_t delay_min;
-  uint32_t cnt;
-  uint64_t last_time;
-  uint64_t start_time;
-  uint32_t last_max_cwnd;
-  uint32_t last_cwnd;
-  uint32_t tcp_cwnd;
-} udx_cong_t;
-
 #define UDX_CA_OPEN     1
 #define UDX_CA_RECOVERY 2
 #define UDX_CA_LOSS     3
-
-#ifdef UDX_USE_BBR
 
 typedef struct {
   uint32_t bw;
   uint32_t t;
 } udx_minmax_sample_t;
-
-#endif
 
 struct udx_stream_s {
   uint32_t local_id; // must be first entry, so its compat with the cirbuf
@@ -300,8 +281,6 @@ struct udx_stream_s {
   uint32_t rack_next_seq;
   uint32_t rack_fack;
 
-#ifdef UDX_USE_BBR
-
   // differences from linux
   // packet delivery rate measured in packets/ms
 
@@ -312,22 +291,22 @@ struct udx_stream_s {
 
     udx_minmax_sample_t minmax_sample[3];
 
-    uint32_t rtt_cnt;
+    uint32_t rtt_count;
     uint32_t next_rtt_delivered;
-    uint64_t cycle_mstamp;
-    uint8_t bbr_state;     // UDX_BBR_STATE_* // 3 bits
+    uint64_t cycle_timestamp;
+    uint8_t state;         // UDX_BBR_STATE_* // 3 bits
     uint8_t prev_ca_state; // 3 bits
 
     // flags
     bool use_packet_conservation;
     bool round_start;
     bool idle_restart;
-    bool probe_rtt_rnd_done;
+    bool probe_rtt_round_done;
 
     // long term sampling
 
     bool lt_is_sampling;
-    uint8_t lt_rtt_cnt;
+    uint8_t lt_rtt_count;
     bool lt_use_bw;
 
     uint32_t lt_bw;             // packets / ms
@@ -337,7 +316,7 @@ struct udx_stream_s {
     float pacing_gain;
     float cwnd_gain;
     bool full_bw_reached;
-    uint8_t full_bw_cnt;
+    uint8_t full_bw_count;
     uint8_t cycle_index;
     bool has_seen_rtt;
 
@@ -351,7 +330,8 @@ struct udx_stream_s {
     uint8_t extra_acked_win_index;
 
   } bbr;
-#endif
+
+  uint32_t pacing_bytes_per_ms; // computed by bbr module
 
   uint32_t pkts_buffered; // how many (data) packets received but not processed (out of order)?
 
@@ -376,17 +356,13 @@ struct udx_stream_s {
   size_t inflight;
 
   uint32_t sacks;
-  uint32_t ssthresh;
-  uint32_t cwnd; // packets
-  uint32_t cwnd_cnt;
+  uint32_t cwnd;          // packets
+  uint32_t ssthresh;      // packets
   uint32_t send_rwnd;     // remote advertised rwnd
   uint32_t recv_rwnd_max; // default: UDX_DEFAULT_RWND_MAX
 
   uint32_t send_wl1; // seq at last window update
   uint32_t send_wl2; // ack at last window update
-
-  // congestion state
-  udx_cong_t cong;
 
   udx_queue_t write_queue;
 

@@ -2,11 +2,6 @@
 #include "debug.h"
 #include "internal.h"
 
-static uint32_t
-max_uint32 (uint32_t a, uint32_t b) {
-  return a < b ? b : a;
-}
-
 // store current delivery information in the packet
 // to generate a sample when it is acked
 void

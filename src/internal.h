@@ -16,7 +16,7 @@ typedef struct {
   int64_t interval_ms;
   uint32_t snd_interval_ms;
   uint32_t rcv_interval_ms;
-  long rtt_ms;
+  int64_t rtt_ms;
   int losses;
   uint32_t acked_sacked;
   uint32_t prior_in_flight;
@@ -28,6 +28,11 @@ typedef struct {
 
 static uint32_t
 max_uint32 (uint32_t a, uint32_t b) {
+  return a < b ? b : a;
+}
+
+static int32_t
+max_int32 (int32_t a, int32_t b) {
   return a < b ? b : a;
 }
 
@@ -80,5 +85,16 @@ udx__rate_gen (udx_stream_t *stream, uint32_t delivered, uint32_t lost, udx_rate
 
 void
 udx__rate_check_app_limited (udx_stream_t *stream);
+
+// bbr
+
+void
+bbr_init (udx_stream_t *stream);
+
+void
+bbr_on_loss (udx_stream_t *stream);
+
+void
+bbr_main (udx_stream_t *stream, udx_rate_sample_t *rs);
 
 #endif // UDX_INTERNAL_H
