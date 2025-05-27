@@ -16,6 +16,7 @@
 #include "io.h"
 #include "link.h"
 #include "queue.h"
+#include "win_filter.h"
 
 #define UDX_STREAM_ALL_ENDED (UDX_STREAM_ENDED | UDX_STREAM_ENDED_REMOTE)
 #define UDX_STREAM_DEAD      (UDX_STREAM_DESTROYING | UDX_STREAM_CLOSED)
@@ -37,17 +38,18 @@
 
 #define UDX_MAX_RTO_TIMEOUTS 6
 
-#define UDX_CONG_C           400  // C=0.4 (inverse) in scaled 1000
-#define UDX_CONG_C_SCALE     1e12 // ms/s ** 3 * c-scale
-#define UDX_CONG_BETA        731  // b=0.3, BETA = 1-b, scaled 1024
-#define UDX_CONG_BETA_UNIT   1024
-#define UDX_CONG_BETA_SCALE  (8 * (UDX_CONG_BETA_UNIT + UDX_CONG_BETA) / 3 / (UDX_CONG_BETA_UNIT - UDX_CONG_BETA)) // 3B/(2-B) scaled 8
-#define UDX_CONG_CUBE_FACTOR UDX_CONG_C_SCALE / UDX_CONG_C
-#define UDX_CONG_INIT_CWND   10
-#define UDX_CONG_MAX_CWND    65536
-#define UDX_RTO_MAX_MS       30000
-#define UDX_RTT_MAX_MS       30000
-#define UDX_DEFAULT_RWND_MAX (4 * 1024 * 1024) // arbitrary, ~175 1500 mtu packets, @20ms latency = 416 mbits/sec
+#define UDX_CONG_C            400  // C=0.4 (inverse) in scaled 1000
+#define UDX_CONG_C_SCALE      1e12 // ms/s ** 3 * c-scale
+#define UDX_CONG_BETA         731  // b=0.3, BETA = 1-b, scaled 1024
+#define UDX_CONG_BETA_UNIT    1024
+#define UDX_CONG_BETA_SCALE   (8 * (UDX_CONG_BETA_UNIT + UDX_CONG_BETA) / 3 / (UDX_CONG_BETA_UNIT - UDX_CONG_BETA)) // 3B/(2-B) scaled 8
+#define UDX_CONG_CUBE_FACTOR  UDX_CONG_C_SCALE / UDX_CONG_C
+#define UDX_CONG_INIT_CWND    10
+#define UDX_CONG_MAX_CWND     65536
+#define UDX_RTO_MAX_MS        30000
+#define UDX_RTT_MAX_MS        30000
+#define UDX_RTT_MIN_WINDOW_MS 300000            // 300 seconds, same as Linux default
+#define UDX_DEFAULT_RWND_MAX  (4 * 1024 * 1024) // arbitrary, ~175 1500 mtu packets, @20ms latency = 416 mbits/sec
 
 #define UDX_HIGH_WATERMARK 262144
 
@@ -671,6 +673,11 @@ schedule_loss_probe (udx_stream_t *stream);
 
 // rack recovery implemented using https://datatracker.ietf.org/doc/rfc8985/
 
+uint32_t
+udx_rtt_min (udx_stream_t *stream) {
+  return win_filter_get(&stream->rtt_min);
+}
+
 static inline uint32_t
 rack_update_reo_wnd (udx_stream_t *stream) {
   // rack 6.2.4
@@ -681,7 +688,7 @@ rack_update_reo_wnd (udx_stream_t *stream) {
     if (stream->sacks >= 3) return 0;
   }
 
-  uint32_t r = stream->rack_rtt_min / 4;
+  uint32_t r = udx_rtt_min(stream) / 4;
   return r < stream->srtt ? r : stream->srtt;
 }
 
@@ -1003,9 +1010,7 @@ ack_packet (udx_stream_t *stream, uint32_t seq, int sack, udx_rate_sample_t *rs)
 
   if (!pkt->retransmitted) {
     // rack 6.2 step 1 update rack.min_RTT
-    if (stream->rack_rtt_min == 0 || stream->rack_rtt_min > rtt) {
-      stream->rack_rtt_min = rtt;
-    }
+    win_filter_apply_min(&stream->rtt_min, UDX_RTT_MIN_WINDOW_MS, time, rtt);
 
     // First round trip time sample
     if (stream->srtt == 0) {
@@ -1033,7 +1038,7 @@ ack_packet (udx_stream_t *stream, uint32_t seq, int sack, udx_rate_sample_t *rs)
 
   // rack 6.2 step 2 update the state for the most recently sent segment
 
-  if (!pkt->retransmitted || (rtt >= stream->rack_rtt_min && stream->rack_rtt_min > 0)) {
+  if (!pkt->retransmitted || (rtt >= udx_rtt_min(stream))) {
     stream->rack_rtt = rtt;
 
     if (rack_sent_after(pkt->time_sent, next, stream->rack_time_sent, stream->rack_next_seq)) {
@@ -2441,7 +2446,8 @@ udx_stream_init (udx_t *udx, udx_stream_t *stream, uint32_t local_id, udx_stream
   uv_timer_init(udx->loop, &stream->rto_timer);
   stream->rto_timer.data = stream;
 
-  stream->rack_rtt_min = 0;
+  win_filter_reset(&stream->rtt_min, uv_now(udx->loop), ~0U);
+
   stream->rack_rtt = 0;
   stream->rack_time_sent = 0;
   stream->rack_next_seq = 0;
