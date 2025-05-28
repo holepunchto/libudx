@@ -92,9 +92,9 @@ udx__rate_gen (udx_stream_t *stream, uint32_t delivered, uint32_t lost, udx_rate
     "UDX_CA_LOSS",
   };
 
-  if (rs->interval_ms < stream->rack_rtt_min) {
+  if (rs->interval_ms < udx_rtt_min(stream)) {
     if (!rs->is_retrans) {
-      debug_printf("rs->interval_ms=%ld, rs->delivered=%d, stream->ca_state=%s, stream->min_rtt=%u", rs->interval_ms, rs->delivered, ca_state_string[stream->ca_state], stream->rack_rtt_min);
+      debug_printf("rs->interval_ms=%ld, rs->delivered=%d, stream->ca_state=%s, stream->min_rtt=%u", rs->interval_ms, rs->delivered, ca_state_string[stream->ca_state], udx_rtt_min(stream));
     }
     rs->interval_ms = -1;
     return;

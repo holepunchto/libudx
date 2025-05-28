@@ -78,6 +78,15 @@ typedef struct udx_stream_send_s udx_stream_send_t;
 typedef struct udx_stream_write_s udx_stream_write_t;
 typedef struct udx_stream_write_buf_s udx_stream_write_buf_t;
 
+typedef struct {
+  uint64_t t;
+  uint32_t v;
+} win_filter_entry_t;
+
+typedef struct {
+  win_filter_entry_t entries[3];
+} win_filter_t;
+
 typedef enum {
   UDX_LOOKUP_FAMILY_IPV4 = 1,
   UDX_LOOKUP_FAMILY_IPV6 = 2,
@@ -272,8 +281,9 @@ struct udx_stream_s {
   uint32_t rttvar;
   uint32_t rto;
 
+  win_filter_t rtt_min;
+
   // rack data...
-  uint32_t rack_rtt_min;
   uint32_t rack_rtt;
   uint64_t rack_time_sent;
   uint32_t rack_next_seq;
@@ -586,6 +596,9 @@ udx_interface_event_stop (udx_interface_event_t *handle);
 
 int
 udx_interface_event_close (udx_interface_event_t *handle);
+
+uint32_t
+udx_rtt_min (udx_stream_t *stream);
 
 #ifdef __cplusplus
 }

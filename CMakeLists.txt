@@ -38,6 +38,8 @@ target_sources(
     src/io.h
     src/udx.c
     src/udx_rate.c
+    src/win_filter.h
+    src/win_filter.c
 )
 
 target_include_directories(
