@@ -1362,8 +1362,12 @@ process_packet (udx_socket_t *socket, char *buf, ssize_t buf_len, struct sockadd
 
   bool ended = false;
 
-  udx_rate_sample_t rs;
+  if (seq_diff(prior_remote_acked, ack) > 0) {
+    debug_printf("out-of-order; prior_remote_acked=%i, ack=%i\n", prior_remote_acked, ack);
+    return 1; // bail; ack out of order
+  }
 
+  udx_rate_sample_t rs;
   for (uint32_t p = prior_remote_acked; p != ack; p++) {
     int a = ack_packet(stream, p, 0, &rs);
     if (a == 1) stream->delivered++;
