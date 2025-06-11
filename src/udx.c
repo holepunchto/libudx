@@ -1250,7 +1250,7 @@ process_packet (udx_socket_t *socket, char *buf, ssize_t buf_len, struct sockadd
   uint32_t delivered = stream->delivered;
   uint32_t lost = stream->lost;
   uint32_t prior_remote_acked = stream->remote_acked;
-  bool ack_advanced = ack > prior_remote_acked;
+  bool ack_advanced = seq_diff(ack, prior_remote_acked) > 0;
 
   buf += UDX_HEADER_SIZE;
   buf_len -= UDX_HEADER_SIZE;
@@ -1364,7 +1364,7 @@ process_packet (udx_socket_t *socket, char *buf, ssize_t buf_len, struct sockadd
 
   udx_rate_sample_t rs;
 
-  for (uint32_t p = prior_remote_acked; p != ack; p++) {
+  for (uint32_t p = prior_remote_acked; seq_diff(p, ack) < 0; p++) {
     int a = ack_packet(stream, p, 0, &rs);
     if (a == 1) stream->delivered++;
     if (a == 2) {
@@ -1373,7 +1373,9 @@ process_packet (udx_socket_t *socket, char *buf, ssize_t buf_len, struct sockadd
     }
   }
 
-  stream->remote_acked = ack;
+  if (ack_advanced) {
+    stream->remote_acked = ack;
+  }
 
   if (ended) {
     if (stream->status & UDX_STREAM_DEAD) {
