@@ -2674,14 +2674,14 @@ udx_stream_change_remote (udx_stream_t *stream, udx_socket_t *socket, uint32_t r
   stream->remote_id = remote_id;
   set_stream_socket(stream, socket);
 
-  if (stream->seq != stream->remote_acked) {
+  bool defer_change = stream->seq != stream->remote_acked;
+  if (defer_change) {
     debug_printf("change_remote: id=%u RA=%u Seq=%u\n", stream->local_id, stream->remote_acked, stream->seq);
     stream->remote_changing = true;
     stream->seq_on_remote_changed = stream->seq;
     stream->on_remote_changed = on_remote_changed;
   } else {
     debug_printf("change_remote: id=%u RA=%u Seq=%u, acting now!\n", stream->local_id, stream->remote_acked, stream->seq);
-    on_remote_changed(stream);
   }
 
   stream->mtu = UDX_MTU_BASE;
@@ -2690,7 +2690,10 @@ udx_stream_change_remote (udx_stream_t *stream, udx_socket_t *socket, uint32_t r
   stream->mtu_probe_size = UDX_MTU_BASE; // starts with first ack, counts as a confirmation of base
   stream->mtu_max = UDX_MTU_MAX;         // revised in connect()
 
-  return update_poll(stream->socket);
+  int err = update_poll(stream->socket);
+  if (err != 0) return err;
+
+  return !defer_change;
 }
 
 int
