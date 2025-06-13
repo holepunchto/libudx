@@ -6,7 +6,7 @@
 // to generate a sample when it is acked
 void
 udx__rate_pkt_sent (udx_stream_t *stream, udx_packet_t *pkt) {
-  if (stream->packets_tx == 1) {
+  if (!stream->packets_tx) {
     // first packet was just sent
     uint64_t now_ms = uv_now(stream->udx->loop);
 
@@ -15,6 +15,7 @@ udx__rate_pkt_sent (udx_stream_t *stream, udx_packet_t *pkt) {
   }
 
   pkt->interval_start_time = stream->interval_start_time;
+
   pkt->delivered_time = stream->delivered_time;
   pkt->delivered = stream->delivered;
   pkt->is_app_limited = stream->app_limited ? true : false;
@@ -23,7 +24,7 @@ udx__rate_pkt_sent (udx_stream_t *stream, udx_packet_t *pkt) {
 static inline uint32_t
 stamp_ms_delta (uint64_t t1, uint64_t t0) {
   int64_t delta = (int64_t) t1 - (int64_t) t0;
-  return delta > 0 ? delta : 0;
+  return max_int64(delta, 0L);
 }
 
 void
@@ -35,6 +36,7 @@ udx__rate_pkt_delivered (udx_stream_t *stream, udx_packet_t *pkt, udx_rate_sampl
 
   if (!rs->prior_delivered || rack_sent_after(pkt->time_sent, pkt->seq, stream->interval_start_time, rs->seq)) {
     rs->prior_delivered = pkt->delivered;
+
     rs->prior_timestamp = pkt->delivered_time;
     rs->is_app_limited = pkt->is_app_limited;
     rs->is_retrans = pkt->retransmitted;
@@ -89,7 +91,7 @@ udx__rate_gen (udx_stream_t *stream, uint32_t delivered, uint32_t lost, udx_rate
 
   if (rs->interval_ms < udx_rtt_min(stream)) {
     if (!rs->is_retrans) {
-      debug_printf("rs->interval_ms=%ld, rs->delivered=%d, stream->ca_state=%s, stream->min_rtt=%u", rs->interval_ms, rs->delivered, ca_state_string[stream->ca_state], udx_rtt_min(stream));
+      debug_printf("rs->interval_ms=%ld, rs->delivered=%d, stream->ca_state=%s, stream->min_rtt=%u\n", rs->interval_ms, rs->delivered, ca_state_string[stream->ca_state], udx_rtt_min(stream));
     }
     rs->interval_ms = -1;
     return;

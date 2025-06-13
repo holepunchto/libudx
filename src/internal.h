@@ -16,7 +16,7 @@ typedef struct {
   int64_t interval_ms;
   uint32_t snd_interval_ms;
   uint32_t rcv_interval_ms;
-  int64_t rtt_ms;
+  int64_t rtt_ms; // rs.rtt in IETF draft
   int losses;
   uint32_t acked_sacked;
   uint32_t prior_in_flight;
@@ -26,27 +26,32 @@ typedef struct {
   bool is_ack_delayed;
 } udx_rate_sample_t;
 
-static uint32_t
+static inline uint32_t
 max_uint32 (uint32_t a, uint32_t b) {
   return a < b ? b : a;
 }
 
-static int32_t
-max_int32 (int32_t a, int32_t b) {
-  return a < b ? b : a;
-}
-
-static uint32_t
+static inline uint32_t
 min_uint32 (uint32_t a, uint32_t b) {
   return a < b ? a : b;
 }
 
-static uint64_t
+static inline int32_t
+max_int32 (int32_t a, int32_t b) {
+  return a < b ? b : a;
+}
+
+static inline int64_t
+max_int64 (int64_t a, int64_t b) {
+  return a < b ? b : a;
+}
+
+static inline uint64_t
 min_uint64 (uint64_t a, uint64_t b) {
   return a < b ? a : b;
 }
 
-static uint64_t
+static inline uint64_t
 max_uint64 (uint64_t a, uint64_t b) {
   return a < b ? b : a;
 }
@@ -96,5 +101,8 @@ bbr_on_loss (udx_stream_t *stream);
 
 void
 bbr_main (udx_stream_t *stream, udx_rate_sample_t *rs);
+
+void
+bbr_on_transmit_start (udx_stream_t *stream, uint64_t now_ms);
 
 #endif // UDX_INTERNAL_H

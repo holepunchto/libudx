@@ -32,9 +32,9 @@
 
 #define UDX_HEADER_DATA_OR_END (UDX_HEADER_DATA | UDX_HEADER_END)
 
-#define UDX_DEFAULT_TTL                  64
-#define UDX_PACING_BYTES_PER_MILLISECOND 25000 // 25MB/s, 200mbit
-#define UDX_DEFAULT_SNDBUF_SIZE          212992
+#define UDX_DEFAULT_TTL         64
+#define UDX_INIT_PACING_RATE    25000 // 25MB/s, 200mbit. updated by bbr_init
+#define UDX_DEFAULT_SNDBUF_SIZE 212992
 
 #define UDX_MAX_RTO_TIMEOUTS 6
 
@@ -370,6 +370,8 @@ init_stream_packet (udx_packet_t *pkt, int type, udx_stream_t *stream, const uv_
   pkt->dest_len = stream->remote_addr_len;
   pkt->is_mtu_probe = false;
   pkt->lost = false;
+
+  pkt->delivered_time = 0;
 
   uv_buf_t *bufs = (uv_buf_t *) (pkt + 1);
 
@@ -853,6 +855,7 @@ ack_packet (udx_stream_t *stream, uint32_t seq, int sack, udx_rate_sample_t *rs)
 
   if (!pkt->retransmitted || (rtt >= udx_rtt_min(stream))) {
     stream->rack_rtt = rtt;
+    rs->rtt_ms = rtt;
 
     if (rack_sent_after(pkt->time_sent, next, stream->rack_time_sent, stream->rack_next_seq)) {
       stream->rack_time_sent = pkt->time_sent;
@@ -1066,7 +1069,7 @@ process_packet (udx_socket_t *socket, char *buf, ssize_t buf_len, struct sockadd
   uint32_t delivered = stream->delivered;
   uint32_t lost = stream->lost;
   uint32_t prior_remote_acked = stream->remote_acked;
-  bool ack_advanced = ack > prior_remote_acked;
+  bool ack_advanced = seq_diff(ack, prior_remote_acked) > 0;
 
   buf += UDX_HEADER_SIZE;
   buf_len -= UDX_HEADER_SIZE;
@@ -1178,9 +1181,9 @@ process_packet (udx_socket_t *socket, char *buf, ssize_t buf_len, struct sockadd
 
   bool ended = false;
 
-  udx_rate_sample_t rs;
+  udx_rate_sample_t rs = {.rtt_ms = -1};
 
-  for (uint32_t p = prior_remote_acked; p != ack; p++) {
+  for (uint32_t p = prior_remote_acked; seq_compare(p, ack) < 0; p++) {
     int a = ack_packet(stream, p, 0, &rs);
     if (a == 1) stream->delivered++;
     if (a == 2) {
@@ -1189,7 +1192,9 @@ process_packet (udx_socket_t *socket, char *buf, ssize_t buf_len, struct sockadd
     }
   }
 
-  stream->remote_acked = ack;
+  if (ack_advanced) {
+    stream->remote_acked = ack;
+  }
 
   if (ended) {
     if (stream->status & UDX_STREAM_DEAD) {
@@ -1236,9 +1241,6 @@ process_packet (udx_socket_t *socket, char *buf, ssize_t buf_len, struct sockadd
   lost = stream->lost - lost;
 
   if (ack_advanced) {
-    // ack_update(stream, ack - prior_remote_acked, is_limited);
-    // todo: windowed minimum rtt
-
     // rack 7.2
     if (stream->ca_state == UDX_CA_OPEN && !stream->sacks) {
       schedule_loss_probe(stream);
@@ -1267,8 +1269,11 @@ process_packet (udx_socket_t *socket, char *buf, ssize_t buf_len, struct sockadd
     }
   }
 
-  udx__rate_gen(stream, delivered, lost, &rs);
-  bbr_main(stream, &rs);
+  if (stream->packets_tx) {
+    // don't generate rates / do congestion control if we've never sent a packet..
+    udx__rate_gen(stream, delivered, lost, &rs);
+    bbr_main(stream, &rs);
+  }
 
   return 1;
 }
@@ -1388,7 +1393,8 @@ update_pacing_time (udx_stream_t *stream) {
 
   if (now > stream->tb_last_refill_ms) {
     uint64_t factor = now - stream->tb_last_refill_ms;
-    stream->tb_available = factor * UDX_PACING_BYTES_PER_MILLISECOND;
+    assert(stream->pacing_bytes_per_ms > 0);
+    stream->tb_available = factor * stream->pacing_bytes_per_ms;
     stream->tb_last_refill_ms = now;
   }
 }
@@ -1412,6 +1418,7 @@ pacing_timer_timeout (uv_timer_t *timer) {
 
 static bool
 send_stream_packets (udx_socket_t *socket, udx_stream_t *stream) {
+  bool inflight_queue_was_empty = stream->inflight_queue.len == 0;
   while (stream->unordered_queue.len > 0) {
     udx_packet_t *pkt = udx__queue_data(udx__queue_peek(&stream->unordered_queue), udx_packet_t, queue);
 
@@ -1493,7 +1500,8 @@ send_stream_packets (udx_socket_t *socket, udx_stream_t *stream) {
     if (rc == UV_EAGAIN) {
       return false;
     }
-
+    // todo: do we actually want to do this for state packets?
+    // for one, I don't think they can generate a rate since they aren't even acked...
     udx__rate_pkt_sent(stream, pkt);
 
     // if this ACK packet acks the remote's END packet, advance from ENDING_REMOTE -> ENDED_REMOTE
@@ -1538,6 +1546,7 @@ send_stream_packets (udx_socket_t *socket, udx_stream_t *stream) {
       return false;
     }
 
+    // todo: do we want to generate rate info on this packet, since it is probably not acked
     udx__rate_pkt_sent(stream, pkt);
 
     stream->packets_tx++;
@@ -1563,6 +1572,7 @@ send_stream_packets (udx_socket_t *socket, udx_stream_t *stream) {
 
     udx__queue_shift(&stream->retransmit_queue);
     udx__queue_tail(&stream->inflight_queue, &pkt->queue);
+
     stream->inflight += pkt->size;
     stream->tb_available = pkt->size > stream->tb_available ? 0 : stream->tb_available - pkt->size;
 
@@ -1574,6 +1584,9 @@ send_stream_packets (udx_socket_t *socket, udx_stream_t *stream) {
     stream->packets_tx++;
     stream->bytes_tx += pkt->size;
     stream->retransmit_count++;
+    if (inflight_queue_was_empty) {
+      bbr_on_transmit_start(stream, uv_now(stream->udx->loop));
+    }
 
     if (stream->write_wanted & UDX_STREAM_WRITE_WANT_ZWP) {
       stream->write_wanted &= ~UDX_STREAM_WRITE_WANT_ZWP;
@@ -1676,6 +1689,9 @@ send_stream_packets (udx_socket_t *socket, udx_stream_t *stream) {
 
     stream->packets_tx++;
     stream->bytes_tx += pkt->size;
+    if (inflight_queue_was_empty) {
+      bbr_on_transmit_start(stream, uv_now(stream->udx->loop));
+    }
 
     if (mtu_probe) {
       stream->mtu_probe_count++;
@@ -2270,7 +2286,7 @@ udx_stream_init (udx_t *udx, udx_stream_t *stream, uint32_t local_id, udx_stream
   stream->rack_next_seq = 0;
   stream->rack_fack = 0;
 
-  stream->tb_available = UDX_PACING_BYTES_PER_MILLISECOND;
+  stream->tb_available = UDX_INIT_PACING_RATE;
   stream->tb_last_refill_ms = uv_now(udx->loop);
 
   stream->tlp_in_flight = false;
