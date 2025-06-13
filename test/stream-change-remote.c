@@ -59,6 +59,11 @@ on_remote_change (udx_stream_t *s) {
 }
 
 void
+on_immediate_change (udx_stream_t *s) {
+  assert(false && "should not be called");
+}
+
+void
 on_read (udx_stream_t *handle, ssize_t read_len, const uv_buf_t *buf) {
   int e;
 
@@ -71,8 +76,8 @@ on_read (udx_stream_t *handle, ssize_t read_len, const uv_buf_t *buf) {
   // swap to relay 1/3 of the way into the stream
 
   if (nbytes_read > (NBYTES_TO_SEND / 3) && !changed) {
-    e = udx_stream_change_remote(&astream, &bsock, 4, (struct sockaddr *) &daddr, on_remote_change);
-    assert(e == 0 && "reconnect");
+    e = udx_stream_change_remote(&astream, &bsock, 4, (struct sockaddr *) &daddr, on_immediate_change);
+    assert(e == 1 && "reconnect");
 
     e = udx_stream_change_remote(&dstream, &csock, 1, (struct sockaddr *) &aaddr, on_remote_change);
     assert(e == 0 && "reconnect");
