@@ -47,7 +47,6 @@ static double bbr_pacing_gain[] = {
   1.0
 };
 
-static const uint32_t bbr_cycle_rand = 7;
 static const uint32_t bbr_cwnd_min_target = 4;
 
 // bw increased to full bw probe, there may be more bw available
@@ -522,7 +521,7 @@ bbr_check_full_bw_reached (udx_stream_t *stream, udx_rate_sample_t *rs) {
   if (bbr_full_bw_reached(stream) || !stream->bbr.round_start || rs->is_app_limited)
     return;
 
-  uint32_t bw_thresh = stream->bbr.full_bw * 1.25;
+  uint32_t bw_thresh = stream->bbr.full_bw * bbr_full_bw_thresh;
 
   if (bbr_max_bw(stream) >= bw_thresh) {
     stream->bbr.full_bw = bbr_max_bw(stream);
@@ -673,7 +672,7 @@ bbr_init (udx_stream_t *stream) {
   stream->ssthresh = 0xffff;
   stream->bbr.rtt_count = 0;
   stream->bbr.next_rtt_delivered = stream->delivered;
-  stream->bbr.prev_ca_state = TCP_CA_Open;
+  stream->bbr.prev_ca_state = UDX_CA_OPEN;
   stream->bbr.use_packet_conservation = 0;
 
   stream->bbr.probe_rtt_done_time = 0;
