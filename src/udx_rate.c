@@ -109,6 +109,6 @@ udx__rate_check_app_limited (udx_stream_t *stream) {
   if (stream->writes_queued_bytes < udx__max_payload(stream) &&
       stream->inflight_queue.len < stream->cwnd &&
       stream->retransmit_queue.len == 0) {
-    stream->app_limited = stream->delivered + stream->inflight_queue.len ?: 1;
+    stream->app_limited = stream->delivered + stream->inflight_queue.len ?: 1; // can't use sequence zero since it indicates no app limit.
   }
 }

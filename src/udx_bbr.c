@@ -69,7 +69,6 @@ static const uint32_t bbr_ack_epoch_acked_reset_thresh = UINT32_MAX;
 static const uint32_t bbr_extra_acked_max_ms = 100;
 
 // windowed max recent bandwidth sample, packets/ms
-// 8 uses
 static uint32_t
 bbr_max_bw (udx_stream_t *stream) {
   return win_filter_get(&stream->bbr.bw);
@@ -81,7 +80,6 @@ bbr_full_bw_reached (udx_stream_t *stream) {
 }
 
 // return the estimated bandwidth for the stream, pkts/ms
-// 7 uses
 static uint32_t
 bbr_bw (udx_stream_t *stream) {
   return stream->bbr.lt_use_bw ? stream->bbr.lt_bw : bbr_max_bw(stream);
@@ -106,10 +104,8 @@ bbr_bw_to_pacing_rate (udx_stream_t *stream, uint64_t bw, double gain) {
 
 static void
 bbr_init_pacing_rate_from_rtt (udx_stream_t *stream) {
-  debug_printf("init pacing rate from rtt\n");
   uint32_t srtt = 0;
   if (stream->srtt) {
-    debug_printf("rtt sample found, srtt=%u\n", stream->srtt);
     srtt = stream->srtt;
     stream->bbr.has_seen_rtt = 1;
   } else {
@@ -123,13 +119,7 @@ bbr_init_pacing_rate_from_rtt (udx_stream_t *stream) {
   // bw/rtt == 0, so we round up in that case.
   if (bw == 0) bw = 1;
 
-  debug_printf("cwnd=%u, bw from rtt=%" PRIu64 "\n", stream->cwnd, bw);
-
-  // todo: if we want to have a global limit (or per-stream pacing limit)
-  // we should set pacing_bytes_per_ms = max(bbr_bw_to_pacing_rate(), MAX_PACING_RATE_MS)
-
   stream->pacing_bytes_per_ms = bbr_bw_to_pacing_rate(stream, bw, bbr_high_gain);
-  debug_printf("bbr: init_pacing_rate_from_rtt pacing_bytes_per_ms=%u\n", stream->pacing_bytes_per_ms);
 }
 
 static void
@@ -141,7 +131,6 @@ bbr_set_pacing_rate (udx_stream_t *stream, uint32_t bw, double gain) {
   }
 
   if (stream->bbr.full_bw_reached || rate_bpms > stream->pacing_bytes_per_ms) {
-    // debug_printf("pacing_bytes_per_ms=%u\n", stream->pacing_bytes_per_ms);
     stream->pacing_bytes_per_ms = rate_bpms;
   }
 }
@@ -163,7 +152,6 @@ bbr_check_probe_rtt_done (udx_stream_t *stream, uint64_t now_ms);
 void
 bbr_on_transmit_start (udx_stream_t *stream, uint64_t now_ms) {
   // BBR 4.2.2
-  /* todo: ensure we don't set this to zero on wrap-around, and delete this comment. skipping 0 should be OK */
   if (stream->app_limited) {
     stream->bbr.idle_restart = true;
     stream->bbr.ack_epoch_acked = 0;
@@ -298,7 +286,6 @@ static void
 bbr_advance_cycle_phase (udx_stream_t *stream) {
   stream->bbr.cycle_index = (stream->bbr.cycle_index + 1) & (UDX_BBR_CYCLE_LEN - 1);
   stream->bbr.cycle_timestamp = stream->delivered_time;
-  // debug_printf("bbr: advanced cycle phase, index=%d rate=%f\n", stream->bbr.cycle_index, bbr_pacing_gain[stream->bbr.cycle_index]);
 }
 
 static void
@@ -312,14 +299,14 @@ static void
 bbr_reset_startup_mode (udx_stream_t *stream) {
   // 4.3.1.1
   stream->bbr.state = UDX_BBR_STATE_STARTUP;
-  debug_printf("bbr: rid=%u entering STARTUP\n", stream->remote_id);
+  // debug_printf("bbr: rid=%u entering STARTUP\n", stream->remote_id);
 }
 
 static void
 bbr_reset_probe_bw_mode (udx_stream_t *stream) {
   stream->bbr.state = UDX_BBR_STATE_PROBE_BW;
-  debug_printf("bbr: rid=%u entering PROBE_BW\n", stream->remote_id);
-  // todo: use an rng, make initial mode random
+  // debug_printf("bbr: rid=%u entering PROBE_BW\n", stream->remote_id);
+  // todo: use an rng?
   // probable reasoning: multiple streams may start simultaneously in many scenarios,
   // starting on random phases makes them more fair by staggering their rttprobe / backoff phases
   // stream->bbr.cycle_index = UDX_BBR_CYCLE_LEN - 1 - get_random_u32_below(bbr_cycle_rand);
@@ -337,7 +324,6 @@ bbr_reset_mode (udx_stream_t *stream) {
 }
 
 // start a new long-term sampling interval
-// todo: where in bbr spec is this defined? BBR 2? or BBR 3?
 static void
 bbr_reset_lt_bw_sampling_interval (udx_stream_t *stream) {
   stream->bbr.lt_last_stamp = stream->delivered_time;
@@ -483,7 +469,6 @@ bbr_update_bw (udx_stream_t *stream, udx_rate_sample_t *rs) {
 
 // Estimates the windows max degree of ACK aggregation
 // unlike Linux TCP we always aggregate ACKs on the sender side in the current implementation
-// todo: do we need to do this actally?
 static void
 bbr_update_ack_aggregation (udx_stream_t *stream, udx_rate_sample_t *rs) {
   if (!bbr_extra_acked_gain || rs->acked_sacked <= 0 || rs->delivered < 0 || rs->interval_ms <= 0) {
@@ -555,9 +540,8 @@ bbr_check_drain (udx_stream_t *stream, udx_rate_sample_t *rs) {
   if (stream->bbr.state == UDX_BBR_STATE_STARTUP && bbr_full_bw_reached(stream)) {
     // BBR 4.3.1.1
     stream->bbr.state = UDX_BBR_STATE_DRAIN; // drain hypothetical bottleneck queue
-    // must be a bug here! cwnd=736, ssthresh = 76??
     stream->ssthresh = bbr_inflight(stream, bbr_max_bw(stream), 1.0);
-    debug_printf("bbr: rid=%u entering DRAIN cwnd=%u ssthresh=%u bbr_max_bw=%u\n", stream->remote_id, stream->cwnd, stream->ssthresh, bbr_max_bw(stream));
+    // debug_printf("bbr: rid=%u entering DRAIN cwnd=%u ssthresh=%u bbr_max_bw=%u\n", stream->remote_id, stream->cwnd, stream->ssthresh, bbr_max_bw(stream));
   }
 
   if (stream->bbr.state == UDX_BBR_STATE_DRAIN && stream->inflight_queue.len <= bbr_inflight(stream, bbr_max_bw(stream), 1.0)) {
@@ -596,7 +580,7 @@ static void
 bbr_update_min_rtt (udx_stream_t *stream, udx_rate_sample_t *rs) {
   bool filter_expired;
 
-  uint64_t now = uv_now(stream->udx->loop); // todo: add current time to rate sample? or, compute it with interval_start + interval?
+  uint64_t now = uv_now(stream->udx->loop); // may want to cache current time on each stream
 
   filter_expired = time_diff(now, stream->bbr.min_rtt_stamp + UDX_BBR_MIN_RTT_INTERVAL_MS) > 0;
 
@@ -607,7 +591,7 @@ bbr_update_min_rtt (udx_stream_t *stream, udx_rate_sample_t *rs) {
   }
 
   if (UDX_BBR_MIN_PROBE_RTT_MODE_MS > 0 && filter_expired && !stream->bbr.idle_restart && stream->bbr.state != UDX_BBR_STATE_PROBE_RTT) {
-    debug_printf("bbr: rid=%u entering PROBE_RTT\n", stream->remote_id);
+    // debug_printf("bbr: rid=%u entering PROBE_RTT\n", stream->remote_id);
     stream->bbr.state = UDX_BBR_STATE_PROBE_RTT;
     bbr_save_cwnd(stream);
     stream->bbr.probe_rtt_done_time = 0;
@@ -647,7 +631,6 @@ bbr_update_gains (udx_stream_t *stream) {
     stream->bbr.cwnd_gain = bbr_high_gain; // bbrv2 uses default_cwnd_gain (2)
     break;
   case UDX_BBR_STATE_PROBE_BW:
-    // todo: disable lt pacing here?
     stream->bbr.pacing_gain = (stream->bbr.lt_use_bw ? 1.0 : bbr_pacing_gain[stream->bbr.cycle_index]);
     stream->bbr.cwnd_gain = bbr_cwnd_gain;
     break;
@@ -674,7 +657,6 @@ bbr_update_model (udx_stream_t *stream, udx_rate_sample_t *rs) {
 // This is the first of BBR functions that are clients of udx.c
 // bbr_main(stream, nacked, int flag, udx_rate_sample_t rs)
 //     called on each processed ack with new rate sample generated
-// todo: call somewhere!
 void
 bbr_main (udx_stream_t *stream, udx_rate_sample_t *rs) {
   // BBR 4.2.3
@@ -685,7 +667,6 @@ bbr_main (udx_stream_t *stream, udx_rate_sample_t *rs) {
   bbr_set_cwnd(stream, rs, rs->acked_sacked, bw, stream->bbr.cwnd_gain);
 }
 
-// todo: call somewhere!
 void
 bbr_init (udx_stream_t *stream) {
   stream->bbr.prior_cwnd = 0;
@@ -715,8 +696,6 @@ bbr_init (udx_stream_t *stream) {
   bbr_reset_lt_bw_sampling(stream);
   bbr_reset_startup_mode(stream);
 
-  // linux uses a per-stream cached time that is updated on each send / ack
-  // todo: confirm that this works too
   stream->bbr.ack_epoch_start = uv_now(stream->udx->loop);
   stream->bbr.ack_epoch_acked = 0;
   stream->bbr.extra_acked_win_rtts = 0;

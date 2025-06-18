@@ -1001,10 +1001,6 @@ detect_loss_repaired_by_loss_probe (udx_stream_t *stream, uint32_t ack) {
     } else if (seq_compare(ack, stream->tlp_end_seq) > 0) {
       debug_printf("tlp: loss probe retransmission masked lost packet, invoking congestion control\n");
       stream->tlp_in_flight = false;
-      // todo: in linux, this triggers a TCP_CA_CWR event for a single packet
-      // which is immediately ended (since we found the lost packet and delivered it simultaneously)
-      // I think we don't need to trigger an event here since BBR doesn't care anyways, but
-      // we should look closely to be sure.
     }
   }
 }
@@ -1043,8 +1039,6 @@ process_packet (udx_socket_t *socket, char *buf, ssize_t buf_len, struct sockadd
     size_t header_len = (data_offset > 0 && data_offset < payload_len) ? data_offset : payload_len;
     nsack_blocks = header_len / (2 * sizeof(*sacks));
   }
-
-  // debug_printf("received packet local_id=%u seq=%u ack=%u\n", local_id, seq, ack);
 
   udx_stream_t *stream = (udx_stream_t *) udx__cirbuf_get(socket->streams_by_id, local_id);
 
@@ -1490,7 +1484,6 @@ send_stream_packets (udx_socket_t *socket, udx_stream_t *stream) {
 
     uv_buf_t buf = uv_buf_init(payload, payload_len);
 
-    // debug_printf("state packet: id dst=%u seq=%u ack=%u\n", stream->remote_id, stream->seq, stream->ack);
     init_stream_packet(pkt, payload ? UDX_HEADER_SACK : 0, stream, &buf, 1);
 
     pkt->ttl = 0;
@@ -1501,7 +1494,6 @@ send_stream_packets (udx_socket_t *socket, udx_stream_t *stream) {
       return false;
     }
     // todo: do we actually want to do this for state packets?
-    // for one, I don't think they can generate a rate since they aren't even acked...
     udx__rate_pkt_sent(stream, pkt);
 
     // if this ACK packet acks the remote's END packet, advance from ENDING_REMOTE -> ENDED_REMOTE
@@ -1546,7 +1538,7 @@ send_stream_packets (udx_socket_t *socket, udx_stream_t *stream) {
       return false;
     }
 
-    // todo: do we want to generate rate info on this packet, since it is probably not acked
+    // todo: do we want to generate rate info on this packet
     udx__rate_pkt_sent(stream, pkt);
 
     stream->packets_tx++;
@@ -2334,7 +2326,6 @@ udx_stream_init (udx_t *udx, udx_stream_t *stream, uint32_t local_id, udx_stream
   stream->on_finalize = finalize_cb;
   stream->get_read_buffer_size = NULL;
 
-  // todo: actually this might make sense to delay until connect or transmission start
   bbr_init(stream);
 
   stream->bytes_rx = 0;
