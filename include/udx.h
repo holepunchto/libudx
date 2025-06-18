@@ -190,19 +190,6 @@ struct udx_socket_s {
   int64_t packets_dropped_by_kernel;
 };
 
-typedef struct udx_cong_s {
-  uint32_t K;
-  uint32_t ack_cnt;
-  uint32_t origin_point;
-  uint32_t delay_min;
-  uint32_t cnt;
-  uint64_t last_time;
-  uint64_t start_time;
-  uint32_t last_max_cwnd;
-  uint32_t last_cwnd;
-  uint32_t tcp_cwnd;
-} udx_cong_t;
-
 #define UDX_CA_OPEN     1
 #define UDX_CA_RECOVERY 2
 #define UDX_CA_LOSS     3
@@ -289,6 +276,56 @@ struct udx_stream_s {
   uint32_t rack_next_seq;
   uint32_t rack_fack;
 
+  // packet delivery rate measured in packets/ms
+
+  struct {
+    uint32_t min_rtt_ms;          // min RTT in past min_rtt_win (10 seconds). BBR.rtprop in IETF draft
+    uint64_t min_rtt_stamp;       // timestamp min_rtt_ms sample was taken.    BBR.rtprop_stamp in IETF draft
+    uint64_t probe_rtt_done_time; // end time for UDX_BBR_STATE_PROBE_RTT
+    win_filter_t bw;              // maximum recent delivery rate in packets/ms. BBR.BtlBwFilter in IETF draft.
+    uint32_t rtt_count;           // count of packet-timed round trips. BBR.round_count in IETF draft
+    uint32_t next_rtt_delivered;  // pkt.delivered at end of round
+    uint64_t cycle_timestamp;     // time of this phase start
+    uint8_t state;                // UDX_BBR_STATE_*.
+    uint8_t prev_ca_state;        // TCP_Ca_*.
+
+    // flags
+    bool use_packet_conservation; // linux feature
+    bool round_start;             // BBR.round_start in IETF draft
+    bool idle_restart;            // connection is restarting after being idle
+    bool probe_rtt_round_done;
+
+    // long term sampling
+
+    bool lt_is_sampling;
+    uint8_t lt_rtt_count;
+    bool lt_use_bw;
+
+    uint32_t lt_bw;             // packets / ms. BBR.max_bw in IETF draft
+    uint32_t lt_last_delivered; // lt interval start: stream->delivered
+    uint32_t lt_last_stamp;     // lt interval start: stream->delivered_time
+    uint32_t lt_last_lost;      // lt interval start: stream->lost
+    float pacing_gain;
+    float cwnd_gain;
+    bool full_bw_reached;
+    bool full_bw_now; // todo
+    uint8_t full_bw_count;
+    uint8_t cycle_index;
+    bool has_seen_rtt;
+
+    uint32_t prior_cwnd;
+    uint32_t full_bw;
+
+    uint64_t ack_epoch_start;
+    uint16_t extra_acked[2];  // volume of data that estimates the degree of aggregation in the network path.
+    uint32_t ack_epoch_acked; // packets (S)ACKed in sampling epoch
+    uint8_t extra_acked_win_rtts;
+    uint8_t extra_acked_win_index;
+
+  } bbr;
+
+  uint32_t pacing_bytes_per_ms; // computed by bbr module. 'BBR.pacing_rate' in IETF draft
+
   uint32_t pkts_buffered; // how many (data) packets received but not processed (out of order)?
 
   // pacing (tb = token bucket)
@@ -312,17 +349,13 @@ struct udx_stream_s {
   size_t inflight;
 
   uint32_t sacks;
-  uint32_t ssthresh;
-  uint32_t cwnd; // packets
-  uint32_t cwnd_cnt;
+  uint32_t cwnd;          // packets
+  uint32_t ssthresh;      // packets
   uint32_t send_rwnd;     // remote advertised rwnd
   uint32_t recv_rwnd_max; // default: UDX_DEFAULT_RWND_MAX
 
   uint32_t send_wl1; // seq at last window update
   uint32_t send_wl2; // ack at last window update
-
-  // congestion state
-  udx_cong_t cong;
 
   udx_queue_t write_queue;
 
