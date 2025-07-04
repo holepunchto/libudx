@@ -87,6 +87,15 @@ typedef struct {
   win_filter_entry_t entries[3];
 } win_filter_t;
 
+typedef struct {
+  uint64_t t;
+  double v;
+} win_filter_f64_entry_t;
+
+typedef struct {
+  win_filter_f64_entry_t entries[3];
+} win_filter_f64_t;
+
 typedef enum {
   UDX_LOOKUP_FAMILY_IPV4 = 1,
   UDX_LOOKUP_FAMILY_IPV6 = 2,
@@ -282,7 +291,7 @@ struct udx_stream_s {
     uint32_t min_rtt_ms;          // min RTT in past min_rtt_win (10 seconds). BBR.rtprop in IETF draft
     uint64_t min_rtt_stamp;       // timestamp min_rtt_ms sample was taken.    BBR.rtprop_stamp in IETF draft
     uint64_t probe_rtt_done_time; // end time for UDX_BBR_STATE_PROBE_RTT
-    win_filter_t bw;              // maximum recent delivery rate in packets/ms. BBR.BtlBwFilter in IETF draft.
+    win_filter_f64_t bw;          // maximum recent delivery rate in packets/ms. BBR.BtlBwFilter in IETF draft.
     uint32_t rtt_count;           // count of packet-timed round trips. BBR.round_count in IETF draft
     uint32_t next_rtt_delivered;  // pkt.delivered at end of round
     uint64_t cycle_timestamp;     // time of this phase start
@@ -301,7 +310,7 @@ struct udx_stream_s {
     uint8_t lt_rtt_count;
     bool lt_use_bw;
 
-    uint32_t lt_bw;             // packets / ms. BBR.max_bw in IETF draft
+    double lt_bw;               // packets / ms. BBR.max_bw in IETF draft
     uint32_t lt_last_delivered; // lt interval start: stream->delivered
     uint32_t lt_last_stamp;     // lt interval start: stream->delivered_time
     uint32_t lt_last_lost;      // lt interval start: stream->lost
@@ -314,7 +323,7 @@ struct udx_stream_s {
     bool has_seen_rtt;
 
     uint32_t prior_cwnd;
-    uint32_t full_bw;
+    double full_bw;
 
     uint64_t ack_epoch_start;
     uint16_t extra_acked[2];  // volume of data that estimates the degree of aggregation in the network path.

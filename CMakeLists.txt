@@ -40,6 +40,8 @@ target_sources(
     src/udx_rate.c
     src/win_filter.h
     src/win_filter.c
+    src/win_filter_f64.h
+    src/win_filter_f64.c
     src/udx_bbr.c
 )
 
