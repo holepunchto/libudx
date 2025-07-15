@@ -2256,12 +2256,14 @@ udx_stream_init (udx_t *udx, udx_stream_t *stream, uint32_t local_id, udx_stream
 
   stream->delivered = 0;
   stream->lost = 0;
-  stream->app_limited = 0;
+  // initially stream is application limited, since we haven't
+  // discovered a network limit.
+  stream->app_limited = ~0;
+  stream->rate_sample_is_app_limited = true;
   stream->interval_start_time = 0;
   stream->delivered_time = 0;
   stream->rate_delivered = 0;
   stream->rate_interval_ms = 0;
-  stream->rate_sample_is_app_limited = false;
 
   stream->srtt = 0;
   stream->rttvar = 0;

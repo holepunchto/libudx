@@ -6,6 +6,9 @@
 // to generate a sample when it is acked
 void
 udx__rate_pkt_sent (udx_stream_t *stream, udx_packet_t *pkt) {
+  // here for simplicity, conceptually should be done before stream send
+  udx__rate_check_app_limited(stream);
+
   if (!stream->packets_tx) {
     // first packet was just sent
     uint64_t now_ms = uv_now(stream->udx->loop);

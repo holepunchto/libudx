@@ -152,6 +152,7 @@ bbr_on_transmit_start (udx_stream_t *stream, uint64_t now_ms) {
   // BBR 4.2.2
   if (stream->app_limited) {
     stream->bbr.idle_restart = true;
+    stream->bbr.ack_epoch_start = now_ms;
     stream->bbr.ack_epoch_acked = 0;
 
     if (stream->bbr.state == UDX_BBR_STATE_PROBE_BW) {
