@@ -24,6 +24,7 @@ list(APPEND tests
   stream-multiple
   stream-write-read-receive-window
     win-filter
+  stream-bbr-state
 )
 
 list(APPEND skipped_tests
