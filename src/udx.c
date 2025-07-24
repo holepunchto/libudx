@@ -640,7 +640,7 @@ rack_detect_loss (udx_stream_t *stream) {
   }
 
   if (resending > mtu_probes_lost && stream->ca_state == UDX_CA_OPEN) {
-    debug_printf("rack: rid=%u lost=%d mtu_probe_lost=%d\n", stream->remote_id, resending, mtu_probes_lost);
+    // debug_printf("rack: rid=%u lost=%d mtu_probe_lost=%d\n", stream->remote_id, resending, mtu_probes_lost);
     // debug_print_outgoing(stream);
 
     stream->fast_recovery_count++;
@@ -652,7 +652,7 @@ rack_detect_loss (udx_stream_t *stream) {
     stream->tlp_in_flight = false;
     stream->tlp_is_retrans = false;
 
-    debug_printf("rack: fast recovery rid=%u start=[%u:%u] (%u pkts) inflight=%zu cwnd=%u srtt=%u\n", stream->remote_id, stream->remote_acked, stream->seq, stream->seq - stream->remote_acked, stream->inflight, stream->cwnd, stream->srtt);
+    // debug_printf("rack: fast recovery rid=%u start=[%u:%u] (%u pkts) inflight=%zu cwnd=%u srtt=%u\n", stream->remote_id, stream->remote_acked, stream->seq, stream->seq - stream->remote_acked, stream->inflight, stream->cwnd, stream->srtt);
   }
 
   update_poll(stream->socket);

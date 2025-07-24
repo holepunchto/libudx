@@ -108,6 +108,9 @@ pump_writes (udx_stream_t *stream) {
   }
 }
 
+udx_stream_write_t *send_end_request;
+udx_stream_write_t *recv_end_request;
+
 static void
 send_periodic (uv_timer_t *timer) {
   int prev_state = state;
@@ -149,8 +152,13 @@ send_periodic (uv_timer_t *timer) {
   printf("bbr.state=%s\n", bbr_state_name[send_stream.bbr.state]);
 
   if (state == STATE_FINISHED) {
-    udx_stream_destroy(&send_stream);
-    udx_stream_destroy(&recv_stream);
+    int rc;
+    send_end_request = malloc(udx_stream_write_sizeof(1));
+    recv_end_request = malloc(udx_stream_write_sizeof(1));
+    rc = udx_stream_write_end(send_end_request, &send_stream, NULL, 0, NULL);
+    assert(rc >= 0);
+    rc = udx_stream_write_end(recv_end_request, &recv_stream, NULL, 0, NULL);
+    assert(rc >= 0);
     uv_timer_stop(timer);
   }
 }
@@ -176,15 +184,15 @@ sock_close (udx_socket_t *sock) {
   printf("sock close\n");
 }
 
+int nclosed;
+
 static void
-send_stream_close (udx_stream_t *stream, int status) {
-  assert(stream == &send_stream);
-  assert(udx_socket_close(&send_sock) == 0);
-}
-static void
-recv_stream_close (udx_stream_t *stream, int status) {
-  assert(stream == &recv_stream);
-  assert(udx_socket_close(&recv_sock) == 0);
+stream_close (udx_stream_t *stream, int status) {
+  nclosed++;
+  if (nclosed == 2) {
+    assert(udx_socket_close(&send_sock) == 0);
+    assert(udx_socket_close(&recv_sock) == 0);
+  }
 }
 
 int
@@ -193,8 +201,6 @@ main () {
   int rc = 0;
 
   udx_stream_write_t *req = malloc(udx_stream_write_sizeof(1));
-
-  uv_loop_init(&loop);
 
   uv_loop_init(&loop);
 
@@ -217,10 +223,10 @@ main () {
 
   // stream 1 -> stream 2
 
-  rc = udx_stream_init(&udx, &send_stream, 1, send_stream_close, NULL);
+  rc = udx_stream_init(&udx, &send_stream, 1, stream_close, NULL);
   assert(rc == 0);
 
-  rc = udx_stream_init(&udx, &recv_stream, 2, recv_stream_close, NULL);
+  rc = udx_stream_init(&udx, &recv_stream, 2, stream_close, NULL);
   assert(rc == 0);
 
   rc = udx_stream_connect(&send_stream, &send_sock, 2, (struct sockaddr *) &recv_addr);
@@ -239,4 +245,6 @@ main () {
 
   rc = uv_run(&loop, UV_RUN_DEFAULT);
   assert(rc == 0);
+
+  uv_loop_close(&loop);
 }
