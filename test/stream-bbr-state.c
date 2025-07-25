@@ -190,8 +190,11 @@ static void
 stream_close (udx_stream_t *stream, int status) {
   nclosed++;
   if (nclosed == 2) {
-    assert(udx_socket_close(&send_sock) == 0);
-    assert(udx_socket_close(&recv_sock) == 0);
+    int rc;
+    rc = udx_socket_close(&send_sock);
+    assert(rc == 0);
+    rc = udx_socket_close(&send_sock);
+    assert(rc == 0);
   }
 }
 
