@@ -577,6 +577,12 @@ int
 udx_stream_set_ack (udx_stream_t *stream, uint32_t ack);
 
 int
+udx_stream_get_bw (udx_stream_t *stream, uint64_t *bw_bytes_per_sec_out);
+
+int
+udx_stream_get_min_rtt (udx_stream_t *stream, uint32_t *min_rtt_ms_out);
+
+int
 udx_stream_get_rwnd_max (udx_stream_t *stream, uint32_t *rwnd_max);
 
 int

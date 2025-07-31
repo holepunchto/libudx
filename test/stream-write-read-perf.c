@@ -84,8 +84,14 @@ on_a_stream_close () {
 
 static void
 print_rate_on_interval (uv_timer_t *t) {
-  printf("A rate=%9.3f/kpkts/sec %s\n", astream.rate_delivered / (1.0f * astream.rate_interval_ms), astream.rate_sample_is_app_limited ? "(app limited)" : "");
-  printf("B rate=%9.3f/kpkts/sec %s\n", bstream.rate_delivered / (1.0f * bstream.rate_interval_ms), bstream.rate_sample_is_app_limited ? "(app limited)" : "");
+  uint64_t a_bw;
+  uint64_t b_bw;
+
+  udx_stream_get_bw(&astream, &a_bw);
+  udx_stream_get_bw(&bstream, &b_bw);
+
+  printf("A bbr.bw=%" PRIu64 " rate=%9.3f/kpkts/sec %s\n", a_bw, astream.rate_delivered / (1.0f * astream.rate_interval_ms), astream.rate_sample_is_app_limited ? "(app limited)" : "");
+  printf("B bbr.bw=%" PRIu64 " rate=%9.3f/kpkts/sec %s\n", b_bw, bstream.rate_delivered / (1.0f * bstream.rate_interval_ms), bstream.rate_sample_is_app_limited ? "(app limited)" : "");
 }
 
 int
