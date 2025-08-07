@@ -299,25 +299,14 @@ struct udx_stream_s {
     uint8_t prev_ca_state;        // TCP_Ca_*.
 
     // flags
-    bool use_packet_conservation; // linux feature
-    bool round_start;             // BBR.round_start in IETF draft
-    bool idle_restart;            // connection is restarting after being idle
-    bool probe_rtt_round_done;
+    bool use_packet_conservation; // flag set on transition into fast recovery, limits packets sent in fast recovery
+    bool round_start;             // flag set when ack advances round_count
+    bool idle_restart;            // flag set on transmit start on send path
+    bool probe_rtt_round_done;    // flag set during PROBE_RTT when connection has been in PROBE_RTT for more than 1 rtt
 
-    // long term sampling
-
-    bool lt_is_sampling;
-    uint8_t lt_rtt_count;
-    bool lt_use_bw;
-
-    double lt_bw;               // packets / ms. BBR.max_bw in IETF draft
-    uint32_t lt_last_delivered; // lt interval start: stream->delivered
-    uint32_t lt_last_stamp;     // lt interval start: stream->delivered_time
-    uint32_t lt_last_lost;      // lt interval start: stream->lost
     float pacing_gain;
     float cwnd_gain;
-    bool full_bw_reached;
-    bool full_bw_now; // todo
+    bool full_bw_reached; // full bw reached during startup
     uint8_t full_bw_count;
     uint8_t cycle_index;
     bool has_seen_rtt;

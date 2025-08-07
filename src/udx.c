@@ -746,7 +746,7 @@ udx_rto_timeout (uv_timer_t *timer) {
     }
   }
 
-  bbr_on_loss(stream);
+  bbr_on_rto(stream);
   update_poll(socket);
 }
 

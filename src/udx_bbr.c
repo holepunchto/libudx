@@ -53,14 +53,8 @@ static const uint32_t bbr_cwnd_min_target = 4;
 // bw increased to full bw probe, there may be more bw available
 static const double bbr_full_bw_thresh = 1.25;
 // if after 3 rounds w/o growth, estimate that the pipe is full
+// todo: waiting three rounds is in part to work around rwin auto tuning. Can we remove this?
 static const uint32_t bbr_full_bw_count = 3;
-
-static const uint32_t bbr_lt_interval_min_rtts = 4;
-static const double bbr_lt_loss_thresh = 0.20; // 20%
-
-static const double bbr_lt_bw_ratio = 0.125;
-static const uint32_t bbr_lt_bw_diff = 4000 / 8; // 4000 Kbit/sec
-static const uint32_t bbr_lt_bw_max_rtts = 48;
 
 static const double bbr_extra_acked_gain = 1.0;
 static const uint32_t bbr_extra_acked_win_rtts = 5;
@@ -82,7 +76,7 @@ bbr_full_bw_reached (udx_stream_t *stream) {
 // return the estimated bandwidth for the stream, pkts/ms
 static double
 bbr_bw (udx_stream_t *stream) {
-  return stream->bbr.lt_use_bw ? stream->bbr.lt_bw : bbr_max_bw(stream);
+  return bbr_max_bw(stream);
 }
 
 static uint16_t
@@ -212,12 +206,12 @@ bbr_set_cwnd_to_recover_or_restore (udx_stream_t *stream, udx_rate_sample_t *rs,
   }
 
   if (state == UDX_CA_RECOVERY && prev_state != UDX_CA_RECOVERY) {
-    stream->bbr.use_packet_conservation = 1;
+    stream->bbr.use_packet_conservation = true;
     stream->bbr.next_rtt_delivered = stream->delivered;
     cwnd = stream->inflight_queue.len + acked;
   } else if (prev_state >= UDX_CA_RECOVERY && state == UDX_CA_OPEN) {
     cwnd = max_uint32(cwnd, stream->bbr.prior_cwnd);
-    stream->bbr.use_packet_conservation = 0;
+    stream->bbr.use_packet_conservation = false;
   }
 
   stream->bbr.prev_ca_state = state;
@@ -323,121 +317,9 @@ bbr_reset_mode (udx_stream_t *stream) {
   }
 }
 
-// start a new long-term sampling interval
-static void
-bbr_reset_lt_bw_sampling_interval (udx_stream_t *stream) {
-  stream->bbr.lt_last_stamp = stream->delivered_time;
-  stream->bbr.lt_last_delivered = stream->delivered;
-  stream->bbr.lt_last_lost = stream->lost;
-  stream->bbr.lt_rtt_count = 0;
-}
-
-// completely reset long-term bandwidth sampling
-static void
-bbr_reset_lt_bw_sampling (udx_stream_t *stream) {
-  stream->bbr.lt_bw = 0.0;
-  stream->bbr.lt_use_bw = 0;
-  stream->bbr.lt_is_sampling = 0;
-  bbr_reset_lt_bw_sampling_interval(stream);
-}
-
-static void
-bbr_lt_bw_interval_done_placebo (udx_stream_t *stream, double bw) {
-  UDX_UNUSED(stream);
-  UDX_UNUSED(bw);
-}
-
-// long-term bw sampling interval is done. estimate if we're being rate limited
-static void
-bbr_lt_bw_interval_done (udx_stream_t *stream, double bw) {
-  if (stream->bbr.lt_bw) {
-    double diff = fabs(bw - stream->bbr.lt_bw);
-    if ((diff <= bbr_lt_bw_ratio * stream->bbr.lt_bw) || (bbr_rate_in_bytes(stream, diff, 1.0) <= bbr_lt_bw_diff)) {
-      stream->bbr.lt_bw = (bw + stream->bbr.lt_bw) / 2;
-      stream->bbr.lt_use_bw = 1;
-      stream->bbr.pacing_gain = 1.0;
-      stream->bbr.lt_rtt_count = 0;
-      return;
-    }
-  }
-
-  stream->bbr.lt_bw = bw;
-  bbr_reset_lt_bw_sampling_interval(stream);
-}
-
-// detect token-bucket policers  and explicitly model their policed rateto reduce unnecessary losses
-// conclude that we're rate-limited if we see 2 sampling intervals with consistent throughput
-// and high packet loss. in this case, set lt_bw to the long-term average delivery rate from those 2 intervals
-static void
-bbr_lt_bw_sampling (udx_stream_t *stream, udx_rate_sample_t *rs) {
-
-  if (stream->bbr.lt_use_bw) {
-    if (stream->bbr.state == UDX_BBR_STATE_PROBE_BW && stream->bbr.round_start &&
-        ++stream->bbr.lt_rtt_count >= bbr_lt_bw_max_rtts) {
-      bbr_reset_lt_bw_sampling(stream);
-      bbr_reset_probe_bw_mode(stream);
-    }
-    return;
-  }
-
-  // wait for first loss before sampling to let the token-bucket policer exhaust its tokens
-  // and estimate the steady-state rate allowed by the policer.
-  // starting samples earlier includes bursts that over-estimate the bw
-
-  if (!stream->bbr.lt_is_sampling) {
-    if (!rs->losses) return;
-    bbr_reset_lt_bw_sampling_interval(stream);
-    stream->bbr.lt_is_sampling = true;
-  }
-
-  // to avoid underestimates, reset sampling if we run out of data
-
-  if (rs->is_app_limited) {
-    bbr_reset_lt_bw_sampling(stream);
-    return;
-  }
-
-  if (stream->bbr.round_start) {
-    stream->bbr.lt_rtt_count++;
-  }
-  if (stream->bbr.lt_rtt_count < bbr_lt_interval_min_rtts) {
-    return;
-  }
-  if (stream->bbr.lt_rtt_count > 4 * bbr_lt_interval_min_rtts) {
-    bbr_reset_lt_bw_sampling(stream);
-    return;
-  }
-
-  // end sampling interval when a packet is lost, assuming that the
-  // loss is due to exceeding the token bucket tokens.
-
-  if (!rs->losses) {
-    return;
-  }
-
-  uint32_t lost = stream->lost - stream->bbr.lt_last_lost;
-  uint32_t delivered = stream->delivered - stream->bbr.lt_last_delivered;
-
-  /* if lost / delivered < bbr_lt_loss_thresh */
-  if (!delivered || lost < bbr_lt_loss_thresh * delivered) {
-    return;
-  }
-
-  // find average delivery rate in this sampling interval
-  uint64_t t = stream->delivered_time - stream->bbr.lt_last_stamp;
-
-  if ((int32_t) t < 1) {
-    return; // interval is less than one ms, wait
-  }
-
-  double bw = (double) delivered / t;
-  // bbr_lt_bw_interval_done(stream, bw);
-  bbr_lt_bw_interval_done_placebo(stream, bw);
-}
-
 static void
 bbr_update_bw (udx_stream_t *stream, udx_rate_sample_t *rs) {
-  stream->bbr.round_start = 0;
+  stream->bbr.round_start = false;
 
   if (rs->delivered < 0 || rs->interval_ms <= 0) {
     return;
@@ -447,10 +329,9 @@ bbr_update_bw (udx_stream_t *stream, udx_rate_sample_t *rs) {
   if (seq_diff(rs->prior_delivered, stream->bbr.next_rtt_delivered) >= 0) {
     stream->bbr.next_rtt_delivered = stream->delivered;
     stream->bbr.rtt_count++;
-    stream->bbr.round_start = 1;
-    stream->bbr.use_packet_conservation = 0;
+    stream->bbr.round_start = true;
+    stream->bbr.use_packet_conservation = false;
   }
-  bbr_lt_bw_sampling(stream, rs);
 
   // divide delivered / interval to find a bw sample (in packets/ms)
   double bw = (double) rs->delivered / rs->interval_ms;
@@ -598,18 +479,18 @@ bbr_update_min_rtt (udx_stream_t *stream, udx_rate_sample_t *rs) {
 
     if (!stream->bbr.probe_rtt_done_time && stream->inflight_queue.len <= bbr_cwnd_min_target) {
       stream->bbr.probe_rtt_done_time = now + UDX_BBR_MIN_PROBE_RTT_MODE_MS; // 200 ms
-      stream->bbr.probe_rtt_round_done = 0;
+      stream->bbr.probe_rtt_round_done = false;
       stream->bbr.next_rtt_delivered = stream->delivered;
     } else if (stream->bbr.probe_rtt_done_time) {
       if (stream->bbr.round_start)
-        stream->bbr.probe_rtt_round_done = 1;
+        stream->bbr.probe_rtt_round_done = true;
       if (stream->bbr.probe_rtt_round_done)
         bbr_check_probe_rtt_done(stream, now);
     }
   }
 
   if (rs->delivered > 0) {
-    stream->bbr.idle_restart = 0;
+    stream->bbr.idle_restart = false;
   }
 }
 
@@ -626,7 +507,7 @@ bbr_update_gains (udx_stream_t *stream) {
     stream->bbr.cwnd_gain = bbr_high_gain; // bbrv2 uses default_cwnd_gain (2)
     break;
   case UDX_BBR_STATE_PROBE_BW:
-    stream->bbr.pacing_gain = (stream->bbr.lt_use_bw ? 1.0 : bbr_pacing_gain[stream->bbr.cycle_index]);
+    stream->bbr.pacing_gain = bbr_pacing_gain[stream->bbr.cycle_index];
     stream->bbr.cwnd_gain = bbr_cwnd_gain;
     break;
   case UDX_BBR_STATE_PROBE_RTT:
@@ -669,7 +550,7 @@ bbr_init (udx_stream_t *stream) {
   stream->bbr.rtt_count = 0;
   stream->bbr.next_rtt_delivered = stream->delivered;
   stream->bbr.prev_ca_state = UDX_CA_OPEN;
-  stream->bbr.use_packet_conservation = 0;
+  stream->bbr.use_packet_conservation = false;
 
   stream->bbr.probe_rtt_done_time = 0;
   stream->bbr.probe_rtt_round_done = 0;
@@ -678,17 +559,16 @@ bbr_init (udx_stream_t *stream) {
 
   win_filter_f64_reset(&stream->bbr.bw, stream->bbr.rtt_count, 0);
 
-  stream->bbr.has_seen_rtt = 0;
+  stream->bbr.has_seen_rtt = false;
   bbr_init_pacing_rate_from_rtt(stream);
 
-  stream->bbr.round_start = 0;
-  stream->bbr.idle_restart = 0;
+  stream->bbr.round_start = false;
+  stream->bbr.idle_restart = false;
   stream->bbr.full_bw_reached = 0;
   stream->bbr.full_bw = 0.0;
   stream->bbr.full_bw_count = 0;
   stream->bbr.cycle_timestamp = 0;
   stream->bbr.cycle_index = 0;
-  bbr_reset_lt_bw_sampling(stream);
   bbr_reset_startup_mode(stream);
 
   stream->bbr.ack_epoch_start = uv_now(stream->udx->loop);
@@ -732,12 +612,10 @@ udx_stream_get_min_rtt (udx_stream_t *stream, uint32_t *min_rtt_ms) {
 }
 
 void
-bbr_on_loss (udx_stream_t *stream) {
+bbr_on_rto (udx_stream_t *stream) {
   // BBR 4.2.4
   // simulate a dummy loss rate sample when we hit RTO
-  udx_rate_sample_t rs = {.losses = 1};
   stream->bbr.prev_ca_state = UDX_CA_LOSS;
   stream->bbr.full_bw = 0.0;
-  stream->bbr.round_start = 1;
-  bbr_lt_bw_sampling(stream, &rs);
+  stream->bbr.round_start = true;
 }
