@@ -259,7 +259,7 @@ time_delta_ms (uint64_t t1, uint64_t t0) {
 
 static bool
 bbr_is_next_cycle_phase (udx_stream_t *stream, udx_rate_sample_t *rs) {
-  bool is_full_length = time_delta_ms(stream->delivered_time, stream->bbr.cycle_timestamp) > stream->bbr.min_rtt_ms;
+  bool is_full_length = time_delta_ms(stream->delivered_ts, stream->bbr.cycle_timestamp) > stream->bbr.min_rtt_ms;
 
   if (stream->bbr.pacing_gain == 1.0) {
     return is_full_length;
@@ -278,8 +278,8 @@ bbr_is_next_cycle_phase (udx_stream_t *stream, udx_rate_sample_t *rs) {
 static void
 bbr_advance_cycle_phase (udx_stream_t *stream) {
   stream->bbr.cycle_index = (stream->bbr.cycle_index + 1) & (UDX_BBR_CYCLE_LEN - 1);
-  // debug_printf("bbr: cycle_index advanced: index=%d time=%ld rate=%1.2f\n", stream->bbr.cycle_index, stream->delivered_time, bbr_pacing_gain[stream->bbr.cycle_index]);
-  stream->bbr.cycle_timestamp = stream->delivered_time;
+  // debug_printf("bbr: cycle_index advanced: index=%d time=%ld rate=%1.2f\n", stream->bbr.cycle_index, stream->delivered_ts, bbr_pacing_gain[stream->bbr.cycle_index]);
+  stream->bbr.cycle_timestamp = stream->delivered_ts;
 }
 
 static void
@@ -360,13 +360,13 @@ bbr_update_ack_aggregation (udx_stream_t *stream, udx_rate_sample_t *rs) {
     }
   }
 
-  uint32_t epoch_ms = time_delta_ms(stream->delivered_time, stream->bbr.ack_epoch_start);
+  uint32_t epoch_ms = time_delta_ms(stream->delivered_ts, stream->bbr.ack_epoch_start);
   uint32_t expected_acked = bbr_bw(stream) * epoch_ms;
 
   // reset aggregation epoch if ACK rate is below expected or significanly large no of ack received since epoch
   if (stream->bbr.ack_epoch_acked <= expected_acked || ((uint64_t) stream->bbr.ack_epoch_acked + rs->acked_sacked >= bbr_ack_epoch_acked_reset_thresh)) {
     stream->bbr.ack_epoch_acked = 0;
-    stream->bbr.ack_epoch_start = stream->delivered_time;
+    stream->bbr.ack_epoch_start = stream->delivered_ts;
     expected_acked = 0;
   }
 

@@ -264,14 +264,14 @@ struct udx_stream_s {
   uint32_t remote_ended;
 
   // rate control
-  uint32_t delivered;           // number of packets delivered, including retransmits
-  uint32_t lost;                // number of packets lost, including retransmits
-  uint32_t app_limited;         // we are 'app limited' until delivered reaches this value
-  uint64_t interval_start_time; // start of window send phase
-  uint64_t delivered_time;      // time we reached 'delivered'
-  uint32_t rate_delivered;      // saved rate sample: packets delivered
-  uint32_t rate_interval_ms;    // saved rate sample: time elapsed
-  bool rate_sample_is_app_limited;
+  uint32_t delivered;              // number of packets delivered, including retransmits
+  uint32_t lost;                   // number of packets lost, including retransmits
+  uint32_t app_limited;            // we are 'app limited' until delivered reaches this value
+  uint64_t first_sent_ts;          // start of window send interval
+  uint64_t delivered_ts;           // time we reached 'delivered'
+  uint32_t rate_delivered;         // saved rate sample: packets delivered
+  uint32_t rate_interval_ms;       // saved rate sample: time elapsed
+  bool rate_sample_is_app_limited; // saved rate sample: app limited?
 
   uint32_t srtt;
   uint32_t rttvar;
@@ -388,11 +388,11 @@ struct udx_packet_s {
 
   uint64_t time_sent;
 
-  // rate info
-  uint64_t interval_start_time;
-  uint64_t delivered_time;
-  uint32_t delivered;
-  bool is_app_limited;
+  // rate sampling state
+  uint64_t first_sent_ts; // not the same as pkt->time_sent! this is the time sent of the most recently acked packet, used for the start interval of a rate sample
+  uint64_t delivered_ts;  // time stamp when the 'delivered' value was taken
+  uint32_t delivered;     // #pkts delivered when packet was transmitted
+  bool is_app_limited;    // was throughput app-limited (vs network limited) at the time the packet was transmitted?
 
   struct sockaddr_storage dest;
   int dest_len;

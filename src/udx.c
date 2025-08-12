@@ -371,7 +371,7 @@ init_stream_packet (udx_packet_t *pkt, int type, udx_stream_t *stream, const uv_
   pkt->is_mtu_probe = false;
   pkt->lost = false;
 
-  pkt->delivered_time = 0;
+  pkt->delivered_ts = 0;
 
   uv_buf_t *bufs = (uv_buf_t *) (pkt + 1);
 
@@ -2260,8 +2260,8 @@ udx_stream_init (udx_t *udx, udx_stream_t *stream, uint32_t local_id, udx_stream
   // discovered a network limit.
   stream->app_limited = ~0;
   stream->rate_sample_is_app_limited = true;
-  stream->interval_start_time = 0;
-  stream->delivered_time = 0;
+  stream->first_sent_ts = 0;
+  stream->delivered_ts = 0;
   stream->rate_delivered = 0;
   stream->rate_interval_ms = 0;
 

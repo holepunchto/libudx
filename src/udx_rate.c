@@ -3,23 +3,24 @@
 #include "internal.h"
 
 // store current delivery information in the packet
-// to generate a sample when it is acked
+// to generate a rate sample when it is acked
 void
 udx__rate_pkt_sent (udx_stream_t *stream, udx_packet_t *pkt) {
   // here for simplicity, conceptually should be done before stream send
   udx__rate_check_app_limited(stream);
 
-  if (!stream->packets_tx) {
-    // first packet was just sent
+  if (stream->seq == stream->remote_acked) {
+    // there is no data in flight, so start the rate
+    // sample intervals of this first flight with the current time.
     uint64_t now_ms = uv_now(stream->udx->loop);
 
-    stream->interval_start_time = now_ms;
-    stream->delivered_time = now_ms;
+    stream->first_sent_ts = now_ms;
+    stream->delivered_ts = now_ms;
   }
 
-  pkt->interval_start_time = stream->interval_start_time;
+  pkt->first_sent_ts = stream->first_sent_ts;
 
-  pkt->delivered_time = stream->delivered_time;
+  pkt->delivered_ts = stream->delivered_ts;
   pkt->delivered = stream->delivered;
   pkt->is_app_limited = stream->app_limited ? true : false;
 }
@@ -33,22 +34,22 @@ stamp_ms_delta (uint64_t t1, uint64_t t0) {
 void
 udx__rate_pkt_delivered (udx_stream_t *stream, udx_packet_t *pkt, udx_rate_sample_t *rs) {
 
-  if (!pkt->delivered_time) {
+  if (!pkt->delivered_ts) {
     return;
   }
 
-  if (!rs->prior_delivered || rack_sent_after(pkt->time_sent, pkt->seq, stream->interval_start_time, rs->seq)) {
+  if (!rs->prior_delivered || rack_sent_after(pkt->time_sent, pkt->seq, stream->first_sent_ts, rs->seq)) {
     rs->prior_delivered = pkt->delivered;
 
-    rs->prior_timestamp = pkt->delivered_time;
+    rs->prior_timestamp = pkt->delivered_ts;
     rs->is_app_limited = pkt->is_app_limited;
     rs->is_retrans = pkt->retransmitted;
     rs->seq = pkt->seq;
 
     // record send time of most recently ACKed packet
-    stream->interval_start_time = pkt->time_sent;
+    stream->first_sent_ts = pkt->time_sent;
 
-    rs->interval_ms = stamp_ms_delta(stream->interval_start_time, pkt->interval_start_time);
+    rs->interval_ms = stamp_ms_delta(stream->first_sent_ts, pkt->first_sent_ts);
   }
 }
 
@@ -63,7 +64,7 @@ udx__rate_gen (udx_stream_t *stream, uint32_t delivered, uint32_t lost, udx_rate
   }
 
   if (delivered) {
-    stream->delivered_time = now_ms;
+    stream->delivered_ts = now_ms;
   }
 
   rs->acked_sacked = delivered;
