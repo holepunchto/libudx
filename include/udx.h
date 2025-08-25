@@ -87,6 +87,15 @@ typedef struct {
   win_filter_entry_t entries[3];
 } win_filter_t;
 
+typedef struct {
+  uint64_t t;
+  double v;
+} win_filter_f64_entry_t;
+
+typedef struct {
+  win_filter_f64_entry_t entries[3];
+} win_filter_f64_t;
+
 typedef enum {
   UDX_LOOKUP_FAMILY_IPV4 = 1,
   UDX_LOOKUP_FAMILY_IPV6 = 2,
@@ -190,19 +199,6 @@ struct udx_socket_s {
   int64_t packets_dropped_by_kernel;
 };
 
-typedef struct udx_cong_s {
-  uint32_t K;
-  uint32_t ack_cnt;
-  uint32_t origin_point;
-  uint32_t delay_min;
-  uint32_t cnt;
-  uint64_t last_time;
-  uint64_t start_time;
-  uint32_t last_max_cwnd;
-  uint32_t last_cwnd;
-  uint32_t tcp_cwnd;
-} udx_cong_t;
-
 #define UDX_CA_OPEN     1
 #define UDX_CA_RECOVERY 2
 #define UDX_CA_LOSS     3
@@ -268,14 +264,14 @@ struct udx_stream_s {
   uint32_t remote_ended;
 
   // rate control
-  uint32_t delivered;           // number of packets delivered, including retransmits
-  uint32_t lost;                // number of packets lost, including retransmits
-  uint32_t app_limited;         // we are 'app limited' until delivered reaches this value
-  uint64_t interval_start_time; // start of window send phase
-  uint64_t delivered_time;      // time we reached 'delivered'
-  uint32_t rate_delivered;      // saved rate sample: packets delivered
-  uint32_t rate_interval_ms;    // saved rate sample: time elapsed
-  bool rate_sample_is_app_limited;
+  uint32_t delivered;              // number of packets delivered, including retransmits
+  uint32_t lost;                   // number of packets lost, including retransmits
+  uint32_t app_limited;            // we are 'app limited' until delivered reaches this value
+  uint64_t first_sent_ts;          // start of window send interval
+  uint64_t delivered_ts;           // time we reached 'delivered'
+  uint32_t rate_delivered;         // saved rate sample: packets delivered
+  uint32_t rate_interval_ms;       // saved rate sample: time elapsed
+  bool rate_sample_is_app_limited; // saved rate sample: app limited?
 
   uint32_t srtt;
   uint32_t rttvar;
@@ -288,6 +284,45 @@ struct udx_stream_s {
   uint64_t rack_time_sent;
   uint32_t rack_next_seq;
   uint32_t rack_fack;
+
+  // packet delivery rate measured in packets/ms
+
+  struct {
+    uint32_t min_rtt_ms;          // min RTT in past min_rtt_win (10 seconds). BBR.rtprop in IETF draft
+    uint64_t min_rtt_stamp;       // timestamp min_rtt_ms sample was taken.    BBR.rtprop_stamp in IETF draft
+    uint64_t probe_rtt_done_time; // end time for UDX_BBR_STATE_PROBE_RTT
+    win_filter_f64_t bw;          // maximum recent delivery rate in packets/ms. BBR.BtlBwFilter in IETF draft.
+    uint32_t rtt_count;           // count of packet-timed round trips. BBR.round_count in IETF draft
+    uint32_t next_rtt_delivered;  // pkt.delivered at end of round
+    uint64_t cycle_timestamp;     // time of this phase start
+    uint8_t state;                // UDX_BBR_STATE_*.
+    uint8_t prev_ca_state;        // TCP_Ca_*.
+
+    // flags
+    bool use_packet_conservation; // flag set on transition into fast recovery, limits packets sent in fast recovery
+    bool round_start;             // flag set when ack advances round_count
+    bool idle_restart;            // flag set on transmit start on send path
+    bool probe_rtt_round_done;    // flag set during PROBE_RTT when connection has been in PROBE_RTT for more than 1 rtt
+
+    float pacing_gain;
+    float cwnd_gain;
+    bool full_bw_reached; // full bw reached during startup
+    uint8_t full_bw_count;
+    uint8_t cycle_index;
+    bool has_seen_rtt;
+
+    uint32_t prior_cwnd;
+    double full_bw;
+
+    uint64_t ack_epoch_start;
+    uint16_t extra_acked[2];  // volume of data that estimates the degree of aggregation in the network path.
+    uint32_t ack_epoch_acked; // packets (S)ACKed in sampling epoch
+    uint8_t extra_acked_win_rtts;
+    uint8_t extra_acked_win_index;
+
+  } bbr;
+
+  uint32_t pacing_bytes_per_ms; // computed by bbr module. 'BBR.pacing_rate' in IETF draft
 
   uint32_t pkts_buffered; // how many (data) packets received but not processed (out of order)?
 
@@ -312,17 +347,13 @@ struct udx_stream_s {
   size_t inflight;
 
   uint32_t sacks;
-  uint32_t ssthresh;
-  uint32_t cwnd; // packets
-  uint32_t cwnd_cnt;
+  uint32_t cwnd;          // packets
+  uint32_t ssthresh;      // packets
   uint32_t send_rwnd;     // remote advertised rwnd
   uint32_t recv_rwnd_max; // default: UDX_DEFAULT_RWND_MAX
 
   uint32_t send_wl1; // seq at last window update
   uint32_t send_wl2; // ack at last window update
-
-  // congestion state
-  udx_cong_t cong;
 
   udx_queue_t write_queue;
 
@@ -357,11 +388,11 @@ struct udx_packet_s {
 
   uint64_t time_sent;
 
-  // rate info
-  uint64_t interval_start_time;
-  uint64_t delivered_time;
-  uint32_t delivered;
-  bool is_app_limited;
+  // rate sampling state
+  uint64_t first_sent_ts; // not the same as pkt->time_sent! this is the time sent of the most recently acked packet, used for the start interval of a rate sample
+  uint64_t delivered_ts;  // time stamp when the 'delivered' value was taken
+  uint32_t delivered;     // #pkts delivered when packet was transmitted
+  bool is_app_limited;    // was throughput app-limited (vs network limited) at the time the packet was transmitted?
 
   struct sockaddr_storage dest;
   int dest_len;
@@ -533,6 +564,12 @@ udx_stream_get_ack (udx_stream_t *stream, uint32_t *ack);
 
 int
 udx_stream_set_ack (udx_stream_t *stream, uint32_t ack);
+
+int
+udx_stream_get_bw (udx_stream_t *stream, uint64_t *bw_bytes_per_sec_out);
+
+int
+udx_stream_get_min_rtt (udx_stream_t *stream, uint32_t *min_rtt_ms_out);
 
 int
 udx_stream_get_rwnd_max (udx_stream_t *stream, uint32_t *rwnd_max);

@@ -32,20 +32,12 @@
 
 #define UDX_HEADER_DATA_OR_END (UDX_HEADER_DATA | UDX_HEADER_END)
 
-#define UDX_DEFAULT_TTL                  64
-#define UDX_PACING_BYTES_PER_MILLISECOND 25000 // 25MB/s, 200mbit
-#define UDX_DEFAULT_SNDBUF_SIZE          212992
+#define UDX_DEFAULT_TTL         64
+#define UDX_INIT_PACING_RATE    25000 // 25MB/s, 200mbit. updated by bbr_init
+#define UDX_DEFAULT_SNDBUF_SIZE 212992
 
 #define UDX_MAX_RTO_TIMEOUTS 6
 
-#define UDX_CONG_C            400  // C=0.4 (inverse) in scaled 1000
-#define UDX_CONG_C_SCALE      1e12 // ms/s ** 3 * c-scale
-#define UDX_CONG_BETA         731  // b=0.3, BETA = 1-b, scaled 1024
-#define UDX_CONG_BETA_UNIT    1024
-#define UDX_CONG_BETA_SCALE   (8 * (UDX_CONG_BETA_UNIT + UDX_CONG_BETA) / 3 / (UDX_CONG_BETA_UNIT - UDX_CONG_BETA)) // 3B/(2-B) scaled 8
-#define UDX_CONG_CUBE_FACTOR  UDX_CONG_C_SCALE / UDX_CONG_C
-#define UDX_CONG_INIT_CWND    10
-#define UDX_CONG_MAX_CWND     65536
 #define UDX_RTO_MAX_MS        30000
 #define UDX_RTT_MAX_MS        30000
 #define UDX_RTT_MIN_WINDOW_MS 300000            // 300 seconds, same as Linux default
@@ -56,8 +48,6 @@
 #define UDX_MAX_COMBINED_WRITES 1000
 #define UDX_TLP_MAX_ACK_DELAY   2
 
-#define UDX_BANDWIDTH_INTERVAL_SECS 10
-
 typedef struct {
   uint32_t seq; // must be the first entry, so its compat with the cirbuf
 
@@ -65,26 +55,6 @@ typedef struct {
 
   uv_buf_t buf;
 } udx_pending_read_t;
-
-static inline uint32_t
-cubic_root (uint64_t a) {
-  return (uint32_t) cbrt(a);
-}
-
-static uint32_t
-max_uint32 (uint32_t a, uint32_t b) {
-  return a < b ? b : a;
-}
-
-static uint32_t
-min_uint32 (uint32_t a, uint32_t b) {
-  return a < b ? a : b;
-}
-
-static uint64_t
-min_uint64 (uint64_t a, uint64_t b) {
-  return a < b ? a : b;
-}
 
 static uint32_t
 seq_max (uint32_t a, uint32_t b) {
@@ -234,125 +204,6 @@ update_poll (udx_socket_t *socket) {
 
   socket->events = events;
   return uv_poll_start(&(socket->io_poll), events, on_uv_poll);
-}
-
-// cubic congestion as per the paper https://www.cs.princeton.edu/courses/archive/fall16/cos561/papers/Cubic08.pdf
-
-static void
-increase_cwnd (udx_stream_t *stream, uint32_t cnt, uint32_t acked) {
-  // smooth out applying the window increase using the counters...
-
-  if (stream->cwnd_cnt >= cnt) {
-    stream->cwnd_cnt = 0;
-    stream->cwnd++;
-  }
-
-  stream->cwnd_cnt += acked;
-
-  if (stream->cwnd_cnt >= cnt) {
-    uint32_t delta = stream->cwnd_cnt / cnt;
-    stream->cwnd_cnt -= delta * cnt;
-    stream->cwnd += delta;
-  }
-
-  // clamp it
-  if (stream->cwnd > UDX_CONG_MAX_CWND) {
-    stream->cwnd = UDX_CONG_MAX_CWND;
-  }
-}
-
-static void
-reduce_cwnd (udx_stream_t *stream, int reset) {
-  udx_cong_t *c = &(stream->cong);
-
-  if (reset) {
-    memset(c, 0, sizeof(udx_cong_t));
-  } else {
-    c->start_time = 0;
-    c->last_max_cwnd = stream->cwnd < c->last_max_cwnd
-                         ? (stream->cwnd * (UDX_CONG_BETA_UNIT + UDX_CONG_BETA)) / (2 * UDX_CONG_BETA_UNIT)
-                         : stream->cwnd;
-  }
-
-  uint32_t upd = (stream->cwnd * UDX_CONG_BETA) / UDX_CONG_BETA_UNIT;
-
-  stream->cwnd = stream->ssthresh = upd < 2 ? 2 : upd;
-  stream->cwnd_cnt = 0; // TODO: dbl check that we should reset this
-
-  debug_print_cwnd_stats(stream);
-}
-
-static void
-update_congestion (udx_cong_t *c, uint32_t cwnd, uint32_t acked, uint64_t time) {
-  c->ack_cnt += acked;
-
-  // sanity check that didn't just enter this
-  if (c->last_cwnd == cwnd && (time - c->last_time) <= 3) return;
-
-  uint64_t delta;
-
-  // make sure we don't over run this
-  if (!c->start_time || time != c->last_time) {
-    c->last_cwnd = cwnd;
-    c->last_time = time;
-
-    // we just entered this, init all state
-    if (c->start_time == 0) {
-      c->start_time = time;
-      c->ack_cnt = acked;
-      c->tcp_cwnd = cwnd;
-
-      if (c->last_max_cwnd <= cwnd) {
-        c->K = 0;
-        c->origin_point = cwnd;
-      } else {
-        c->K = cubic_root(UDX_CONG_CUBE_FACTOR * (c->last_max_cwnd - cwnd));
-        c->origin_point = c->last_max_cwnd;
-      }
-    }
-
-    // time since epoch + delay
-    uint32_t t = time - c->start_time + c->delay_min;
-
-    // |t- K|
-    uint64_t d = (t < c->K) ? (c->K - t) : (t - c->K);
-
-    // C * (t - K)^3
-    delta = UDX_CONG_C * d * d * d / UDX_CONG_C_SCALE;
-
-    uint32_t target = t < c->K
-                        ? c->origin_point - delta
-                        : c->origin_point + delta;
-
-    // the higher cnt, the slower it applies...
-    c->cnt = target > cwnd
-               ? cwnd / (target - cwnd)
-               : 100 * cwnd; // ie very slowly
-    ;
-
-    // when we have no estimate of current bw make sure to not be too conservative
-    if (c->last_cwnd == 0 && c->cnt > 20) {
-      c->cnt = 20;
-    }
-  }
-
-  // check tcp friendly mode
-
-  delta = (UDX_CONG_BETA_SCALE * cwnd) >> 3;
-
-  while (c->ack_cnt > delta) {
-    c->ack_cnt -= delta;
-    c->tcp_cwnd++;
-  }
-
-  if (c->tcp_cwnd > cwnd) {
-    delta = c->tcp_cwnd - cwnd;
-    uint32_t max_cnt = cwnd / delta;
-    if (c->cnt > max_cnt) c->cnt = max_cnt;
-  }
-
-  // one update per 2 acks...
-  if (c->cnt < 2) c->cnt = 2;
 }
 
 static void
@@ -519,6 +370,8 @@ init_stream_packet (udx_packet_t *pkt, int type, udx_stream_t *stream, const uv_
   pkt->dest_len = stream->remote_addr_len;
   pkt->is_mtu_probe = false;
   pkt->lost = false;
+
+  pkt->delivered_ts = 0;
 
   uv_buf_t *bufs = (uv_buf_t *) (pkt + 1);
 
@@ -787,7 +640,7 @@ rack_detect_loss (udx_stream_t *stream) {
   }
 
   if (resending > mtu_probes_lost && stream->ca_state == UDX_CA_OPEN) {
-    debug_printf("rack: rid=%u lost=%d mtu_probe_lost=%d\n", stream->remote_id, resending, mtu_probes_lost);
+    // debug_printf("rack: rid=%u lost=%d mtu_probe_lost=%d\n", stream->remote_id, resending, mtu_probes_lost);
     // debug_print_outgoing(stream);
 
     stream->fast_recovery_count++;
@@ -799,10 +652,7 @@ rack_detect_loss (udx_stream_t *stream) {
     stream->tlp_in_flight = false;
     stream->tlp_is_retrans = false;
 
-    // only reduce congestion window if more than just the mtu probe was lost
-    reduce_cwnd(stream, false);
-
-    debug_printf("rack: fast recovery rid=%u start=[%u:%u] (%u pkts) inflight=%zu cwnd=%u srtt=%u\n", stream->remote_id, stream->remote_acked, stream->seq, stream->seq - stream->remote_acked, stream->inflight, stream->cwnd, stream->srtt);
+    // debug_printf("rack: fast recovery rid=%u start=[%u:%u] (%u pkts) inflight=%zu cwnd=%u srtt=%u\n", stream->remote_id, stream->remote_acked, stream->seq, stream->seq - stream->remote_acked, stream->inflight, stream->cwnd, stream->srtt);
   }
 
   update_poll(stream->socket);
@@ -852,15 +702,13 @@ udx_rto_timeout (uv_timer_t *timer) {
   stream->tlp_in_flight = false;
   stream->tlp_is_retrans = false;
 
-  reduce_cwnd(stream, true);
-
   assert(!(stream->status & UDX_STREAM_CLOSED));
   uv_timer_start(&stream->rto_timer, udx_rto_timeout, stream->rto * 2, 0);
 
   // zero retransmit queue
   udx__queue_init(&stream->retransmit_queue);
 
-  debug_printf("rto: lost rid=%u [%u:%u] inflight=%zu ssthresh=%u cwnd=%u srtt=%u\n", stream->remote_id, stream->remote_acked, stream->seq, stream->inflight, stream->ssthresh, stream->cwnd, stream->srtt);
+  debug_printf("rto: lost rid=%u [%u:%u] inflight=%zu cwnd=%u srtt=%u\n", stream->remote_id, stream->remote_acked, stream->seq, stream->inflight, stream->cwnd, stream->srtt);
 
   uint64_t now = uv_now(timer->loop);
   uint32_t rack_reo_wnd = rack_update_reo_wnd(stream);
@@ -898,41 +746,8 @@ udx_rto_timeout (uv_timer_t *timer) {
     }
   }
 
+  bbr_on_rto(stream);
   update_poll(socket);
-}
-
-static void
-ack_update (udx_stream_t *stream, uint32_t acked, bool is_limited) {
-  uint64_t time = uv_now(stream->udx->loop);
-
-  udx_cong_t *c = &(stream->cong);
-
-  // If we are application limited, just reset the epic and return...
-  // The delay_min check here, was added due to massive latency increase (ie multiple seconds) due to router buffering
-  // Perhaps research other approaches for this, but since delay_min is adjusted based on congestion this seems OK but
-  // but surely better ways exists for this
-  // bt-utp uses a timestamp and timestamp_delta field that tracks 1-way delay between sender
-  // and receiver and throttles back when that latency increases
-  // https://www.bittorrent.org/beps/bep_0029.html
-
-  if (is_limited || stream->ca_state != UDX_CA_OPEN || (c->delay_min > 0 && stream->srtt > c->delay_min * 4)) {
-    c->start_time = 0;
-    return;
-  }
-
-  if (c->delay_min == 0 || c->delay_min > stream->srtt) {
-    c->delay_min = stream->srtt;
-  }
-
-  if (stream->cwnd < stream->ssthresh) {
-    stream->cwnd += acked;
-    if (stream->cwnd > stream->ssthresh) stream->cwnd = stream->ssthresh;
-  } else {
-    update_congestion(c, stream->cwnd, acked, time);
-    increase_cwnd(stream, c->cnt, acked);
-  }
-
-  debug_print_cwnd_stats(stream);
 }
 
 static void
@@ -1040,6 +855,7 @@ ack_packet (udx_stream_t *stream, uint32_t seq, int sack, udx_rate_sample_t *rs)
 
   if (!pkt->retransmitted || (rtt >= udx_rtt_min(stream))) {
     stream->rack_rtt = rtt;
+    rs->rtt_ms = rtt;
 
     if (rack_sent_after(pkt->time_sent, next, stream->rack_time_sent, stream->rack_next_seq)) {
       stream->rack_time_sent = pkt->time_sent;
@@ -1185,7 +1001,6 @@ detect_loss_repaired_by_loss_probe (udx_stream_t *stream, uint32_t ack) {
     } else if (seq_compare(ack, stream->tlp_end_seq) > 0) {
       debug_printf("tlp: loss probe retransmission masked lost packet, invoking congestion control\n");
       stream->tlp_in_flight = false;
-      reduce_cwnd(stream, false);
     }
   }
 }
@@ -1224,8 +1039,6 @@ process_packet (udx_socket_t *socket, char *buf, ssize_t buf_len, struct sockadd
     size_t header_len = (data_offset > 0 && data_offset < payload_len) ? data_offset : payload_len;
     nsack_blocks = header_len / (2 * sizeof(*sacks));
   }
-
-  // debug_printf("received packet local_id=%u seq=%u ack=%u\n", local_id, seq, ack);
 
   udx_stream_t *stream = (udx_stream_t *) udx__cirbuf_get(socket->streams_by_id, local_id);
 
@@ -1362,9 +1175,9 @@ process_packet (udx_socket_t *socket, char *buf, ssize_t buf_len, struct sockadd
 
   bool ended = false;
 
-  udx_rate_sample_t rs;
+  udx_rate_sample_t rs = {.rtt_ms = -1};
 
-  for (uint32_t p = prior_remote_acked; seq_diff(p, ack) < 0; p++) {
+  for (uint32_t p = prior_remote_acked; seq_compare(p, ack) < 0; p++) {
     int a = ack_packet(stream, p, 0, &rs);
     if (a == 1) stream->delivered++;
     if (a == 2) {
@@ -1422,8 +1235,6 @@ process_packet (udx_socket_t *socket, char *buf, ssize_t buf_len, struct sockadd
   lost = stream->lost - lost;
 
   if (ack_advanced) {
-    ack_update(stream, ack - prior_remote_acked, is_limited);
-
     // rack 7.2
     if (stream->ca_state == UDX_CA_OPEN && !stream->sacks) {
       schedule_loss_probe(stream);
@@ -1452,8 +1263,11 @@ process_packet (udx_socket_t *socket, char *buf, ssize_t buf_len, struct sockadd
     }
   }
 
-  udx__rate_gen(stream, delivered, lost, &rs);
-  // udx_cong_control(stream, ack, delivered, &rs);
+  if (stream->packets_tx) {
+    // don't generate rates / do congestion control if we've never sent a packet..
+    udx__rate_gen(stream, delivered, lost, &rs);
+    bbr_main(stream, &rs);
+  }
 
   return 1;
 }
@@ -1573,7 +1387,8 @@ update_pacing_time (udx_stream_t *stream) {
 
   if (now > stream->tb_last_refill_ms) {
     uint64_t factor = now - stream->tb_last_refill_ms;
-    stream->tb_available = factor * UDX_PACING_BYTES_PER_MILLISECOND;
+    assert(stream->pacing_bytes_per_ms > 0);
+    stream->tb_available = factor * stream->pacing_bytes_per_ms;
     stream->tb_last_refill_ms = now;
   }
 }
@@ -1597,6 +1412,7 @@ pacing_timer_timeout (uv_timer_t *timer) {
 
 static bool
 send_stream_packets (udx_socket_t *socket, udx_stream_t *stream) {
+  bool inflight_queue_was_empty = stream->inflight_queue.len == 0;
   while (stream->unordered_queue.len > 0) {
     udx_packet_t *pkt = udx__queue_data(udx__queue_peek(&stream->unordered_queue), udx_packet_t, queue);
 
@@ -1668,7 +1484,6 @@ send_stream_packets (udx_socket_t *socket, udx_stream_t *stream) {
 
     uv_buf_t buf = uv_buf_init(payload, payload_len);
 
-    // debug_printf("state packet: id dst=%u seq=%u ack=%u\n", stream->remote_id, stream->seq, stream->ack);
     init_stream_packet(pkt, payload ? UDX_HEADER_SACK : 0, stream, &buf, 1);
 
     pkt->ttl = 0;
@@ -1678,7 +1493,7 @@ send_stream_packets (udx_socket_t *socket, udx_stream_t *stream) {
     if (rc == UV_EAGAIN) {
       return false;
     }
-
+    // todo: do we actually want to do this for state packets?
     udx__rate_pkt_sent(stream, pkt);
 
     // if this ACK packet acks the remote's END packet, advance from ENDING_REMOTE -> ENDED_REMOTE
@@ -1723,6 +1538,7 @@ send_stream_packets (udx_socket_t *socket, udx_stream_t *stream) {
       return false;
     }
 
+    // todo: do we want to generate rate info on this packet
     udx__rate_pkt_sent(stream, pkt);
 
     stream->packets_tx++;
@@ -1748,6 +1564,7 @@ send_stream_packets (udx_socket_t *socket, udx_stream_t *stream) {
 
     udx__queue_shift(&stream->retransmit_queue);
     udx__queue_tail(&stream->inflight_queue, &pkt->queue);
+
     stream->inflight += pkt->size;
     stream->tb_available = pkt->size > stream->tb_available ? 0 : stream->tb_available - pkt->size;
 
@@ -1759,6 +1576,9 @@ send_stream_packets (udx_socket_t *socket, udx_stream_t *stream) {
     stream->packets_tx++;
     stream->bytes_tx += pkt->size;
     stream->retransmit_count++;
+    if (inflight_queue_was_empty) {
+      bbr_on_transmit_start(stream, uv_now(stream->udx->loop));
+    }
 
     if (stream->write_wanted & UDX_STREAM_WRITE_WANT_ZWP) {
       stream->write_wanted &= ~UDX_STREAM_WRITE_WANT_ZWP;
@@ -1861,6 +1681,9 @@ send_stream_packets (udx_socket_t *socket, udx_stream_t *stream) {
 
     stream->packets_tx++;
     stream->bytes_tx += pkt->size;
+    if (inflight_queue_was_empty) {
+      bbr_on_transmit_start(stream, uv_now(stream->udx->loop));
+    }
 
     if (mtu_probe) {
       stream->mtu_probe_count++;
@@ -2433,12 +2256,14 @@ udx_stream_init (udx_t *udx, udx_stream_t *stream, uint32_t local_id, udx_stream
 
   stream->delivered = 0;
   stream->lost = 0;
-  stream->app_limited = 0;
-  stream->interval_start_time = 0;
-  stream->delivered_time = 0;
+  // initially stream is application limited, since we haven't
+  // discovered a network limit.
+  stream->app_limited = ~0;
+  stream->rate_sample_is_app_limited = true;
+  stream->first_sent_ts = 0;
+  stream->delivered_ts = 0;
   stream->rate_delivered = 0;
   stream->rate_interval_ms = 0;
-  stream->rate_sample_is_app_limited = false;
 
   stream->srtt = 0;
   stream->rttvar = 0;
@@ -2455,7 +2280,7 @@ udx_stream_init (udx_t *udx, udx_stream_t *stream, uint32_t local_id, udx_stream
   stream->rack_next_seq = 0;
   stream->rack_fack = 0;
 
-  stream->tb_available = UDX_PACING_BYTES_PER_MILLISECOND;
+  stream->tb_available = UDX_INIT_PACING_RATE;
   stream->tb_last_refill_ms = uv_now(udx->loop);
 
   stream->tlp_in_flight = false;
@@ -2492,8 +2317,7 @@ udx_stream_init (udx_t *udx, udx_stream_t *stream, uint32_t local_id, udx_stream
   stream->sacks = 0;
   stream->inflight = 0;
   stream->ssthresh = 0xffff;
-  stream->cwnd = UDX_CONG_INIT_CWND;
-  stream->cwnd_cnt = 0;
+  stream->cwnd = 10;
   stream->recv_rwnd_max = UDX_DEFAULT_RWND_MAX;
   stream->send_rwnd = UDX_DEFAULT_RWND_MAX;
   stream->on_firewall = NULL;
@@ -2504,8 +2328,7 @@ udx_stream_init (udx_t *udx, udx_stream_t *stream, uint32_t local_id, udx_stream
   stream->on_finalize = finalize_cb;
   stream->get_read_buffer_size = NULL;
 
-  // Clear congestion state
-  memset(&(stream->cong), 0, sizeof(udx_cong_t));
+  bbr_init(stream);
 
   stream->bytes_rx = 0;
   stream->bytes_tx = 0;
