@@ -28,8 +28,14 @@ list(APPEND tests
 
 list(APPEND skipped_tests
   stream-write-read-perf
-  socket-send-recv-multicast
 )
+
+if (CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+  list(APPEND skipped_tests
+    socket-send-recv-multicast
+  ) 
+endif()
+
 
 foreach(test IN LISTS tests)
   add_executable(${test} ${test}.c)
