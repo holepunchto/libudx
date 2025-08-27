@@ -23,6 +23,8 @@ udx__rate_pkt_sent (udx_stream_t *stream, udx_packet_t *pkt) {
   pkt->delivered_ts = stream->delivered_ts;
   pkt->delivered = stream->delivered;
   pkt->is_app_limited = stream->app_limited ? true : false;
+
+  debug_throughput(stream);
 }
 
 static inline uint32_t
@@ -106,6 +108,8 @@ udx__rate_gen (udx_stream_t *stream, uint32_t delivered, uint32_t lost, udx_rate
     stream->rate_interval_ms = rs->interval_ms;
     stream->rate_sample_is_app_limited = rs->is_app_limited;
   }
+
+  debug_throughput(stream);
 }
 
 void

@@ -1,6 +1,8 @@
 #ifndef UDX_H
 #define UDX_H
 
+#define DEBUG_THROUGHPUT 1
+
 #ifdef __cplusplus
 extern "C" {
 #endif
@@ -371,6 +373,10 @@ struct udx_stream_s {
 
   uint64_t packets_rx;
   uint64_t packets_tx;
+
+#ifdef DEBUG_THROUGHPUT
+  FILE *throughput_fd;
+#endif
 };
 
 struct udx_packet_s {

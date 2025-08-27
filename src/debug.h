@@ -1,6 +1,8 @@
 #ifndef UDX_DEBUG_H
 #define UDX_DEBUG_H
 
+#define DEBUG_THROUGHPUT 1
+
 #ifndef NDEBUG
 #define DEBUG 1
 #else
@@ -25,6 +27,26 @@ debug_print_cwnd_stats (udx_stream_t *stream) {
 static void
 debug_print_cwnd_stats (udx_stream_t *stream) {
   (void) stream; // silence 'unused-parameter' warning
+}
+#endif
+
+#ifdef DEBUG_THROUGHPUT
+
+static void
+debug_throughput (udx_stream_t *stream) {
+
+  if (!stream->throughput_fd) {
+    char filename[100];
+    snprintf(filename, sizeof(filename), "stream.%d.dat", stream->local_id);
+    stream->throughput_fd = fopen(filename, "w");
+  }
+
+  fprintf(stream->throughput_fd, "%" PRIu64 " %u %u\n", uv_now(stream->udx->loop), stream->seq, stream->remote_acked);
+}
+#else
+static void
+debug_throughput (udx_stream_t *stream) {
+  (void) stream;
 }
 #endif
 
