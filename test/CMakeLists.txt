@@ -30,7 +30,7 @@ list(APPEND skipped_tests
   stream-write-read-perf
 )
 
-if (CMAKE_SYSTEM_NAME STREQUAL "Darwin")
+if(APPLE)
   list(APPEND skipped_tests
     socket-send-recv-multicast
   ) 
