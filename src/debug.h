@@ -48,6 +48,11 @@ debug_throughput (udx_stream_t *stream) {
   fprintf(stream->throughput_fd, "%" PRIu64 " tp %u %u\n", uv_now(stream->udx->loop), stream->seq, stream->remote_acked);
 }
 
+static inline void
+debug_throughput_init (udx_stream_t *stream) {
+  stream->throughput_fd = NULL;
+}
+
 #include <stdarg.h>
 // prints with format
 // <timestamp> <formatted_string>
@@ -73,6 +78,12 @@ debug_throughput_printf (udx_stream_t *stream, char *fmt, ...) {
   (void) stream;
   (void) fmt;
 }
+
+static inline void
+debug_throughput_init (udx_stream_t *stream) {
+  (void) stream;
+}
+
 #endif
 
 #define debug_printf(...) \
