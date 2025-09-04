@@ -16,16 +16,74 @@
 
 static uint64_t debug_start = 0;
 
-static void
+static inline void
 debug_print_cwnd_stats (udx_stream_t *stream) {
   if (!debug_start) debug_start = uv_hrtime() / 1000000;
   printf("%llu %u %u %u\n", (uv_hrtime() / 1000000) - debug_start, stream->cwnd, stream->cwnd_cnt, stream->srtt);
 }
 #else
-static void
+static inline void
 debug_print_cwnd_stats (udx_stream_t *stream) {
   (void) stream; // silence 'unused-parameter' warning
 }
+#endif
+
+#ifdef UDX_DEBUG_THROUGHPUT
+
+static inline void
+open_throughput_file (udx_stream_t *stream) {
+  if (!stream->throughput_fd) {
+    char filename[100];
+    snprintf(filename, sizeof(filename), "stream.%d.dat", stream->local_id);
+    stream->throughput_fd = fopen(filename, "w");
+  }
+}
+
+// prints a throughput record. tp = throughput
+// <timestamp> tp <seq> <acked>
+static inline void
+debug_throughput (udx_stream_t *stream) {
+  open_throughput_file(stream);
+
+  fprintf(stream->throughput_fd, "%" PRIu64 " tp %u %u\n", uv_now(stream->udx->loop), stream->seq, stream->remote_acked);
+}
+
+static inline void
+debug_throughput_init (udx_stream_t *stream) {
+  stream->throughput_fd = NULL;
+}
+
+#include <stdarg.h>
+// prints with format
+// <timestamp> <formatted_string>
+static inline void
+debug_throughput_printf (udx_stream_t *stream, char *fmt, ...) {
+  open_throughput_file(stream);
+
+  va_list ap;
+  va_start(ap, fmt);
+  fprintf(stream->throughput_fd, "%" PRIu64 " ", uv_now(stream->udx->loop));
+  vfprintf(stream->throughput_fd, fmt, ap);
+  fprintf(stream->throughput_fd, "\n");
+  va_end(ap);
+}
+#else
+static inline void
+debug_throughput (udx_stream_t *stream) {
+  (void) stream;
+}
+
+static inline void
+debug_throughput_printf (udx_stream_t *stream, char *fmt, ...) {
+  (void) stream;
+  (void) fmt;
+}
+
+static inline void
+debug_throughput_init (udx_stream_t *stream) {
+  (void) stream;
+}
+
 #endif
 
 #define debug_printf(...) \

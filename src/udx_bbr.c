@@ -298,12 +298,16 @@ bbr_reset_startup_mode (udx_stream_t *stream) {
 
 static void
 bbr_reset_probe_bw_mode (udx_stream_t *stream) {
+  if (stream->bbr.state != UDX_BBR_STATE_PROBE_BW) {
+    debug_throughput_printf(stream, "probe_bw");
+  }
   stream->bbr.state = UDX_BBR_STATE_PROBE_BW;
   // debug_printf("bbr: rid=%u entering PROBE_BW time=%ld\n", stream->remote_id, uv_now(stream->udx->loop));
   // todo: use an rng?
   // probable reasoning: multiple streams may start simultaneously in many scenarios,
   // starting on random phases makes them more fair by staggering their rttprobe / backoff phases
   // stream->bbr.cycle_index = UDX_BBR_CYCLE_LEN - 1 - get_random_u32_below(bbr_cycle_rand);
+
   stream->bbr.cycle_index = 3; // should be randomly chosen.
   bbr_advance_cycle_phase(stream);
 }
@@ -408,6 +412,9 @@ bbr_check_full_bw_reached (udx_stream_t *stream, udx_rate_sample_t *rs) {
 
   ++stream->bbr.full_bw_count;
   stream->bbr.full_bw_reached = stream->bbr.full_bw_count >= bbr_full_bw_count;
+  if (stream->bbr.full_bw_reached) {
+    debug_throughput_printf(stream, "full_bw_reached");
+  }
 }
 
 static void
@@ -415,6 +422,8 @@ bbr_check_drain (udx_stream_t *stream, udx_rate_sample_t *rs) {
   UDX_UNUSED(rs);
   if (stream->bbr.state == UDX_BBR_STATE_STARTUP && bbr_full_bw_reached(stream)) {
     // BBR 4.3.1.1
+
+    debug_throughput_printf(stream, "drain");
     stream->bbr.state = UDX_BBR_STATE_DRAIN; // drain hypothetical bottleneck queue
     stream->ssthresh = bbr_inflight(stream, bbr_max_bw(stream), 1.0);
     // debug_printf("bbr: rid=%u entering DRAIN cwnd=%u ssthresh=%u bbr_max_bw=%f time=%lu\n", stream->remote_id, stream->cwnd, stream->ssthresh, bbr_max_bw(stream), uv_now(stream->udx->loop));
@@ -435,6 +444,7 @@ bbr_check_probe_rtt_done (udx_stream_t *stream, uint64_t now_ms) {
   if (!(stream->bbr.probe_rtt_done_time && time_diff(now_ms, stream->bbr.probe_rtt_done_time) > 0)) {
     return;
   }
+  debug_throughput_printf(stream, "probe_rtt_done");
   stream->bbr.min_rtt_stamp = now_ms;
   stream->cwnd = max_uint32(stream->cwnd, stream->bbr.prior_cwnd);
   bbr_reset_mode(stream);
@@ -468,6 +478,7 @@ bbr_update_min_rtt (udx_stream_t *stream, udx_rate_sample_t *rs) {
 
   if (UDX_BBR_MIN_PROBE_RTT_MODE_MS > 0 && filter_expired && !stream->bbr.idle_restart && stream->bbr.state != UDX_BBR_STATE_PROBE_RTT) {
     // debug_printf("bbr: rid=%u entering PROBE_RTT time=%ld\n", stream->remote_id, now);
+    debug_throughput_printf(stream, "probe_rtt");
     stream->bbr.state = UDX_BBR_STATE_PROBE_RTT;
     bbr_save_cwnd(stream);
     stream->bbr.probe_rtt_done_time = 0;

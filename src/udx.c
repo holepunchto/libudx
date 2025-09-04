@@ -2346,6 +2346,8 @@ udx_stream_init (udx_t *udx, udx_stream_t *stream, uint32_t local_id, udx_stream
   // Add the socket to the active set
   udx__cirbuf_set(&(udx->streams_by_id), (udx_cirbuf_val_t *) stream);
 
+  debug_throughput_init(stream);
+
   return 0;
 }
 

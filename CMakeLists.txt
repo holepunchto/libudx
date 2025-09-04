@@ -23,6 +23,10 @@ if(WIN32)
   target_compile_options(udx PRIVATE /W4)
 endif()
 
+if (UDX_DEBUG_THROUGHPUT)
+  target_compile_definitions( udx INTERFACE UDX_DEBUG_THROUGHPUT=1 PRIVATE UDX_DEBUG_THROUGHPUT=1 )
+endif()
+
 target_sources(
   udx
   INTERFACE
