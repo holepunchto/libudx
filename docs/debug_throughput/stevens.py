@@ -88,7 +88,7 @@ color_index=0
 for (x, label) in vlines:
     print("x=", x, "label=", label)
     plot.axvline(x=x, color=colors[color_index], ls="--", label=label)
-    color_index = color_index + 1 % len(colors)
+    color_index = (color_index + 1) % len(colors)
 
 axes.legend()
 d.legend()
