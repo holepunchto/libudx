@@ -314,11 +314,14 @@ struct udx_stream_s {
     uint32_t prior_cwnd;
     double full_bw;
 
-    uint64_t ack_epoch_start;
-    uint16_t extra_acked[2];  // volume of data that estimates the degree of aggregation in the network path.
-    uint32_t ack_epoch_acked; // packets (S)ACKed in sampling epoch
-    uint8_t extra_acked_win_rtts;
-    uint8_t extra_acked_win_index;
+    // track windowed maximum of ACK aggregation This enables increasing cwnd
+    // on networks with high ACK aggregation to continue sending during interruptions in the ACK stream.
+
+    uint64_t ack_epoch_start;      // timestamp of current ack epoch. reset when ack rate is <= expected
+    uint16_t extra_acked[2];       // track the windowed maximum degree of ack aggregation
+    uint32_t ack_epoch_acked;      // packets (S)ACKed in current sampling epoch
+    uint8_t extra_acked_win_rtts;  // after extra_acked_win_rtts intervals rotate extra_acked_win_index
+    uint8_t extra_acked_win_index; // position in bbr.extra_acked[]
 
   } bbr;
 

@@ -176,12 +176,18 @@ bbr_inflight (udx_stream_t *stream, double bw, double gain) {
   return bbr_bdp(stream, bw, gain);
 }
 
-// unneccessary?
+// Return the highest recently seen degree of ack aggregation. unit is packets.
+// aggregation is the amount acked during an rtt interval greater than
+// the amount predicted by the current pacing rate. (acked - expected_acked)
+// This is used to set a higher cwnd, allowing us to continue sending
+// during interruptions of the ack stream.
+
 static uint32_t
 bbr_ack_aggregation_cwnd (udx_stream_t *stream) {
   uint32_t aggr_cwnd = 0;
   if (bbr_extra_acked_gain && bbr_full_bw_reached(stream)) {
-    uint32_t max_aggr_cwnd = (bbr_bw(stream) * bbr_extra_acked_max_ms) / 1000;
+    // clamps extra aggregation packets to at most extra_acked_max_ms (100ms) of packets at current bw
+    uint32_t max_aggr_cwnd = bbr_bw(stream) * bbr_extra_acked_max_ms;
 
     aggr_cwnd = (bbr_extra_acked_gain * bbr_extra_acked(stream));
     aggr_cwnd = min_uint32(aggr_cwnd, max_aggr_cwnd);
@@ -356,6 +362,7 @@ bbr_update_ack_aggregation (udx_stream_t *stream, udx_rate_sample_t *rs) {
   }
 
   if (stream->bbr.round_start) {
+    // redundant since we clamp to bbr_extra_acked_win_rtts
     stream->bbr.extra_acked_win_rtts = min_uint32(0xff, stream->bbr.extra_acked_win_rtts + 1);
     if (stream->bbr.extra_acked_win_rtts >= bbr_extra_acked_win_rtts) {
       stream->bbr.extra_acked_win_rtts = 0;
@@ -367,7 +374,9 @@ bbr_update_ack_aggregation (udx_stream_t *stream, udx_rate_sample_t *rs) {
   uint32_t epoch_ms = time_delta_ms(stream->delivered_ts, stream->bbr.ack_epoch_start);
   uint32_t expected_acked = bbr_bw(stream) * epoch_ms;
 
-  // reset aggregation epoch if ACK rate is below expected or significanly large no of ack received since epoch
+  // reset aggregation epoch if
+  // 1. ACK rate is below expected or
+  // 2. an (improbably large) # of acks that would overflow ack_epoch_acked arrives
   if (stream->bbr.ack_epoch_acked <= expected_acked || ((uint64_t) stream->bbr.ack_epoch_acked + rs->acked_sacked >= bbr_ack_epoch_acked_reset_thresh)) {
     stream->bbr.ack_epoch_acked = 0;
     stream->bbr.ack_epoch_start = stream->delivered_ts;

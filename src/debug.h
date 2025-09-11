@@ -34,7 +34,7 @@ static inline void
 open_throughput_file (udx_stream_t *stream) {
   if (!stream->throughput_fd) {
     char filename[100];
-    snprintf(filename, sizeof(filename), "stream.%d.dat", stream->local_id);
+    snprintf(filename, sizeof(filename), "stream.%u.dat", stream->local_id);
     stream->throughput_fd = fopen(filename, "w");
   }
 }
