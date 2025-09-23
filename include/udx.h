@@ -325,13 +325,11 @@ struct udx_stream_s {
 
   } bbr;
 
-  uint32_t pacing_bytes_per_ms; // computed by bbr module. 'BBR.pacing_rate' in IETF draft
+  uint64_t next_send_ts;        // time to send next packet, may be now, in the future, or in the past.
+  double next_send_ts_fraction; // fractions of a millisecond, in range [0.0-1.0)
+  double pacing_packet_per_ms;  // pacing rate in packets per millisecond, set by BBR
 
   uint32_t pkts_buffered; // how many (data) packets received but not processed (out of order)?
-
-  // pacing (tb = token bucket)
-  uint32_t tb_available;
-  uint64_t tb_last_refill_ms;
 
   // tlp
   bool tlp_is_retrans;  // the probe in-flight was a retransmission
@@ -345,7 +343,7 @@ struct udx_stream_s {
   uv_timer_t rack_reo_timer;
   uv_timer_t tlp_timer;
   uv_timer_t zwp_timer;
-  uv_timer_t refill_pacing_timer;
+  uv_timer_t pacing_timer;
 
   size_t inflight;
 
