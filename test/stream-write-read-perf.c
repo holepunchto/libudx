@@ -90,8 +90,18 @@ print_rate_on_interval (uv_timer_t *t) {
   udx_stream_get_bw(&astream, &a_bw);
   udx_stream_get_bw(&bstream, &b_bw);
 
-  printf("A bbr.bw=%" PRIu64 " rate=%9.3f/kpkts/sec %s\n", a_bw, astream.rate_delivered / (1.0f * astream.rate_interval_ms), astream.rate_sample_is_app_limited ? "(app limited)" : "");
-  printf("B bbr.bw=%" PRIu64 " rate=%9.3f/kpkts/sec %s\n", b_bw, bstream.rate_delivered / (1.0f * bstream.rate_interval_ms), bstream.rate_sample_is_app_limited ? "(app limited)" : "");
+  double a_rate = 0;
+  double b_rate = 0;
+
+  if (astream.rate_interval_ms) {
+    a_rate = astream.rate_delivered / (1.0f * astream.rate_interval_ms);
+  }
+  if (bstream.rate_interval_ms) {
+    b_rate = bstream.rate_delivered / (1.0f * bstream.rate_interval_ms);
+  }
+
+  printf("A bbr.bw=%" PRIu64 " rate=%9.3f/kpkts/sec %s\n", a_bw, a_rate, astream.rate_sample_is_app_limited ? "(app limited)" : "");
+  printf("B bbr.bw=%" PRIu64 " rate=%9.3f/kpkts/sec %s\n", b_bw, b_rate, bstream.rate_sample_is_app_limited ? "(app limited)" : "");
 }
 
 int
