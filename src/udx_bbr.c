@@ -84,11 +84,10 @@ bbr_extra_acked (udx_stream_t *stream) {
   return max_uint32(stream->bbr.extra_acked[0], stream->bbr.extra_acked[1]);
 }
 
-static uint64_t
-bbr_bw_to_pacing_rate (udx_stream_t *stream, double bw, double gain) {
-  uint32_t mss = udx__max_payload(stream);
-  uint64_t bpms = bw * mss * gain * bbr_pacing_margin_percent;
-  return max_uint64(bpms, 1);
+// unit: packets per millisecond
+static double
+bbr_bw_to_pacing_rate (double bw, double gain) {
+  return bw * gain * bbr_pacing_margin_percent;
 }
 
 static void
@@ -106,19 +105,19 @@ bbr_init_pacing_rate_from_rtt (udx_stream_t *stream) {
 
   assert(bw != 0);
 
-  stream->pacing_bytes_per_ms = bbr_bw_to_pacing_rate(stream, bw, bbr_high_gain);
+  stream->pacing_packet_per_ms = bbr_bw_to_pacing_rate(bw, bbr_high_gain);
 }
 
 static void
 bbr_set_pacing_rate (udx_stream_t *stream, double bw, double gain) {
-  uint64_t rate_bpms = bbr_bw_to_pacing_rate(stream, bw, gain);
+  double rate_ppms = bbr_bw_to_pacing_rate(bw, gain);
 
   if (!stream->bbr.has_seen_rtt && stream->srtt) {
     bbr_init_pacing_rate_from_rtt(stream);
   }
 
-  if (stream->bbr.full_bw_reached || rate_bpms > stream->pacing_bytes_per_ms) {
-    stream->pacing_bytes_per_ms = rate_bpms;
+  if (stream->bbr.full_bw_reached || rate_ppms > stream->pacing_packet_per_ms) {
+    stream->pacing_packet_per_ms = rate_ppms;
   }
 }
 

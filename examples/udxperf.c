@@ -276,7 +276,7 @@ print_interval (udxperf_client_t *client, uint64_t bytes, uint64_t start, uint64
 
   printf("[%3d] %6.4f-%6.4f sec %s %s/sec", stream->local_id, (start - client->start_time) / 1000.0, (end - client->start_time) / 1000.0, bytes_buf, bps_buf);
   if (is_client && extra_wanted) {
-    printf(" cwnd=%d ssthresh=%d pacing_rate=%u fast_recovery_count=%d rto_count=%d rtx_count=%d", stream->cwnd, stream->pacing_bytes_per_ms, stream->ssthresh, stream->fast_recovery_count, stream->rto_count, stream->retransmit_count);
+    printf(" cwnd=%d ssthresh=%d pacing_rate_pkts_per_ms=%f fast_recovery_count=%d rto_count=%d rtx_count=%d", stream->cwnd, stream->ssthresh, stream->pacing_packet_per_ms, stream->fast_recovery_count, stream->rto_count, stream->retransmit_count);
   }
   printf("\n");
 }
