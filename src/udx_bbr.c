@@ -85,15 +85,10 @@ bbr_extra_acked (udx_stream_t *stream) {
 }
 
 static uint64_t
-bbr_rate_in_bytes (udx_stream_t *stream, double bw, double gain) {
-  uint32_t mss = udx__max_payload(stream);
-
-  return bw * mss * gain * bbr_pacing_margin_percent;
-}
-
-static uint64_t
 bbr_bw_to_pacing_rate (udx_stream_t *stream, double bw, double gain) {
-  return bbr_rate_in_bytes(stream, bw, gain);
+  uint32_t mss = udx__max_payload(stream);
+  uint64_t bpms = bw * mss * gain * bbr_pacing_margin_percent;
+  return max_uint64(bpms, 1);
 }
 
 static void
@@ -131,7 +126,7 @@ static void
 bbr_save_cwnd (udx_stream_t *stream) {
   // save last known cwnd when entering recovery, we use it to restore
   // after completing recovery successfully
-  if (stream->bbr.prev_ca_state < UDX_CA_RECOVERY && stream->bbr.state != UDX_BBR_MIN_PROBE_RTT_MODE_MS) {
+  if (stream->bbr.prev_ca_state < UDX_CA_RECOVERY && stream->bbr.state != UDX_BBR_STATE_PROBE_RTT) {
     stream->bbr.prior_cwnd = stream->cwnd;
   } else {
     stream->bbr.prior_cwnd = max_uint32(stream->bbr.prior_cwnd, stream->cwnd);

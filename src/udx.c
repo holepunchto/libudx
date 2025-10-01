@@ -1064,6 +1064,7 @@ process_packet (udx_socket_t *socket, char *buf, ssize_t buf_len, struct sockadd
   uint32_t lost = stream->lost;
   uint32_t prior_remote_acked = stream->remote_acked;
   bool ack_advanced = seq_diff(ack, prior_remote_acked) > 0;
+  bool data_inflight = stream->remote_acked != stream->seq;
 
   buf += UDX_HEADER_SIZE;
   buf_len -= UDX_HEADER_SIZE;
@@ -1263,8 +1264,8 @@ process_packet (udx_socket_t *socket, char *buf, ssize_t buf_len, struct sockadd
     }
   }
 
-  if (stream->packets_tx) {
-    // don't generate rates / do congestion control if we've never sent a packet..
+  if (data_inflight) {
+    // don't generate rates / do congestion control if nothing was in flight, and thus nothing could be acked and no new samples are generated
     udx__rate_gen(stream, delivered, lost, &rs);
     bbr_main(stream, &rs);
   }
@@ -1493,8 +1494,6 @@ send_stream_packets (udx_socket_t *socket, udx_stream_t *stream) {
     if (rc == UV_EAGAIN) {
       return false;
     }
-    // todo: do we actually want to do this for state packets?
-    udx__rate_pkt_sent(stream, pkt);
 
     // if this ACK packet acks the remote's END packet, advance from ENDING_REMOTE -> ENDED_REMOTE
     if ((stream->status & UDX_STREAM_SHOULD_END_REMOTE) == UDX_STREAM_END_REMOTE && seq_compare(stream->remote_ended, stream->ack) <= 0) {
@@ -1537,9 +1536,6 @@ send_stream_packets (udx_socket_t *socket, udx_stream_t *stream) {
     if (rc == UV_EAGAIN) {
       return false;
     }
-
-    // todo: do we want to generate rate info on this packet
-    udx__rate_pkt_sent(stream, pkt);
 
     stream->packets_tx++;
     stream->bytes_tx += pkt->size;
