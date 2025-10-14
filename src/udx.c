@@ -1054,7 +1054,7 @@ process_packet (udx_socket_t *socket, char *buf, ssize_t buf_len, struct sockadd
     }
 
     if (stream->on_firewall(stream, socket, addr)) return 1;
-    else if (stream->status & UDX_STREAM_DEAD) return 1;
+    if (stream->status & UDX_STREAM_DEAD) return 1;
   }
 
   if (stream->relay_to) return relay_packet(stream, buf, buf_len, type, seq);
