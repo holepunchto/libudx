@@ -7,6 +7,7 @@
 #define UDX_PACKET_FREE_ON_SEND (UDX_PACKET_TYPE_STREAM_STATE | UDX_PACKET_TYPE_STREAM_DESTROY | UDX_PACKET_TYPE_STREAM_RELAY)
 
 #define UDX_UNUSED(x) ((void) (x))
+#define UDX_MAX_SACKS 50
 
 typedef struct {
   uint64_t prior_timestamp;

@@ -59,7 +59,8 @@ main () {
   e = udx_socket_bind(&asock, (struct sockaddr *) &aaddr, 0);
   assert(e == 0);
 
-  udx_socket_recv_start(&asock, on_recv);
+  e = udx_socket_recv_start(&asock, on_recv);
+  assert(e == 0);
 
   uv_buf_t buf = uv_buf_init("hello", 5);
   udx_socket_send(&req, &bsock, &buf, 1, (struct sockaddr *) &aaddr, on_send);
