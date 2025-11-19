@@ -84,17 +84,3 @@ udx__udp_set_dontfrag (uv_os_sock_t fd, bool is_ipv6) {
 }
 
 #endif
-
-#if defined(__linux__)
-int
-udx__udp_set_rxq_ovfl (uv_os_sock_t fd) {
-  int on = 1;
-  return setsockopt(fd, SOL_SOCKET, SO_RXQ_OVFL, &on, sizeof(on));
-}
-#else
-int
-udx__udp_set_rxq_ovfl (uv_os_sock_t fd) {
-  UDX_UNUSED(fd);
-  return -1;
-}
-#endif

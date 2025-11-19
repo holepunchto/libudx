@@ -37,12 +37,6 @@ udx__get_link_mtu (const struct sockaddr *addr) {
 }
 
 int
-udx__udp_set_rxq_ovfl (uv_os_sock_t fd) {
-  UDX_UNUSED(fd);
-  return -1;
-}
-
-int
 udx__udp_set_dontfrag (uv_os_sock_t fd, bool is_ipv6) {
   int rc;
   int val = IP_PMTUDISC_PROBE;

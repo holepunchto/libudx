@@ -508,13 +508,43 @@ stream_on_ack_send (udx_stream_t *stream, int nbytes) {
   }
 }
 
+// if the next packet in the queue requires a specific TTL
+// then we set it here
+static bool
+maybe_adjust_ttl (udx_socket_t *socket) {
+
+  if (socket->specific_ttl_send_queue.len == 0) {
+    return false;
+  }
+
+  udx_socket_send_t *req = udx__queue_data(udx__queue_peek(&socket->specific_ttl_send_queue), udx_socket_send_t, queue);
+
+  if (req->place_in_queue == socket->packets_sent_via_uv_send_queue) {
+    uv_udp_set_ttl(&socket->uv_udp, req->ttl);
+    return true;
+  }
+  return false;
+}
+
+// called every sent packet, check to see if the next packet needs the TTL specified
 static void
-_stream_on_ack_send (uv_udp_send_t *req, int status) {
+on_slow_send (uv_udp_t *udp) {
+  udx_socket_t *socket = (udx_socket_t *) udp; // todo: use offsetof instead?
+  socket->packets_sent_via_uv_send_queue++;
+
+  maybe_adjust_ttl(socket);
+}
+
+static void
+on_ack_send_slow (uv_udp_send_t *req, int status) {
+  on_slow_send(req->handle);
+
   udx_stream_t *stream = req->data;
 
   stream_on_ack_send(stream, 20);
 
   UDX_UNUSED(status);
+
   free(req);
 }
 
@@ -580,7 +610,7 @@ send_ack (udx_stream_t *stream) {
     buf.base = data;
     req->data = stream;
 
-    int err = uv_udp_send(req, &stream->socket->uv_udp, &buf, 1, (struct sockaddr *) &stream->remote_addr, _stream_on_ack_send);
+    int err = uv_udp_send(req, &stream->socket->uv_udp, &buf, 1, (struct sockaddr *) &stream->remote_addr, on_ack_send_slow);
     if (err) {
       debug_printf("uv_udp_send: err=%s\n", uv_strerror(err));
     }
@@ -1240,7 +1270,7 @@ process_data_packet (udx_stream_t *stream, int type, uint32_t seq, char *data, s
 }
 
 static void
-on_relay_slowpath_send (uv_udp_send_t *req, int status) {
+on_relay_send_slow (uv_udp_send_t *req, int status) {
   UDX_UNUSED(status); // todo: log or assert?
   free(req);
 }
@@ -1276,7 +1306,7 @@ relay_packet (udx_stream_t *stream, char *buf, ssize_t buf_len, int type, uint32
       memcpy(data, buf, buf_len);
       b = uv_buf_init(data, b.len);
 
-      err = uv_udp_send(req, &stream->socket->uv_udp, &b, 1, (struct sockaddr *) &relay->remote_addr, on_relay_slowpath_send);
+      err = uv_udp_send(req, &stream->socket->uv_udp, &b, 1, (struct sockaddr *) &relay->remote_addr, on_relay_send_slow);
     }
   }
 
@@ -1729,6 +1759,7 @@ udx_socket_init (udx_t *udx, udx_socket_t *socket, udx_socket_close_cb cb) {
   memset(socket, 0, sizeof(*socket));
 
   socket->ttl = UDX_DEFAULT_TTL;
+  udx__queue_init(&socket->specific_ttl_send_queue);
 
   socket->udx = udx;
   socket->streams_by_id = &(udx->streams_by_id);
@@ -1742,8 +1773,6 @@ udx_socket_init (udx_t *udx, udx_socket_t *socket, udx_socket_close_cb cb) {
   socket->packets_tx = 0;
 
   socket->packets_dropped_by_kernel = -1;
-  socket->cmsg_wanted = false;
-
   uv_udp_t *handle = &socket->uv_udp;
 
   // Asserting all the errors here as it massively simplifies error handling.
@@ -1864,16 +1893,6 @@ udx_socket_bind (udx_socket_t *socket, const struct sockaddr *addr, unsigned int
   err = uv_fileno((const uv_handle_t *) uv_udp, &fd);
   assert(err == 0);
 
-  err = udx__udp_set_rxq_ovfl((uv_os_sock_t) fd);
-  if (!err) {
-    socket->cmsg_wanted = true;
-    socket->packets_dropped_by_kernel = 0;
-
-    if (socket->udx->packets_dropped_by_kernel == -1) {
-      socket->udx->packets_dropped_by_kernel = 0;
-    }
-  }
-
   err = udx__udp_set_dontfrag((uv_os_sock_t) fd, socket->family == 6);
   if (err) {
     debug_printf("udx: failed to set IP Don't Fragment socket option\n");
@@ -1915,8 +1934,20 @@ udx_socket_send (udx_socket_send_t *req, udx_socket_t *socket, const uv_buf_t bu
 }
 
 static void
-udx__on_socket_send (uv_udp_send_t *_req, int status) {
+on_socket_send_slow (uv_udp_send_t *_req, int status) {
   udx_socket_send_t *req = (udx_socket_send_t *) ((char *) _req - offsetof(udx_socket_send_t, uv_udp_send));
+
+  udx_socket_t *socket = req->socket;
+  // 1. if packet was sent with specifc ttl, remove it from queue and reset ttl
+  if (req->ttl) {
+    udx_socket_send_t *removed = udx__queue_data(udx__queue_shift(&socket->specific_ttl_send_queue), udx_socket_send_t, queue);
+    assert(removed == req);
+    // restore ttl after sending
+    uv_udp_set_ttl(&socket->uv_udp, socket->ttl);
+  }
+
+  // 2. if next packet is also a specific ttl it will be re-set here
+  on_slow_send(_req->handle);
   req->on_send(req, status);
 }
 
@@ -1924,15 +1955,21 @@ int
 udx_socket_send_ttl (udx_socket_send_t *req, udx_socket_t *socket, const uv_buf_t bufs[], unsigned int bufs_len, const struct sockaddr *dest, int ttl, udx_socket_send_cb cb) {
   if (ttl < 0 /* 0 is "default" */ || ttl > 255) return UV_EINVAL;
 
+  req->ttl = ttl;
   req->on_send = cb;
+  req->socket = socket;
 
   assert(bufs_len == 1);
   int err;
 
   // fast path
-  if (ttl) uv_udp_set_ttl(&socket->uv_udp, ttl);
-  err = uv_udp_try_send(&socket->uv_udp, bufs, bufs_len, dest);
-  if (ttl) uv_udp_set_ttl(&socket->uv_udp, socket->ttl);
+  if (socket->udx->debug_flags & UDX_DEBUG_FORCE_SEND_SLOW_PATH) {
+    err = UV_EAGAIN;
+  } else {
+    if (ttl) uv_udp_set_ttl(&socket->uv_udp, ttl);
+    err = uv_udp_try_send(&socket->uv_udp, bufs, bufs_len, dest);
+    if (ttl) uv_udp_set_ttl(&socket->uv_udp, socket->ttl);
+  }
 
   if (err >= 0) {
     req->on_send(req, 0);
@@ -1941,13 +1978,14 @@ udx_socket_send_ttl (udx_socket_send_t *req, udx_socket_t *socket, const uv_buf_
 
   if (err == UV_EAGAIN) {
     // slow path
-    if (ttl) assert(false && "todo: set ttl on udx_socket_send slow path");
-
-    err = uv_udp_send(&req->uv_udp_send, &socket->uv_udp, bufs, bufs_len, dest, udx__on_socket_send);
-
-    if (err) {
-      assert(false && "todo: check error handling on send_ttl slow path");
+    if (ttl) {
+      req->place_in_queue = socket->packets_sent_via_uv_send_queue + socket->uv_udp.send_queue_count;
+      udx__queue_tail(&socket->specific_ttl_send_queue, &req->queue);
     }
+
+    err = uv_udp_send(&req->uv_udp_send, &socket->uv_udp, bufs, bufs_len, dest, on_socket_send_slow);
+    maybe_adjust_ttl(socket); // edge case: queue was empty
+
     return err;
   }
 
@@ -2397,8 +2435,7 @@ udx_stream_send (udx_stream_send_t *req, udx_stream_t *stream, const uv_buf_t bu
     req->on_send(req, 0);
   }
 
-  return err; // todo: !!! check that I didn't change this API by mistake,
-              // should it return success on EAGAIN where schedules the call?
+  return err;
 }
 
 int

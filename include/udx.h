@@ -53,6 +53,7 @@ extern "C" {
 #define UDX_DEBUG_FORCE_RELAY_SLOW_PATH 0x01
 #define UDX_DEBUG_FORCE_DROP_PROBES     0x02
 #define UDX_DEBUG_FORCE_DROP_DATA       0x04
+#define UDX_DEBUG_FORCE_SEND_SLOW_PATH  0x08
 
 typedef struct {
   uint32_t seq;
@@ -161,7 +162,17 @@ typedef struct udx_queue_s {
 } udx_queue_t;
 
 struct udx_socket_s {
-  uv_udp_t uv_udp;
+  uv_udp_t uv_udp; // must be first
+
+  // packets queued with udx_socket_send_ttl that both
+  // 1. override the socket's TTL value and
+  // 2. can't be sent immediately via uv_udp_try_send()
+  // are queued by sending with uv_udp_send() and simultaneously queued here.
+  // Then when a packet is sent if the next packet is the packet at the head of this
+  // queue (ie the next packet has a specified TTL), then the sockets ttl is temporarily
+  // set via uv_udp_set_ttl, and the udx_socket_send callback will restore the ttl after
+  udx_queue_t specific_ttl_send_queue;
+  uint64_t packets_sent_via_uv_send_queue;
 
   udx_socket_t *prev;
   udx_socket_t *next;
@@ -171,7 +182,6 @@ struct udx_socket_s {
   udx_t *udx;
   udx_cirbuf_t *streams_by_id; // for convenience
 
-  bool cmsg_wanted; // include a control buffer for recvmsg
   int family;
   int status;
   int readers;
@@ -406,6 +416,15 @@ struct udx_packet_s {
 
 struct udx_socket_send_s {
   uv_udp_send_t uv_udp_send;
+
+  udx_queue_node_t queue;
+  uint32_t ttl;
+  // when queued for sending, the value stored here is:
+  // socket.packets_sent_via_uv_send_queue + socket.send_queue_count
+  // it is used to determine when this packet is at the head of the queue
+  // so that the TTL can be adjusted
+  uint64_t place_in_queue;
+
   udx_socket_t *socket;
   udx_socket_send_cb on_send;
   void *data;
