@@ -9,6 +9,9 @@
 #define UDX_UNUSED(x) ((void) (x))
 #define UDX_MAX_SACKS 50
 
+#define container_of(ptr, type, member) \
+  ((type *) ((char *) (ptr) - offsetof(type, member)))
+
 typedef struct {
   uint64_t prior_timestamp;
   uint32_t prior_delivered;

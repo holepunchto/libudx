@@ -22,6 +22,8 @@ extern "C" {
 
 #define UDX_SOCKET_PACKET_BUFFER_SIZE 2048
 
+#define UDX_MAX_COMBINED_WRITES 1000
+
 #define UDX_MTU_STATE_BASE            1
 #define UDX_MTU_STATE_SEARCH          2
 #define UDX_MTU_STATE_ERROR           3
@@ -225,6 +227,15 @@ struct udx_stream_s {
   uint16_t fast_recovery_count;
   uint16_t retransmit_count;
   size_t writes_queued_bytes;
+
+  // next packet fields
+  // buffer data for the next packet here until capacity is filled or send_next_packet
+  uv_buf_t pkt_buf[UDX_MAX_COMBINED_WRITES];
+  udx_stream_write_buf_t *pkt_wbuf[UDX_MAX_COMBINED_WRITES];
+  uint16_t pkt_capacity;
+  uint16_t pkt_nwbufs;
+  uint8_t pkt_header_flag;
+  uv_prepare_t pending_packet_prepare;
 
   bool reordering_seen;
 
