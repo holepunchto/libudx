@@ -496,6 +496,10 @@ on_ack_send_slow (uv_udp_send_t *req, int status) {
 
 static void
 send_ack (udx_stream_t *stream) {
+  if (!stream->socket) {
+    stream->ack_needed = true; // defer until we are connected
+    return;
+  }
   // todo: if data is available for writing then write a data + ack packet
 
   struct {
@@ -563,13 +567,14 @@ send_ack (udx_stream_t *stream) {
   }
 
   // consider the ack to be sent, even on slow path.
-
   stream->packets_tx++;
   stream->bytes_tx += buf.len;
 
   // move this to callback for accuracy?
   stream->socket->packets_tx++;
   stream->socket->bytes_tx += buf.len;
+  stream->udx->packets_tx++;
+  stream->udx->bytes_tx += buf.len;
 
   if ((stream->status & UDX_STREAM_SHOULD_END_REMOTE) == UDX_STREAM_END_REMOTE && seq_compare(stream->remote_ended, stream->ack) <= 0) {
     stream->status |= UDX_STREAM_ENDED_REMOTE;
@@ -765,6 +770,8 @@ _send_new_packet (udx_stream_t *stream, int probe_type) {
     stream->tlp_permitted = false;
   }
 
+  arm_stream_timers(stream, tlp);
+
   assert(pkt->size > 0 && pkt->size < 1500);
 
   reset_next_packet(stream);
@@ -772,7 +779,6 @@ _send_new_packet (udx_stream_t *stream, int probe_type) {
 
 void
 on_pending_packet_prepare (uv_prepare_t *check) {
-  debug_printf("sending pending packet\n");
   udx_stream_t *stream = container_of(check, udx_stream_t, pending_packet_prepare);
   _send_new_packet(stream, UDX_PROBE_TYPE_NONE); // we only defer non-probe (ZWP|TLP) packets
 }
@@ -821,14 +827,12 @@ send_new_packet (udx_stream_t *stream, int probe_type) {
 
   if (stream->pkt_capacity == 0 || tlp || (stream->pkt_header_flag & UDX_HEADER_END)) {
     _send_new_packet(stream, probe_type);
-    arm_stream_timers(stream, tlp);
     return true;
   }
 
   // we have a partial packet, defer sending until the 'check' phase
   // to give a chance to append more data before transmission
   if (stream->pkt_header_flag & UDX_HEADER_DATA) {
-    debug_printf("deferring packet send\n");
     uv_prepare_start(&stream->pending_packet_prepare, on_pending_packet_prepare);
   }
 
@@ -1649,6 +1653,9 @@ pacing_timer_timeout (uv_timer_t *timer) {
   send_packets(stream);
 }
 
+// arms the retransmit timers (RTO, TLP, ZWP), called after data is transmitted
+// or retransmitted. the current timers armed are the
+// optimize: use a single timer and a 'meaning' flag
 static void
 arm_stream_timers (udx_stream_t *stream, bool sent_tlp) {
   if (!uv_is_active((uv_handle_t *) &stream->rto_timer)) {
@@ -2346,6 +2353,11 @@ udx_stream_connect (udx_stream_t *stream, udx_socket_t *socket, uint32_t remote_
   }
 
   stream->mtu_max = mtu;
+
+  if (stream->ack_needed) {
+    send_ack(stream);
+    stream->ack_needed = false;
+  }
 
   return 0;
 }
