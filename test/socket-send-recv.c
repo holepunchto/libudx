@@ -59,12 +59,11 @@ on_send (udx_socket_send_t *r, int status) {
 void
 on_recv (udx_socket_t *handle, ssize_t read_len, const uv_buf_t *buf, const struct sockaddr *from) {
   assert(buf->len == read_len);
-  assert(memcmp(buf->base, "one", 3) == 0 || memcmp(buf->base, "two", 3) == 0 || memcmp(buf->base, "three", 5) == 0 || memcmp(buf->base, "four", 4) == 0);
 
   int i = 0;
 
   for (; i < NTESTS; i++) {
-    if (memcmp(buf->base, tests[i].string, read_len) == 0) {
+    if (read_len == strlen(tests[i].string) && memcmp(buf->base, tests[i].string, read_len) == 0) {
       tests[i].recv_called = true;
       break;
     }
