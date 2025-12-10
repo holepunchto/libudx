@@ -15,6 +15,27 @@
 #include "internal.h"
 #include "io.h"
 
+int
+udx__get_socket_ttl (udx_socket_t *socket) {
+  uv_os_fd_t fd;
+  uv_fileno((uv_handle_t *) &socket->uv_udp, &fd);
+
+  int ttl;
+  socklen_t ttl_opt_size = sizeof ttl;
+  int rc;
+  if (socket->family == 4) {
+    rc = getsockopt((int) fd, IPPROTO_IP, IP_TTL, &ttl, &ttl_opt_size);
+  } else {
+    rc = getsockopt((int) fd, IPPROTO_IPV6, IPV6_UNICAST_HOPS, &ttl, &ttl_opt_size);
+  }
+
+  if (rc == -1) {
+    return -1;
+  }
+
+  return ttl;
+}
+
 #if defined(__APPLE__)
 
 int

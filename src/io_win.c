@@ -37,6 +37,27 @@ udx__get_link_mtu (const struct sockaddr *addr) {
 }
 
 int
+udx__get_socket_ttl (udx_socket_t *socket) {
+  uv_os_fd_t fd;
+  uv_fileno((uv_handle_t *) &socket->uv_udp, &fd);
+
+  int ttl;
+  socklen_t ttl_opt_size = sizeof ttl;
+  int rc;
+  if (socket->family == 4) {
+    rc = getsockopt((SOCKET) fd, IPPROTO_IP, IP_TTL, (char *) &ttl, &ttl_opt_size);
+  } else {
+    rc = getsockopt((SOCKET) fd, IPPROTO_IPV6, IPV6_UNICAST_HOPS, (char *) &ttl, &ttl_opt_size);
+  }
+
+  if (rc == -1) {
+    return -1;
+  }
+
+  return ttl;
+}
+
+int
 udx__udp_set_dontfrag (uv_os_sock_t fd, bool is_ipv6) {
   int rc;
   int val = IP_PMTUDISC_PROBE;

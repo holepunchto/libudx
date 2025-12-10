@@ -3,6 +3,7 @@
 #include <string.h>
 
 #include "../include/udx.h"
+#include "../src/io.h"
 
 uv_loop_t loop;
 udx_t udx;
@@ -20,19 +21,6 @@ struct {
   bool recv_called;
 } tests[NTESTS] = {{.string = "one", .ttl = 0, .next_ttl = 10}, {.string = "two", .ttl = 10, .next_ttl = 20}, {.string = "three", .ttl = 20, .next_ttl = 0}, {.string = "four", .ttl = 0, .next_ttl = 0}};
 
-int
-get_socket_ttl (udx_socket_t *socket) {
-  int fd;
-  uv_fileno((uv_handle_t *) &socket->uv_udp, &fd);
-
-  int ttl;
-  socklen_t ttl_opt_size = sizeof ttl;
-  int rc = getsockopt(fd, IPPROTO_IP, IP_TTL, &ttl, &ttl_opt_size);
-  assert(rc == 0);
-
-  return ttl;
-}
-
 int nrecv_called;
 
 // check that after our packet is sent the TTL is set for sending the next packet
@@ -42,7 +30,7 @@ on_send (udx_socket_send_t *r, int status) {
   assert(r == &tests[0].req || r == &tests[1].req || r == &tests[2].req || r == &tests[3].req);
   assert(status == 0);
 
-  int ttl = get_socket_ttl(&bsock);
+  int ttl = udx__get_socket_ttl(&bsock);
   int i;
 
   for (i = 0; i < NTESTS; i++) {
