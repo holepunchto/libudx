@@ -1968,7 +1968,9 @@ on_socket_send_slow (uv_udp_send_t *_req, int status) {
 
   // 2. if next packet is also a specific ttl it will be re-set here
   on_slow_send(_req->handle);
-  req->on_send(req, status);
+  if (req->on_send) {
+    req->on_send(req, status);
+  }
 }
 
 int
@@ -1991,7 +1993,7 @@ udx_socket_send_ttl (udx_socket_send_t *req, udx_socket_t *socket, const uv_buf_
     if (ttl) uv_udp_set_ttl(&socket->uv_udp, socket->ttl);
   }
 
-  if (err >= 0) {
+  if (err >= 0 && req->on_send) {
     req->on_send(req, 0);
     return 0;
   }
@@ -2377,7 +2379,9 @@ udx_stream_relay_to (udx_stream_t *stream, udx_stream_t *destination) {
 static void
 on_stream_send_slow (uv_udp_send_t *send, int status) {
   udx_stream_send_t *req = (udx_stream_send_t *) send; // todo: container_of
-  req->on_send(req, 0);
+  if (req->on_send) {
+    req->on_send(req, 0);
+  }
 }
 
 int
@@ -2405,7 +2409,9 @@ udx_stream_send (udx_stream_send_t *req, udx_stream_t *stream, const uv_buf_t bu
     // slow path
     err = uv_udp_send(&req->uv_udp_send, &stream->socket->uv_udp, req->bufs, 2, (struct sockaddr *) &stream->remote_addr, on_stream_send_slow);
   } else {
-    req->on_send(req, 0);
+    if (req->on_send) {
+      req->on_send(req, 0);
+    }
   }
 
   return err;
