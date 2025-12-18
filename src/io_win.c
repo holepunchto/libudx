@@ -36,56 +36,25 @@ udx__get_link_mtu (const struct sockaddr *addr) {
   return mtu;
 }
 
-ssize_t
-udx__sendmsg (udx_socket_t *socket, const uv_buf_t bufs[], unsigned int bufs_len, struct sockaddr *addr, int addr_len) {
-  DWORD bytes, flags = 0;
-
-  int result = WSASendTo(
-    socket->handle.socket,
-    (WSABUF *) bufs,
-    bufs_len,
-    &bytes,
-    flags,
-    addr,
-    addr_len,
-    NULL,
-    NULL
-  );
-
-  if (result != 0) {
-    return uv_translate_sys_error(WSAGetLastError());
-  }
-
-  return bytes;
-}
-
-ssize_t
-udx__recvmsg (udx_socket_t *socket, uv_buf_t *buf, struct sockaddr *addr, int addr_len) {
-  DWORD bytes, flags = 0;
-
-  int result = WSARecvFrom(
-    socket->handle.socket,
-    (WSABUF *) buf,
-    1,
-    &bytes,
-    &flags,
-    addr,
-    &addr_len,
-    NULL,
-    NULL
-  );
-
-  if (result != 0) {
-    return uv_translate_sys_error(WSAGetLastError());
-  }
-
-  return bytes;
-}
-
 int
-udx__udp_set_rxq_ovfl (uv_os_sock_t fd) {
-  UDX_UNUSED(fd);
-  return -1;
+udx__get_socket_ttl (udx_socket_t *socket) {
+  uv_os_fd_t fd;
+  uv_fileno((uv_handle_t *) &socket->uv_udp, &fd);
+
+  int ttl;
+  socklen_t ttl_opt_size = sizeof ttl;
+  int rc;
+  if (socket->family == 4) {
+    rc = getsockopt((SOCKET) fd, IPPROTO_IP, IP_TTL, (char *) &ttl, &ttl_opt_size);
+  } else {
+    rc = getsockopt((SOCKET) fd, IPPROTO_IPV6, IPV6_UNICAST_HOPS, (char *) &ttl, &ttl_opt_size);
+  }
+
+  if (rc == -1) {
+    return -1;
+  }
+
+  return ttl;
 }
 
 int

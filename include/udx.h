@@ -20,6 +20,10 @@ extern "C" {
 #define UDX_MTU_MAX        1500
 #define UDX_MTU_STEP       32
 
+#define UDX_SOCKET_PACKET_BUFFER_SIZE 2048
+
+#define UDX_MAX_COMBINED_WRITES 1000
+
 #define UDX_MTU_STATE_BASE            1
 #define UDX_MTU_STATE_SEARCH          2
 #define UDX_MTU_STATE_ERROR           3
@@ -48,14 +52,10 @@ extern "C" {
 #define UDX_HEADER_MESSAGE 0b01000
 #define UDX_HEADER_DESTROY 0b10000
 
-#define UDX_STREAM_WRITE_WANT_STATE   0b0001
-#define UDX_STREAM_WRITE_WANT_TLP     0b0010
-#define UDX_STREAM_WRITE_WANT_DESTROY 0b0100
-#define UDX_STREAM_WRITE_WANT_ZWP     0b1000
-
 #define UDX_DEBUG_FORCE_RELAY_SLOW_PATH 0x01
 #define UDX_DEBUG_FORCE_DROP_PROBES     0x02
 #define UDX_DEBUG_FORCE_DROP_DATA       0x04
+#define UDX_DEBUG_FORCE_SEND_SLOW_PATH  0x08
 
 typedef struct {
   uint32_t seq;
@@ -164,10 +164,17 @@ typedef struct udx_queue_s {
 } udx_queue_t;
 
 struct udx_socket_s {
-  uv_udp_t handle;
-  uv_poll_t io_poll;
+  uv_udp_t uv_udp; // must be first
 
-  udx_queue_t send_queue;
+  // packets queued with udx_socket_send_ttl that both
+  // 1. override the socket's TTL value and
+  // 2. can't be sent immediately via uv_udp_try_send()
+  // are queued by sending with uv_udp_send() and simultaneously queued here.
+  // Then when a packet is sent if the next packet is the packet at the head of this
+  // queue (ie the next packet has a specified TTL), then the sockets ttl is temporarily
+  // set via uv_udp_set_ttl, and the udx_socket_send callback will restore the ttl after
+  udx_queue_t specific_ttl_send_queue;
+  uint64_t packets_sent_via_uv_send_queue;
 
   udx_socket_t *prev;
   udx_socket_t *next;
@@ -177,13 +184,11 @@ struct udx_socket_s {
   udx_t *udx;
   udx_cirbuf_t *streams_by_id; // for convenience
 
-  bool cmsg_wanted; // include a control buffer for recvmsg
   int family;
   int status;
   int readers;
   int events;
   int ttl;
-  int pending_closes;
 
   void *data;
 
@@ -197,6 +202,7 @@ struct udx_socket_s {
   uint64_t packets_tx;
 
   int64_t packets_dropped_by_kernel;
+  uint8_t buffer[UDX_SOCKET_PACKET_BUFFER_SIZE];
 };
 
 #define UDX_CA_OPEN     1
@@ -211,9 +217,7 @@ struct udx_stream_s {
   udx_stream_t *next;
 
   int status;
-  int write_wanted;
   int out_of_order;
-  int deferred_ack;
 
   uint8_t ca_state;
   uint32_t high_seq; // seq at time of congestion, marks end of recovery
@@ -223,6 +227,19 @@ struct udx_stream_s {
   uint16_t fast_recovery_count;
   uint16_t retransmit_count;
   size_t writes_queued_bytes;
+
+  // next packet fields
+  // buffer data for the next packet here until capacity is filled or send_next_packet
+  uv_buf_t pkt_buf[UDX_MAX_COMBINED_WRITES];
+  udx_stream_write_buf_t *pkt_wbuf[UDX_MAX_COMBINED_WRITES];
+  uint16_t pkt_capacity;
+  uint16_t pkt_nwbufs;
+  uint8_t pkt_header_flag;
+  uv_prepare_t pending_packet_prepare;
+
+  // true if data received before we were connected, in this
+  // situation we must send an ack to the data after we are connected
+  bool ack_needed;
 
   bool reordering_seen;
 
@@ -366,9 +383,6 @@ struct udx_stream_s {
   udx_queue_t retransmit_queue; // udx_packet_t
   udx_queue_t inflight_queue;   // udx_packet_t
 
-  // udx_queue_t unordered;
-  udx_queue_t unordered_queue;
-
   uint64_t bytes_rx;
   uint64_t bytes_tx;
 
@@ -383,15 +397,24 @@ struct udx_stream_s {
 struct udx_packet_s {
   uint32_t seq; // must be the first entry, so its compat with the cirbuf
   udx_queue_node_t queue;
+  uv_udp_send_t uv_udp_send;
 
-  int ttl;
+  udx_stream_t *stream; // for incrementing counters when packet is sent
 
   bool lost;
   bool retransmitted;
   uint8_t transmits;
   uint8_t rto_timeouts;
   bool is_mtu_probe;
+  uint8_t ref_count; // 2 references - the uv_udp_send_t callback and the on_ack callback.
+                     // when 0, packet has been acked and is not in flight. the packet may be free().
   uint16_t size;
+
+  // we store remote_addr for each packet instead of using stream->remote_addr
+  // because we want any retransmits to go to the original host even if the user
+  // calls udx_stream_change_remote().
+  struct sockaddr_storage remote_addr;
+  int remote_addr_len;
 
   uint64_t time_sent;
 
@@ -401,21 +424,24 @@ struct udx_packet_s {
   uint32_t delivered;     // #pkts delivered when packet was transmitted
   bool is_app_limited;    // was throughput app-limited (vs network limited) at the time the packet was transmitted?
 
-  struct sockaddr_storage dest;
-  int dest_len;
-
   // just alloc it in place here, easier to manage
   uint8_t header[UDX_HEADER_SIZE];
   uint16_t nbufs;
 };
 
 struct udx_socket_send_s {
-  udx_packet_t pkt;
-  uv_buf_t bufs[1]; // buf_t[] must be after packet_t
+  uv_udp_send_t uv_udp_send;
+
+  udx_queue_node_t queue;
+  uint32_t ttl;
+  // when queued for sending, the value stored here is:
+  // socket.packets_sent_via_uv_send_queue + socket.send_queue_count
+  // it is used to determine when this packet is at the head of the queue
+  // so that the TTL can be adjusted
+  uint64_t place_in_queue;
+
   udx_socket_t *socket;
-
   udx_socket_send_cb on_send;
-
   void *data;
 };
 
@@ -449,12 +475,13 @@ struct udx_stream_write_s {
 };
 
 struct udx_stream_send_s {
-  udx_packet_t pkt;
-  uv_buf_t bufs[3]; // buf_t[] must be after packet_t
+  uv_udp_send_t uv_udp_send;
   udx_stream_t *stream;
 
   udx_stream_send_cb on_send;
 
+  uint8_t header[20];
+  uv_buf_t bufs[2]; // [0] udx header [1] user data
   void *data;
 };
 

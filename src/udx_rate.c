@@ -6,9 +6,6 @@
 // to generate a rate sample when it is acked
 void
 udx__rate_pkt_sent (udx_stream_t *stream, udx_packet_t *pkt) {
-  // here for simplicity, conceptually should be done before stream send
-  udx__rate_check_app_limited(stream);
-
   if (stream->seq == stream->remote_acked) {
     // there is no data in flight, so start the rate
     // sample intervals of this first flight with the current time.
