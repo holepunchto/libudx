@@ -22,8 +22,9 @@ list(APPEND tests
   stream-change-remote
   stream-multiple
   stream-write-read-receive-window
-    win-filter
+  win-filter
   stream-bbr-state
+  stream-combined-write
 )
 
 list(APPEND skipped_tests

@@ -21,8 +21,8 @@ extern "C" {
 #define UDX_MTU_STEP       32
 
 #define UDX_SOCKET_PACKET_BUFFER_SIZE 2048
-
-#define UDX_MAX_COMBINED_WRITES 1000
+// max writes = 1 write per byte
+#define UDX_MAX_COMBINED_WRITES (UDX_MTU_MAX - UDX_IPV4_HEADER_SIZE)
 
 #define UDX_MTU_STATE_BASE            1
 #define UDX_MTU_STATE_SEARCH          2
@@ -228,13 +228,9 @@ struct udx_stream_s {
   uint16_t retransmit_count;
   size_t writes_queued_bytes;
 
-  // next packet fields
-  // buffer data for the next packet here until capacity is filled or send_next_packet
-  uv_buf_t pkt_buf[UDX_MAX_COMBINED_WRITES];
-  udx_stream_write_buf_t *pkt_wbuf[UDX_MAX_COMBINED_WRITES];
   uint16_t pkt_capacity;
-  uint16_t pkt_nwbufs;
   uint8_t pkt_header_flag;
+  udx_packet_t *pkt; // in construction packet or NULL
   uv_prepare_t pending_packet_prepare;
 
   // true if data received before we were connected, in this
@@ -426,7 +422,14 @@ struct udx_packet_s {
 
   // just alloc it in place here, easier to manage
   uint8_t header[UDX_HEADER_SIZE];
-  uint16_t nbufs;
+  uint16_t nwbufs;          // nwbufs = nbufs - 1
+  uint16_t nwbufs_capacity; // initially ARRAY_SIZEOF(wbuf_sml), used for realloc
+
+  uv_buf_t *bufs;
+  udx_stream_write_buf_t **wbufs;
+
+  uv_buf_t buf_sml[6];
+  udx_stream_write_buf_t *wbuf_sml[5];
 };
 
 struct udx_socket_send_s {
