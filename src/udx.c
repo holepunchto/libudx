@@ -353,12 +353,13 @@ mtu_unprobeify_packet (udx_packet_t *pkt, udx_stream_t *stream) {
 static void
 finalize_maybe (uv_handle_t *timer) {
   udx_stream_t *stream = timer->data;
+  udx_t *udx = stream->udx;
   if (--stream->nrefs > 0) return;
 
   if (stream->on_finalize) {
     stream->on_finalize(stream);
   }
-  ref_dec(stream->udx);
+  ref_dec(udx);
 }
 
 // close stream immediately.
@@ -688,9 +689,10 @@ _send_packet (udx_stream_t *stream, udx_packet_t *pkt, bool is_retransmit) {
   }
 
   // debug code for testing mtu probe logic
+  // drop every packet, but let them through if they've already been dropped twice to keep the test predictable
   const uint32_t drop_every_n = 3;
   static uint32_t n;
-  if ((stream->udx->debug_flags & UDX_DEBUG_FORCE_DROP_DATA) && (n++ % drop_every_n == 0)) {
+  if ((stream->udx->debug_flags & UDX_DEBUG_FORCE_DROP_DATA) && (n++ % drop_every_n == 0) && pkt->transmits < 3) {
     drop_packet = true;
   }
 
