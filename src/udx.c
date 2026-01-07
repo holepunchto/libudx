@@ -353,12 +353,13 @@ mtu_unprobeify_packet (udx_packet_t *pkt, udx_stream_t *stream) {
 static void
 finalize_maybe (uv_handle_t *timer) {
   udx_stream_t *stream = timer->data;
+  udx_t *udx = stream->udx;
   if (--stream->nrefs > 0) return;
 
   if (stream->on_finalize) {
     stream->on_finalize(stream);
   }
-  ref_dec(stream->udx);
+  ref_dec(udx);
 }
 
 // close stream immediately.
