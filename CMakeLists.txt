@@ -4,7 +4,7 @@ find_package(cmake-fetch REQUIRED PATHS node_modules/cmake-fetch)
 
 project(udx C)
 
-fetch_package("github:libuv/libuv@1.48.0")
+fetch_package("github:libuv/libuv@1.51.0")
 
 add_library(udx OBJECT)
 
