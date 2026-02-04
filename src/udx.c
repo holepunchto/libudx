@@ -1801,9 +1801,8 @@ udx_socket_init (udx_t *udx, udx_socket_t *socket, udx_socket_close_cb cb) {
 
   udx->refs++;
 
-  udx__link_add(udx->sockets, socket);
-
   memset(socket, 0, sizeof(*socket));
+  udx__link_add(udx->sockets, socket);
 
   socket->ttl = UDX_DEFAULT_TTL;
   udx__queue_init(&socket->specific_ttl_send_queue);
