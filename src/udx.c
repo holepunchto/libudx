@@ -2007,6 +2007,21 @@ udx_socket_send_ttl (udx_socket_send_t *req, udx_socket_t *socket, const uv_buf_
   req->on_send = cb;
   req->socket = socket;
 
+  struct sockaddr_in6 dest6;
+  if (socket->family == 6 && dest->sa_family == AF_INET) {
+    memset(&dest6, 0, sizeof(dest6));
+    dest6.sin6_family = AF_INET6;
+    dest6.sin6_port = ((struct sockaddr_in *) dest)->sin_port;
+#ifdef SIN6_LEN
+    dest6.sin6_len = sizeof(struct sockaddr_in6);
+#endif
+    dest6.sin6_addr.s6_addr[10] = 0xff;
+    dest6.sin6_addr.s6_addr[11] = 0xff;
+    memcpy(&dest6.sin6_addr.s6_addr[12], &((struct sockaddr_in *) &dest)->sin_addr, 4);
+
+    dest = (struct sockaddr *) &dest6;
+  }
+
   assert(bufs_len == 1);
   int err;
 
