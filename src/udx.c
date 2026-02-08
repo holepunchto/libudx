@@ -2017,7 +2017,7 @@ udx_socket_send_ttl (udx_socket_send_t *req, udx_socket_t *socket, const uv_buf_
 #endif
     dest6.sin6_addr.s6_addr[10] = 0xff;
     dest6.sin6_addr.s6_addr[11] = 0xff;
-    memcpy(&dest6.sin6_addr.s6_addr[12], &((struct sockaddr_in *) &dest)->sin_addr, 4);
+    memcpy(&dest6.sin6_addr.s6_addr[12], &((struct sockaddr_in *) dest)->sin_addr, 4);
 
     dest = (struct sockaddr *) &dest6;
   }
