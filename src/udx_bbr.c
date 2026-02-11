@@ -22,11 +22,6 @@
 // TODO: confirm we've corrected this everywhere, as we mixes packets/second for some measurements in the past
 // 3. we use milliseconds for time measurements
 
-#define UDX_BBR_STATE_STARTUP   0
-#define UDX_BBR_STATE_DRAIN     1
-#define UDX_BBR_STATE_PROBE_BW  2
-#define UDX_BBR_STATE_PROBE_RTT 3
-
 #define UDX_BBR_CYCLE_LEN             8
 #define UDX_BBR_BW_FILTER_CYCLES      (UDX_BBR_CYCLE_LEN + 2)
 #define UDX_BBR_MIN_RTT_INTERVAL_MS   10000
