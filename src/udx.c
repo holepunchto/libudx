@@ -584,7 +584,6 @@ send_ack (udx_stream_t *stream) {
   stream->packets_tx++;
   stream->bytes_tx += buf.len;
 
-  // move this to callback for accuracy?
   stream->socket->packets_tx++;
   stream->socket->bytes_tx += buf.len;
   stream->udx->packets_tx++;
@@ -624,19 +623,6 @@ on_stream_data_write (uv_udp_send_t *send, int status) {
   if (status) {
     debug_printf("sendmsg: %s\n", uv_strerror(status));
   }
-
-  udx_stream_t *stream = pkt->stream;
-  udx_socket_t *socket = stream->socket;
-  udx_t *udx = socket->udx;
-
-  stream->packets_tx++;
-  stream->bytes_tx += pkt->size;
-
-  socket->packets_tx++;
-  socket->bytes_tx += pkt->size;
-
-  udx->packets_tx++;
-  udx->bytes_tx += pkt->size;
 
   deref_packet(pkt);
 }
@@ -707,6 +693,18 @@ _send_packet (udx_stream_t *stream, udx_packet_t *pkt, bool is_retransmit) {
       debug_printf("uv_udp_send error: %s\n", uv_strerror(err));
     }
   }
+
+  udx_socket_t *socket = stream->socket;
+  udx_t *udx = stream->udx;
+
+  stream->packets_tx++;
+  stream->bytes_tx += pkt->size;
+
+  socket->packets_tx++;
+  socket->bytes_tx += pkt->size;
+
+  udx->packets_tx++;
+  udx->bytes_tx += pkt->size;
 
   stream->tb_available = pkt->size > stream->tb_available ? 0 : stream->tb_available - pkt->size;
 
@@ -804,7 +802,6 @@ send_new_packet (udx_stream_t *stream, int probe_type) {
   if (!stream_may_send(stream) && probe_type == UDX_PROBE_TYPE_NONE) return false;
 
   bool tlp = probe_type == UDX_PROBE_TYPE_TLP;
-  bool inflight_queue_was_empty = stream->inflight_queue.len == 0;
   udx_packet_t *pkt = stream->pkt;
 
   while (stream->pkt_capacity > 0 && stream->write_queue.len > 0) {
@@ -2419,6 +2416,7 @@ udx_stream_relay_to (udx_stream_t *stream, udx_stream_t *destination) {
 
 static void
 on_stream_send_slow (uv_udp_send_t *send, int status) {
+  UDX_UNUSED(status);
   udx_stream_send_t *req = (udx_stream_send_t *) send; // todo: container_of
   if (req->on_send) {
     req->on_send(req, 0);
