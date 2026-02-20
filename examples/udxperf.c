@@ -278,6 +278,11 @@ print_interval (udxperf_client_t *client, uint64_t bytes, uint64_t start, uint64
   if (is_client && extra_wanted) {
     printf(" cwnd=%d ssthresh=%d pacing_rate=%u fast_recovery_count=%d rto_count=%d rtx_count=%d", stream->cwnd, stream->pacing_bytes_per_ms, stream->ssthresh, stream->fast_recovery_count, stream->rto_count, stream->retransmit_count);
   }
+
+  uint64_t bw;
+  udx_stream_get_bw(stream, &bw);
+
+  printf(" max_bw=%ld", bw);
   printf("\n");
 }
 

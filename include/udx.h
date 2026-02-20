@@ -51,11 +51,12 @@ extern "C" {
 #define UDX_BBR_STATE_PROBE_BW  2
 #define UDX_BBR_STATE_PROBE_RTT 3
 
-#define UDX_HEADER_DATA    0b00001
-#define UDX_HEADER_END     0b00010
-#define UDX_HEADER_SACK    0b00100
-#define UDX_HEADER_MESSAGE 0b01000
-#define UDX_HEADER_DESTROY 0b10000
+#define UDX_HEADER_DATA      0b000001
+#define UDX_HEADER_END       0b000010
+#define UDX_HEADER_SACK      0b000100
+#define UDX_HEADER_MESSAGE   0b001000
+#define UDX_HEADER_DESTROY   0b010000
+#define UDX_HEADER_HEARTBEAT 0b100000
 
 #define UDX_DEBUG_FORCE_RELAY_SLOW_PATH 0x01
 #define UDX_DEBUG_FORCE_DROP_PROBES     0x02
@@ -294,6 +295,7 @@ struct udx_stream_s {
   uint32_t srtt;
   uint32_t rttvar;
   uint32_t rto;
+  uint32_t keepalive_timeout_ms;
 
   win_filter_t rtt_min;
 
@@ -361,7 +363,7 @@ struct udx_stream_s {
   int nrefs;
   uv_timer_t rto_timer;
   uv_timer_t rack_reo_timer;
-  uv_timer_t tlp_timer;
+  uv_timer_t tlp_and_keepalive_timer;
   uv_timer_t zwp_timer;
   uv_timer_t refill_pacing_timer;
 
@@ -600,6 +602,12 @@ udx_stream_get_seq (udx_stream_t *stream, uint32_t *seq);
 
 int
 udx_stream_set_seq (udx_stream_t *stream, uint32_t seq);
+
+int
+udx_stream_set_keepalive (udx_stream_t *stream, uint32_t keepalive_timeout_ms);
+
+int
+udx_stream_clear_keepalive (udx_stream_t *stream);
 
 int
 udx_stream_get_ack (udx_stream_t *stream, uint32_t *ack);
