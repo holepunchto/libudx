@@ -2272,12 +2272,6 @@ udx_stream_set_keepalive (udx_stream_t *stream, uint32_t keepalive_timeout_ms) {
 }
 
 int
-udx_stream_clear_keepalive (udx_stream_t *stream) {
-  stream->keepalive_timeout_ms = 0;
-  return 0;
-}
-
-int
 udx_stream_get_ack (udx_stream_t *stream, uint32_t *ack) {
   *ack = stream->ack;
   return 0;
