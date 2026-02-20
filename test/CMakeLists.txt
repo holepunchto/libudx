@@ -25,6 +25,7 @@ list(APPEND tests
   win-filter
   stream-bbr-state
   stream-combined-write
+  stream-keepalive
 )
 
 list(APPEND skipped_tests

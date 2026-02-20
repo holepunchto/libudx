@@ -425,13 +425,13 @@ close_stream (udx_stream_t *stream, int err) {
 
   uv_timer_stop(&stream->rto_timer);
   uv_timer_stop(&stream->rack_reo_timer);
-  uv_timer_stop(&stream->tlp_timer);
+  uv_timer_stop(&stream->tlp_and_keepalive_timer);
   uv_timer_stop(&stream->zwp_timer);
   uv_timer_stop(&stream->refill_pacing_timer);
 
   uv_close((uv_handle_t *) &stream->rto_timer, finalize_maybe);
   uv_close((uv_handle_t *) &stream->rack_reo_timer, finalize_maybe);
-  uv_close((uv_handle_t *) &stream->tlp_timer, finalize_maybe);
+  uv_close((uv_handle_t *) &stream->tlp_and_keepalive_timer, finalize_maybe);
   uv_close((uv_handle_t *) &stream->zwp_timer, finalize_maybe);
   uv_close((uv_handle_t *) &stream->refill_pacing_timer, finalize_maybe);
   uv_close((uv_handle_t *) &stream->pending_packet_prepare, finalize_maybe);
@@ -446,8 +446,88 @@ close_stream (udx_stream_t *stream, int err) {
 static void
 udx_rto_timeout (uv_timer_t *handle);
 
+static bool
+_maybe_adjust_ttl (udx_socket_t *socket) {
+
+  if (socket->specific_ttl_send_queue.len == 0) {
+    return false;
+  }
+
+  udx_socket_send_t *req = udx__queue_data(udx__queue_peek(&socket->specific_ttl_send_queue), udx_socket_send_t, queue);
+
+  if (req->place_in_queue == socket->packets_sent_via_uv_send_queue) {
+    uv_udp_set_ttl(&socket->uv_udp, req->ttl);
+    return true;
+  }
+  return false;
+}
+
+// every packet sent via uv_udp_send() must call this function as part of their callback
 static void
-udx_tlp_timeout (uv_timer_t *handle);
+maybe_adjust_ttl (uv_udp_t *udp) {
+  udx_socket_t *socket = (udx_socket_t *) udp; // todo: use offsetof instead?
+  socket->packets_sent_via_uv_send_queue++;
+
+  _maybe_adjust_ttl(socket);
+}
+
+// used to free simple (ack, probe, and relay) memory
+// stream-write, stream-send and stream-destroy packets have their own callbacks
+void
+on_packet_send_slow (uv_udp_send_t *req, int status) {
+  maybe_adjust_ttl(req->handle);
+
+  UDX_UNUSED(status);
+  free(req);
+}
+
+static void
+send_probe (udx_stream_t *stream) {
+  if (!stream->socket) {
+    return;
+  }
+
+  // todo: send a data packet with seq=remote_acked-1 instead
+
+  uint8_t header[20];
+  udx_write_header(header, stream, UDX_HEADER_HEARTBEAT);
+
+  // fast path
+  uv_buf_t buf = uv_buf_init((char *) header, sizeof(header));
+  int err = uv_udp_try_send(&stream->socket->uv_udp, &buf, 1, (struct sockaddr *) &stream->remote_addr);
+
+  if (err == UV_EAGAIN) {
+    // slow path
+    uv_udp_send_t *req = malloc(sizeof(uv_udp_send_t) + buf.len);
+    char *data = (char *) (req + 1);
+    memcpy(data, buf.base, buf.len);
+    buf.base = data;
+    req->data = stream;
+    int err = uv_udp_send(req, &stream->socket->uv_udp, &buf, 1, (struct sockaddr *) &stream->remote_addr, on_packet_send_slow);
+    if (err) {
+      debug_printf("uv_udp_send error: %s\n", uv_strerror(err));
+    }
+  }
+
+  // consider the probe to be sent, even on slow path.
+  stream->packets_tx++;
+  stream->bytes_tx += buf.len;
+
+  stream->socket->packets_tx++;
+  stream->socket->bytes_tx += buf.len;
+  stream->udx->packets_tx++;
+  stream->udx->bytes_tx += buf.len;
+}
+
+static void
+udx_keepalive_timeout (uv_timer_t *timer) {
+  udx_stream_t *stream = timer->data;
+  assert(stream->seq == stream->remote_acked);
+
+  send_probe(stream);
+
+  uv_timer_start(&stream->tlp_and_keepalive_timer, udx_keepalive_timeout, stream->keepalive_timeout_ms, 0);
+}
 
 static void
 schedule_loss_probe (udx_stream_t *stream);
@@ -471,41 +551,6 @@ rack_update_reo_wnd (udx_stream_t *stream) {
 
   uint32_t r = udx_rtt_min(stream) / 4;
   return r < stream->srtt ? r : stream->srtt;
-}
-
-// if the next packet in the queue requires a specific TTL
-// then we set it here
-static bool
-maybe_adjust_ttl (udx_socket_t *socket) {
-
-  if (socket->specific_ttl_send_queue.len == 0) {
-    return false;
-  }
-
-  udx_socket_send_t *req = udx__queue_data(udx__queue_peek(&socket->specific_ttl_send_queue), udx_socket_send_t, queue);
-
-  if (req->place_in_queue == socket->packets_sent_via_uv_send_queue) {
-    uv_udp_set_ttl(&socket->uv_udp, req->ttl);
-    return true;
-  }
-  return false;
-}
-
-// called every sent packet, check to see if the next packet needs the TTL specified
-static void
-on_slow_send (uv_udp_t *udp) {
-  udx_socket_t *socket = (udx_socket_t *) udp; // todo: use offsetof instead?
-  socket->packets_sent_via_uv_send_queue++;
-
-  maybe_adjust_ttl(socket);
-}
-
-static void
-on_ack_send_slow (uv_udp_send_t *req, int status) {
-  on_slow_send(req->handle);
-
-  UDX_UNUSED(status);
-  free(req);
 }
 
 static void
@@ -574,7 +619,7 @@ send_ack (udx_stream_t *stream) {
     buf.base = data;
     req->data = stream;
 
-    int err = uv_udp_send(req, &stream->socket->uv_udp, &buf, 1, (struct sockaddr *) &stream->remote_addr, on_ack_send_slow);
+    int err = uv_udp_send(req, &stream->socket->uv_udp, &buf, 1, (struct sockaddr *) &stream->remote_addr, on_packet_send_slow);
     if (err) {
       debug_printf("uv_udp_send: err=%s\n", uv_strerror(err));
     }
@@ -624,6 +669,7 @@ on_stream_data_write (uv_udp_send_t *send, int status) {
     debug_printf("sendmsg: %s\n", uv_strerror(status));
   }
 
+  maybe_adjust_ttl(send->handle); // send is freed with packet
   deref_packet(pkt);
 }
 
@@ -951,7 +997,7 @@ schedule_loss_probe (udx_stream_t *stream) {
     pto = uv_timer_get_due_in(&stream->rto_timer);
   }
 
-  uv_timer_start(&stream->tlp_timer, udx_tlp_timeout, pto, 0);
+  uv_timer_start(&stream->tlp_and_keepalive_timer, udx_tlp_timeout, pto, 0);
 }
 
 static uint32_t
@@ -1310,12 +1356,6 @@ process_data_packet (udx_stream_t *stream, int type, uint32_t seq, char *data, s
   udx__cirbuf_set(&(stream->incoming), (udx_cirbuf_val_t *) pkt);
 }
 
-static void
-on_relay_send_slow (uv_udp_send_t *req, int status) {
-  UDX_UNUSED(status); // todo: log or assert?
-  free(req);
-}
-
 static int
 relay_packet (udx_stream_t *stream, char *buf, ssize_t buf_len, int type, uint32_t seq) {
 
@@ -1347,7 +1387,7 @@ relay_packet (udx_stream_t *stream, char *buf, ssize_t buf_len, int type, uint32
       memcpy(data, buf, buf_len);
       b = uv_buf_init(data, b.len);
 
-      err = uv_udp_send(req, &stream->socket->uv_udp, &b, 1, (struct sockaddr *) &relay->remote_addr, on_relay_send_slow);
+      err = uv_udp_send(req, &stream->socket->uv_udp, &b, 1, (struct sockaddr *) &relay->remote_addr, on_packet_send_slow);
     }
   }
 
@@ -1432,6 +1472,13 @@ process_packet (udx_socket_t *socket, char *buf, ssize_t buf_len, struct sockadd
   uint32_t prior_remote_acked = stream->remote_acked;
   bool ack_advanced = seq_diff(ack, prior_remote_acked) > 0;
   bool data_inflight = stream->remote_acked != stream->seq;
+  // todo: send data packet with seq=remote_acked-1
+  bool is_probe = type & UDX_HEADER_HEARTBEAT;
+
+  if (is_probe) {
+    send_ack(stream);
+    return 1;
+  }
 
   buf += UDX_HEADER_SIZE;
   buf_len -= UDX_HEADER_SIZE;
@@ -1565,7 +1612,12 @@ process_packet (udx_socket_t *socket, char *buf, ssize_t buf_len, struct sockadd
 
     if (stream->remote_acked == stream->seq) {
       uv_timer_stop(&stream->rto_timer);
-      uv_timer_stop(&stream->tlp_timer);
+
+      if (stream->keepalive_timeout_ms) {
+        uv_timer_start(&stream->tlp_and_keepalive_timer, udx_keepalive_timeout, stream->keepalive_timeout_ms, 0);
+      } else {
+        uv_timer_stop(&stream->tlp_and_keepalive_timer);
+      }
     }
 
     if ((stream->status & UDX_STREAM_ALL_ENDED) == UDX_STREAM_ALL_ENDED) {
@@ -1612,7 +1664,12 @@ process_packet (udx_socket_t *socket, char *buf, ssize_t buf_len, struct sockadd
     if (stream->remote_acked == stream->seq) {
       assert(stream->inflight_queue.len == 0 && stream->retransmit_queue.len == 0);
       uv_timer_stop(&stream->rto_timer);
-      uv_timer_stop(&stream->tlp_timer);
+
+      if (stream->keepalive_timeout_ms) {
+        uv_timer_start(&stream->tlp_and_keepalive_timer, udx_keepalive_timeout, stream->keepalive_timeout_ms, 0);
+      } else {
+        uv_timer_stop(&stream->tlp_and_keepalive_timer);
+      }
     } else {
       assert(!(stream->status & UDX_STREAM_CLOSED));
       uv_timer_start(&stream->rto_timer, udx_rto_timeout, stream->rto, 0);
@@ -1678,10 +1735,12 @@ pacing_timer_timeout (uv_timer_t *timer) {
 }
 
 // arms the retransmit timers (RTO, TLP, ZWP), called after data is transmitted
-// or retransmitted. the current timers armed are the
-// optimize: use a single timer and a 'meaning' flag
+// or retransmitted.
 static void
 arm_stream_timers (udx_stream_t *stream, bool sent_tlp) {
+  assert(stream->inflight_queue.len > 0);
+  assert(stream->remote_acked != stream->seq);
+
   if (!uv_is_active((uv_handle_t *) &stream->rto_timer)) {
     assert(stream->rto >= 1);
     assert(stream->status != UDX_STREAM_CLOSED);
@@ -1691,7 +1750,7 @@ arm_stream_timers (udx_stream_t *stream, bool sent_tlp) {
   // rack 7.2 rearm tlp timer
 
   if (stream->ca_state != UDX_CA_OPEN || stream->sacks) {
-    uv_timer_stop(&stream->tlp_timer);
+    uv_timer_stop(&stream->tlp_and_keepalive_timer);
   } else {
     if (!sent_tlp) {
       schedule_loss_probe(stream);
@@ -1990,7 +2049,7 @@ on_socket_send_slow (uv_udp_send_t *_req, int status) {
   }
 
   // 2. if next packet is also a specific ttl it will be re-set here
-  on_slow_send(_req->handle);
+  maybe_adjust_ttl(_req->handle);
   if (req->on_send) {
     req->on_send(req, status);
   }
@@ -2044,7 +2103,7 @@ udx_socket_send_ttl (udx_socket_send_t *req, udx_socket_t *socket, const uv_buf_
     }
 
     err = uv_udp_send(&req->uv_udp_send, &socket->uv_udp, bufs, bufs_len, dest, on_socket_send_slow);
-    maybe_adjust_ttl(socket); // edge case: queue was empty
+    _maybe_adjust_ttl(socket); // edge case: queue was empty
 
     return err;
   }
@@ -2139,8 +2198,8 @@ udx_stream_init (udx_t *udx, udx_stream_t *stream, uint32_t local_id, udx_stream
   uv_timer_init(udx->loop, &stream->rack_reo_timer);
   stream->rack_reo_timer.data = stream;
 
-  uv_timer_init(udx->loop, &stream->tlp_timer);
-  stream->tlp_timer.data = stream;
+  uv_timer_init(udx->loop, &stream->tlp_and_keepalive_timer);
+  stream->tlp_and_keepalive_timer.data = stream;
 
   uv_timer_init(udx->loop, &stream->zwp_timer);
   stream->zwp_timer.data = stream;
@@ -2197,6 +2256,24 @@ udx_stream_set_seq (udx_stream_t *stream, uint32_t seq) {
   stream->seq = seq;
   stream->remote_acked = seq;
   stream->send_wl2 = seq; // ensure the next ack will be a valid wl2
+  return 0;
+}
+
+int
+udx_stream_set_keepalive (udx_stream_t *stream, uint32_t keepalive_timeout_ms) {
+
+  stream->keepalive_timeout_ms = keepalive_timeout_ms;
+
+  if (stream->remote_acked == stream->seq && keepalive_timeout_ms && stream->status & UDX_STREAM_CONNECTED) {
+    uv_timer_start(&stream->tlp_and_keepalive_timer, udx_keepalive_timeout, stream->keepalive_timeout_ms, 0);
+  }
+
+  return 0;
+}
+
+int
+udx_stream_clear_keepalive (udx_stream_t *stream) {
+  stream->keepalive_timeout_ms = 0;
   return 0;
 }
 
@@ -2397,6 +2474,10 @@ udx_stream_connect (udx_stream_t *stream, udx_socket_t *socket, uint32_t remote_
   if (stream->ack_needed) {
     send_ack(stream);
     stream->ack_needed = false;
+  }
+
+  if (stream->keepalive_timeout_ms) {
+    uv_timer_start(&stream->tlp_and_keepalive_timer, udx_keepalive_timeout, stream->keepalive_timeout_ms, 0);
   }
 
   return 0;
