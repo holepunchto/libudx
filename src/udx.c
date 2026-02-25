@@ -958,14 +958,15 @@ udx_tlp_timeout (uv_timer_t *timer) {
 
   // first try to send a new packet
   if (!send_new_packet(stream, UDX_PROBE_TYPE_TLP)) {
+
     udx_packet_t *pkt = (udx_packet_t *) udx__cirbuf_get(&stream->outgoing, stream->seq - 1);
 
-    if (!pkt || pkt->lost) {
+    if (!pkt || pkt->lost || pkt->ref_count == 2) {
       schedule_loss_probe(stream);
       return;
     }
 
-    debug_printf("udx: sending tlp from existing packet");
+    debug_printf("udx: making tlp from existing packet %u\n", pkt->seq);
 
     udx__queue_unlink(&stream->inflight_queue, &pkt->queue); // retransmit will add it back
     retransmit_packet(stream, pkt);
