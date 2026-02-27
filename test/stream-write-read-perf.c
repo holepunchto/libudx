@@ -59,24 +59,24 @@ on_read (udx_stream_t *handle, ssize_t read_len, const uv_buf_t *buf) {
 }
 
 static void
-on_b_sock_close () {
+on_b_sock_close (udx_socket_t *socket) {
   printf("sending socket closing\n");
 }
 
 static void
-on_b_stream_close () {
+on_b_stream_close (udx_stream_t *stream, int status) {
   printf("sending stream closing\n");
   int e = udx_socket_close(&bsock);
   assert(e == 0 && "udx_socket_close (sender, 'b')");
 }
 
 static void
-on_a_sock_close () {
+on_a_sock_close (udx_socket_t *socket) {
   printf("receiving socket closing\n");
 }
 
 static void
-on_a_stream_close () {
+on_a_stream_close (udx_stream_t *stream, int status) {
   printf("receiving stream closing\n");
   int e = udx_socket_close(&asock);
   assert(e == 0 && "udx_socket_close (receiver, 'a')");

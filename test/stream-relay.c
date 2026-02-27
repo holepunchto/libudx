@@ -131,7 +131,9 @@ main () {
   e = udx_stream_connect(&dstream, &dsock, 3, (struct sockaddr *) &caddr);
   assert(e == 0);
 
-  uv_buf_t buf = uv_buf_init(calloc(NBYTES_TO_SEND, 1), NBYTES_TO_SEND);
+  char *data = calloc(NBYTES_TO_SEND, 1);
+
+  uv_buf_t buf = uv_buf_init(data, NBYTES_TO_SEND);
 
   memcpy(buf.base, "hello", 5);
 
@@ -146,6 +148,7 @@ main () {
   assert(nbytes_read == NBYTES_TO_SEND && read_hash == write_hash);
 
   free(req);
+  free(data);
 
   return 0;
 }

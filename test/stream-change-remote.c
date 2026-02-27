@@ -162,7 +162,9 @@ main () {
   e = udx_stream_connect(&dstream, &dsock, 3, (struct sockaddr *) &caddr);
   assert(e == 0);
 
-  uv_buf_t buf = uv_buf_init(malloc(NBYTES_TO_SEND), NBYTES_TO_SEND);
+  char *data = malloc(NBYTES_TO_SEND);
+
+  uv_buf_t buf = uv_buf_init(data, NBYTES_TO_SEND);
 
   write_hash = hash(write_hash, (uint8_t *) buf.base, buf.len);
 
@@ -177,6 +179,7 @@ main () {
   printf("read_hash=%lu write_hash=%lu\n", read_hash, write_hash);
 
   free(req);
+  free(data);
 
   return 0;
 }

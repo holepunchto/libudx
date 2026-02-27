@@ -92,5 +92,8 @@ main () {
 
   assert(ack_called == 2 && total_read == buf.len * 2);
 
+  free(areq);
+  free(breq);
+
   return 0;
 }

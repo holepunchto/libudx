@@ -489,7 +489,8 @@ send_probe (udx_stream_t *stream) {
 
   // todo: send a data packet with seq=remote_acked-1 instead
 
-  uint8_t header[20];
+  alignas(4) uint8_t header[20];
+
   udx_write_header(header, stream, UDX_HEADER_HEARTBEAT);
 
   // fast path
@@ -2655,7 +2656,9 @@ stream_on_destroy_send (udx_stream_t *stream) {
 
 static void
 _stream_on_destroy_send (uv_udp_send_t *req, int status) {
-  debug_printf("udx destroy send: err=%s\n", uv_strerror(status));
+  if (status < 0) {
+    debug_printf("udx destroy send: err=%s\n", uv_strerror(status));
+  }
   udx_stream_t *stream = req->data;
   stream_on_destroy_send(stream);
   free(req);
@@ -2682,7 +2685,8 @@ udx_stream_destroy (udx_stream_t *stream) {
 
   // write destroy packet
 
-  uint8_t header[20];
+  alignas(4) uint8_t header[20];
+
   udx_write_header(header, stream, UDX_HEADER_DESTROY);
   stream->seq++;
 

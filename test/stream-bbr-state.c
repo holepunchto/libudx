@@ -166,11 +166,13 @@ send_periodic (uv_timer_t *timer) {
 static void
 send_ack_slow (udx_stream_write_t *r, int status, int unordered) {
   // printf("send_ack (slow)\n");
+  free(r);
 }
 
 static void
 send_ack_fast (udx_stream_write_t *r, int status, int unordered) {
   // printf("send_ack (fast) elapsed=%ld\n", uv_now(&loop) - start_ms);
+  free(r);
 }
 
 static void
