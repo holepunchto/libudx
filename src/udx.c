@@ -489,11 +489,15 @@ send_probe (udx_stream_t *stream) {
 
   // todo: send a data packet with seq=remote_acked-1 instead
 
-  uint8_t header[20];
-  udx_write_header(header, stream, UDX_HEADER_HEARTBEAT);
+  union {
+    uint8_t header[20];
+    uint32_t _align;
+  } u;
+
+  udx_write_header(u.header, stream, UDX_HEADER_HEARTBEAT);
 
   // fast path
-  uv_buf_t buf = uv_buf_init((char *) header, sizeof(header));
+  uv_buf_t buf = uv_buf_init((char *) u.header, sizeof(u.header));
   int err = uv_udp_try_send(&stream->socket->uv_udp, &buf, 1, (struct sockaddr *) &stream->remote_addr);
 
   if (err == UV_EAGAIN) {
@@ -2655,7 +2659,9 @@ stream_on_destroy_send (udx_stream_t *stream) {
 
 static void
 _stream_on_destroy_send (uv_udp_send_t *req, int status) {
-  debug_printf("udx destroy send: err=%s\n", uv_strerror(status));
+  if (status < 0) {
+    debug_printf("udx destroy send: err=%s\n", uv_strerror(status));
+  }
   udx_stream_t *stream = req->data;
   stream_on_destroy_send(stream);
   free(req);
@@ -2682,11 +2688,15 @@ udx_stream_destroy (udx_stream_t *stream) {
 
   // write destroy packet
 
-  uint8_t header[20];
-  udx_write_header(header, stream, UDX_HEADER_DESTROY);
+  union {
+    uint8_t header[20];
+    uint32_t _align;
+  } u;
+
+  udx_write_header(u.header, stream, UDX_HEADER_DESTROY);
   stream->seq++;
 
-  uv_buf_t buf = uv_buf_init((char *) header, sizeof(header));
+  uv_buf_t buf = uv_buf_init((char *) u.header, sizeof(u.header));
   int err = uv_udp_try_send(&stream->socket->uv_udp, &buf, 1, (struct sockaddr *) &stream->remote_addr);
 
   if (err == UV_EAGAIN) {

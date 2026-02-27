@@ -428,7 +428,11 @@ struct udx_packet_s {
   bool is_app_limited;    // was throughput app-limited (vs network limited) at the time the packet was transmitted?
 
   // just alloc it in place here, easier to manage
-  uint8_t header[UDX_HEADER_SIZE];
+  union {
+    uint8_t header[UDX_HEADER_SIZE];
+    uint32_t _align;
+  };
+
   uint16_t nwbufs;          // nwbufs = nbufs - 1
   uint16_t nwbufs_capacity; // initially ARRAY_SIZEOF(wbuf_sml), used for realloc
 
