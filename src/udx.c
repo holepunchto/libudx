@@ -2667,7 +2667,7 @@ _stream_on_destroy_send (uv_udp_send_t *req, int status) {
 int
 udx_stream_destroy (udx_stream_t *stream) {
   if (stream->status & UDX_STREAM_CLOSED) {
-    debug_printf("udx: closing already closed stream %u", stream->local_id);
+    debug_printf("udx: closing already closed stream %u\n", stream->local_id);
     return 0;
   }
 
@@ -2827,6 +2827,7 @@ udx_interface_event_init (udx_t *udx, udx_interface_event_t *handle, udx_interfa
   handle->loop = udx->loop;
   handle->sorted = false;
   handle->on_close = cb;
+  handle->closing = false;
 
   int err = uv_interface_addresses(&(handle->addrs), &(handle->addrs_len));
   if (err < 0) return err;
@@ -2860,6 +2861,10 @@ udx_interface_event_stop (udx_interface_event_t *handle) {
 
 int
 udx_interface_event_close (udx_interface_event_t *handle) {
+  if (handle->closing) {
+    return 0;
+  }
+  handle->closing = true;
   handle->on_event = NULL;
 
   uv_free_interface_addresses(handle->addrs, handle->addrs_len);
