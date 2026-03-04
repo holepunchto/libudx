@@ -513,6 +513,8 @@ struct udx_interface_event_s {
   uv_loop_t *loop;
   udx_t *udx;
 
+  bool closing;
+
   udx_interface_event_t *prev;
   udx_interface_event_t *next;
 
