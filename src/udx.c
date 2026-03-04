@@ -2862,7 +2862,7 @@ udx_interface_event_stop (udx_interface_event_t *handle) {
 int
 udx_interface_event_close (udx_interface_event_t *handle) {
   if (handle->closing) {
-    return 0;
+    return UV_EINVAL;
   }
   handle->closing = true;
   handle->on_event = NULL;
