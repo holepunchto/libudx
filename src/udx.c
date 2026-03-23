@@ -57,14 +57,6 @@
 static void
 arm_stream_timers (udx_stream_t *stream, bool sent_tlp);
 
-typedef struct {
-  uint32_t seq; // must be the first entry, so its compat with the cirbuf
-
-  int type;
-
-  uv_buf_t buf;
-} udx_pending_read_t;
-
 static uint32_t
 seq_max (uint32_t a, uint32_t b) {
   return seq_compare(a, b) < 0 ? b : a;
