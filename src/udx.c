@@ -732,15 +732,18 @@ _send_packet (udx_stream_t *stream, udx_packet_t *pkt, bool is_retransmit) {
     drop_packet = true;
   }
 
-  pkt->ref_count++;
-  assert(pkt->ref_count == 2);
-
-  if (drop_packet) {
-    deref_packet(pkt);
-  } else {
-    int err = uv_udp_send(&pkt->uv_udp_send, &stream->socket->uv_udp, bufs, nbufs, (struct sockaddr *) &pkt->remote_addr, on_stream_data_write);
-    if (err) {
-      debug_printf("uv_udp_send error: %s\n", uv_strerror(err));
+  if (!drop_packet) {
+    int err = uv_udp_try_send(&stream->socket->uv_udp, bufs, nbufs, (struct sockaddr *) &pkt->remote_addr);
+    if (err == UV_EAGAIN) {
+      pkt->ref_count++;
+      assert(pkt->ref_count == 2);
+      int err = uv_udp_send(&pkt->uv_udp_send, &stream->socket->uv_udp, bufs, nbufs, (struct sockaddr *) &pkt->remote_addr, on_stream_data_write);
+      if (err) {
+        deref_packet(pkt);
+        debug_printf("uv_udp_send error: %s\n", uv_strerror(err));
+      }
+    } else if (err < 0) {
+      debug_printf("uv_udp_try_send error: %s\n", uv_strerror(err));
     }
   }
 
