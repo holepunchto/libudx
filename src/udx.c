@@ -1809,15 +1809,19 @@ on_uv_udp_recv (uv_udp_t *handle, ssize_t nread, const uv_buf_t *buf, const stru
 
   if (nread < 0) {
     debug_printf("udx: uv_udp_recv err=%s\n", uv_strerror(nread));
+    assert(nread != UV_EBADF);
+    assert(nread != UV_ENOTSOCK);
+    assert(nread != UV_EINVAL);
+    assert(nread != UV_EFAULT);
+    return;
   }
-  assert(nread >= 0);
 
   udx_socket_t *socket = handle->data; // todo: cast instead, save a dereference ?
 
   assert(!(socket->status & UDX_SOCKET_CLOSED));
 
   if (flags & UV_UDP_PARTIAL) {
-    assert(false && "todo: log error for large messages?");
+    debug_printf("udx: uv_udp_recv received partial packet\n", uv_strerror(nread));
   }
 
   assert((size_t) nread <= buf->len);
