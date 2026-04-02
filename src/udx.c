@@ -2727,7 +2727,7 @@ udx_stream_destroy (udx_stream_t *stream) {
   stream->status |= UDX_STREAM_DESTROYING;
 
   if (stream->relayed) {
-    close_stream(stream, 0);
+    close_stream_internal(stream, 0);
     return 0;
   }
 
