@@ -1821,7 +1821,7 @@ on_uv_udp_recv (uv_udp_t *handle, ssize_t nread, const uv_buf_t *buf, const stru
   assert(!(socket->status & UDX_SOCKET_CLOSED));
 
   if (flags & UV_UDP_PARTIAL) {
-    debug_printf("udx: uv_udp_recv received partial packet\n", uv_strerror(nread));
+    debug_printf("udx: uv_udp_recv received partial packet\n");
   }
 
   assert((size_t) nread <= buf->len);
