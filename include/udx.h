@@ -405,6 +405,8 @@ struct udx_packet_s {
 
   udx_stream_t *stream; // for incrementing counters when packet is sent
 
+  bool cancelled; // true if the stream was closed while this packet is in the uv_udp_send queue
+                  // immediateyl call on_ack(UV_ECANCELLED) in the callback
   bool lost;
   bool retransmitted;
   uint8_t transmits;

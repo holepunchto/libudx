@@ -201,24 +201,10 @@ on_bytes_acked (udx_stream_write_buf_t *wbuf, size_t bytes, bool cancelled) {
 }
 
 static void
-deref_packet (udx_packet_t *pkt) {
-  if (--pkt->ref_count == 0) {
-    if (pkt->bufs != &pkt->buf_sml[0]) {
-      free(pkt->bufs);
-      free(pkt->wbufs);
-    }
-    free(pkt);
-  }
-}
-
-static void
 cancel_packet (udx_packet_t *pkt) {
-  uv_buf_t *bufs = pkt->bufs;
-  udx_stream_write_buf_t **wbufs = pkt->wbufs;
-
   for (int i = 0; i < pkt->nwbufs; i++) {
-    size_t buf_len = bufs[i + 1].len;
-    udx_stream_write_buf_t *wbuf = wbufs[i];
+    size_t buf_len = pkt->bufs[i + 1].len;
+    udx_stream_write_buf_t *wbuf = pkt->wbufs[i];
     on_bytes_acked(wbuf, buf_len, true);
 
     // todo: move into on_bytes_acked itself
@@ -228,8 +214,20 @@ cancel_packet (udx_packet_t *pkt) {
       write->on_ack(write, UV_ECANCELED, 0);
     }
   }
+}
 
-  deref_packet(pkt);
+static void
+deref_packet (udx_packet_t *pkt) {
+  if (--pkt->ref_count == 0) {
+    if (pkt->cancelled) {
+      cancel_packet(pkt);
+    }
+    if (pkt->bufs != &pkt->buf_sml[0]) {
+      free(pkt->bufs);
+      free(pkt->wbufs);
+    }
+    free(pkt);
+  }
 }
 
 static void
@@ -242,6 +240,7 @@ clear_outgoing_packets (udx_stream_t *stream) {
   if (stream->pkt) {
     assert(stream->pkt->ref_count == 1);
     cancel_packet(stream->pkt);
+    deref_packet(stream->pkt);
   }
 
   // We should make sure all existing packets do not send, and notify the user that they failed
@@ -249,8 +248,8 @@ clear_outgoing_packets (udx_stream_t *stream) {
     udx_packet_t *pkt = (udx_packet_t *) udx__cirbuf_remove(&(stream->outgoing), seq);
 
     if (pkt == NULL) continue;
-
-    cancel_packet(pkt);
+    pkt->cancelled = true;
+    deref_packet(pkt);
   }
 
   while (stream->write_queue.len > 0) {
@@ -310,8 +309,9 @@ udx_write_header (uint8_t header[20], udx_stream_t *stream, int type) {
 // returns 1 on success, zero if packet can't be promoted to a probe packet
 static int
 mtu_probeify_packet (udx_packet_t *pkt, int wanted_size) {
-
-  assert(wanted_size > pkt->size);
+  if (wanted_size > pkt->size) {
+    return 0;
+  }
 
   // cannot probeify a packet with 1) no data 2) already has padding
   if (pkt->nwbufs < 1 || pkt->header[3] != 0) {
@@ -370,8 +370,19 @@ finalize_maybe (uv_handle_t *timer) {
 // 2. if you call this on the send path, you must immediately return from
 // send_stream_packets
 
-static int
+static void
+close_stream_internal (udx_stream_t *stream, int err);
+
+void
 close_stream (udx_stream_t *stream, int err) {
+  if (stream->status & UDX_STREAM_DESTROYING) {
+    return;
+  }
+  close_stream_internal(stream, err);
+}
+
+void
+close_stream_internal (udx_stream_t *stream, int err) {
   assert((stream->status & UDX_STREAM_CLOSED) == 0);
   stream->status |= UDX_STREAM_CLOSED;
   stream->status &= ~UDX_STREAM_CONNECTED;
@@ -441,8 +452,6 @@ close_stream (udx_stream_t *stream, int err) {
   if (udx->teardown && socket != NULL && socket->streams == NULL) {
     udx_socket_close(socket);
   }
-
-  return 1;
 }
 
 static void
@@ -873,7 +882,7 @@ send_new_packet (udx_stream_t *stream, int probe_type) {
 
       if (first_alloc) {
         pkt->bufs = malloc((pkt->nwbufs_capacity + 1) * sizeof(pkt->bufs[0]));
-        pkt->wbufs = malloc((pkt->nwbufs_capacity + 1) * sizeof(pkt->wbufs[0]));
+        pkt->wbufs = malloc((pkt->nwbufs_capacity) * sizeof(pkt->wbufs[0]));
         memcpy(pkt->bufs, pkt->buf_sml, sizeof(pkt->buf_sml));
         memcpy(pkt->wbufs, pkt->wbuf_sml, sizeof(pkt->wbuf_sml));
       } else {
@@ -1798,6 +1807,11 @@ static void
 on_uv_udp_recv (uv_udp_t *handle, ssize_t nread, const uv_buf_t *buf, const struct sockaddr *addr, unsigned flags) {
   if (nread == 0 && addr == NULL) return;
 
+  if (nread < 0) {
+    debug_printf("udx: uv_udp_recv err=%s\n", uv_strerror(nread));
+  }
+  assert(nread >= 0);
+
   udx_socket_t *socket = handle->data; // todo: cast instead, save a dereference ?
 
   assert(!(socket->status & UDX_SOCKET_CLOSED));
@@ -2681,7 +2695,7 @@ stream_on_destroy_send (udx_stream_t *stream) {
   udx->packets_tx++;
   udx->bytes_tx += UDX_HEADER_SIZE;
 
-  close_stream(stream, 0);
+  close_stream_internal(stream, 0);
 }
 
 static void
