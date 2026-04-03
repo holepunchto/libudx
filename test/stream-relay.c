@@ -40,7 +40,10 @@ on_ack (udx_stream_write_t *req, int status, int unordered) {
   assert(status == 0);
   // assert(unordered == 0);
 
-  uv_stop(&loop);
+  udx_stream_destroy(&astream);
+  udx_stream_destroy(&bstream);
+  udx_stream_destroy(&cstream);
+  udx_stream_destroy(&dstream);
 
   ack_called = true;
 }
@@ -57,6 +60,16 @@ on_read (udx_stream_t *handle, ssize_t read_len, const uv_buf_t *buf) {
 
   nbytes_read += read_len;
   read_called = true;
+}
+
+int nclosed;
+void
+on_close (udx_stream_t *s, int err) {
+  nclosed++;
+
+  if (nclosed == 4) {
+    uv_stop(&loop);
+  }
 }
 
 int
@@ -98,16 +111,16 @@ main () {
   e = udx_socket_bind(&dsock, (struct sockaddr *) &daddr, 0);
   assert(e == 0);
 
-  e = udx_stream_init(&udx, &astream, 1, NULL, NULL);
+  e = udx_stream_init(&udx, &astream, 1, on_close, NULL);
   assert(e == 0);
 
-  e = udx_stream_init(&udx, &bstream, 2, NULL, NULL);
+  e = udx_stream_init(&udx, &bstream, 2, on_close, NULL);
   assert(e == 0);
 
-  e = udx_stream_init(&udx, &cstream, 3, NULL, NULL);
+  e = udx_stream_init(&udx, &cstream, 3, on_close, NULL);
   assert(e == 0);
 
-  e = udx_stream_init(&udx, &dstream, 4, NULL, NULL);
+  e = udx_stream_init(&udx, &dstream, 4, on_close, NULL);
   assert(e == 0);
 
   e = udx_stream_relay_to(&cstream, &bstream);
