@@ -940,6 +940,7 @@ retransmit_packet (udx_stream_t *stream, udx_packet_t *pkt) {
 
 static void
 send_packets (udx_stream_t *stream) {
+  assert((stream->status & UDX_STREAM_DEAD) == 0);
 
   while (stream->retransmit_queue.len > 0 && stream_may_send(stream)) {
     udx_packet_t *pkt = udx__queue_data(udx__queue_peek(&stream->retransmit_queue), udx_packet_t, queue);
@@ -1157,7 +1158,7 @@ udx_rto_timeout (uv_timer_t *timer) {
     if (pkt->seq == stream->remote_acked || remaining < 0) {
       if (pkt->rto_timeouts >= UDX_MAX_RTO_TIMEOUTS) {
         close_stream(stream, UV_ETIMEDOUT);
-        break;
+        return;
       }
 
       stream->lost++;
