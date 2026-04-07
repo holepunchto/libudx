@@ -27,6 +27,7 @@ list(APPEND tests
   stream-bbr-state
   stream-combined-write
   stream-keepalive
+  stream-rto
 )
 
 list(APPEND skipped_tests
