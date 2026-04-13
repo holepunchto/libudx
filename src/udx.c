@@ -1502,6 +1502,9 @@ process_packet (udx_socket_t *socket, char *buf, ssize_t buf_len, struct sockadd
     if (seq_diff(sack_start, ack) < 0) {
       return 1;
     }
+    if (seq_diff(sack_start, sack_end) > 0) {
+      return 1;
+    }
     if (seq_diff(sack_end, fack) > 0) {
       fack = sack_end;
     }
