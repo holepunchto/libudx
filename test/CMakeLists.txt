@@ -28,6 +28,7 @@ list(APPEND tests
   stream-combined-write
   stream-keepalive
   stream-rto
+  stream-strict-sack
 )
 
 list(APPEND skipped_tests

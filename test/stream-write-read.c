@@ -121,6 +121,8 @@ main () {
   free(req);
 
   assert(ack_called && read_called && eof_received);
+  assert(astream.dropped_sacks == 0);
+  assert(bstream.dropped_sacks == 0);
 
   return 0;
 }

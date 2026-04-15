@@ -1430,6 +1430,15 @@ detect_loss_repaired_by_loss_probe (udx_stream_t *stream, uint32_t ack) {
   }
 }
 
+static bool
+udx_sack_is_valid (udx_stream_t *stream, uint32_t start_seq, uint32_t end_seq) {
+  if (seq_diff(end_seq, stream->seq) > 0) return false;
+  if (seq_diff(start_seq, end_seq) >= 0) return false;
+  if (seq_diff(start_seq, stream->seq) >= 0) return false;
+  if (seq_diff(start_seq, stream->remote_acked) < 0) return false;
+  return true;
+}
+
 static int
 process_packet (udx_socket_t *socket, char *buf, ssize_t buf_len, struct sockaddr *addr) {
   udx_t *udx = socket->udx;
@@ -1493,23 +1502,6 @@ process_packet (udx_socket_t *socket, char *buf, ssize_t buf_len, struct sockadd
   bool data_inflight = stream->remote_acked != stream->seq;
   // todo: send data packet with seq=remote_acked-1
   bool is_probe = type & UDX_HEADER_HEARTBEAT;
-
-  uint32_t fack = ack;
-  for (int i = 0; i < nsack_blocks; i++) {
-    uint32_t sack_start = udx__swap_uint32_if_be(sacks[i * 2]);
-    uint32_t sack_end = udx__swap_uint32_if_be(sacks[i * 2 + 1]);
-
-    if (seq_diff(sack_start, ack) < 0) {
-      return 1;
-    }
-    if (seq_diff(sack_end, fack) > 0) {
-      fack = sack_end;
-    }
-  }
-  if (seq_diff(fack, stream->seq) > 0) {
-    return 1; // drop packet if sack.end > stream.seq
-              // ie packet purports to ack a packet we haven't sent yet
-  }
 
   if (is_probe) {
     send_ack(stream);
@@ -1671,10 +1663,14 @@ process_packet (udx_socket_t *socket, char *buf, ssize_t buf_len, struct sockadd
     uint32_t start = udx__swap_uint32_if_be(*sacks++);
     uint32_t end = udx__swap_uint32_if_be(*sacks++);
 
-    for (uint32_t p = start; p != end; p++) {
-      int a = ack_packet(stream, p, 1, &rs);
-      if (a == 2) break;
-      if (a == 1) stream->delivered++;
+    if (udx_sack_is_valid(stream, start, end)) {
+      for (uint32_t p = start; p != end; p++) {
+        int a = ack_packet(stream, p, 1, &rs);
+        if (a == 2) break;
+        if (a == 1) stream->delivered++;
+      }
+    } else {
+      stream->dropped_sacks++;
     }
   }
 
