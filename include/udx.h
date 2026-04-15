@@ -393,6 +393,8 @@ struct udx_stream_s {
   uint64_t packets_rx;
   uint64_t packets_tx;
 
+  uint32_t dropped_sacks;
+
 #ifdef UDX_DEBUG_THROUGHPUT
   FILE *throughput_fd;
 #endif

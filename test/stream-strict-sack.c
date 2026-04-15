@@ -19,15 +19,14 @@ udx_stream_t stream;
 udx_socket_send_t req0; // DATA+SACK (dropped)
 udx_socket_send_t req1; // END
 
-int data_packets_read;
+int nread;
 
 void
 on_read (udx_stream_t *stream, ssize_t read_len, const uv_buf_t *buf) {
   if (read_len == UV_EOF) {
     udx_stream_destroy(stream);
-    return;
   }
-  data_packets_read++;
+  nread++;
 }
 
 void
@@ -108,6 +107,7 @@ main () {
 
   // send an END to trigger the end of the test
   pkt.hdr.type = UDX_HEADER_END;
+  pkt.hdr.seq++;
   pkt.hdr.data_offset = 0;
   buf = uv_buf_init((char *) &pkt, sizeof(pkt.hdr));
 
@@ -119,7 +119,8 @@ main () {
   e = uv_loop_close(&loop);
   assert(e == 0);
 
-  assert(data_packets_read == 0);
+  assert(nread == 2);
+  assert(stream.dropped_sacks == 1);
 
   return 0;
 }
