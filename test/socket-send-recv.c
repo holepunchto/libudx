@@ -19,7 +19,7 @@ struct {
   int next_ttl;
   bool send_called;
   bool recv_called;
-} tests[NTESTS] = {{.string = "one", .ttl = 0, .next_ttl = 10}, {.string = "two", .ttl = 10, .next_ttl = 20}, {.string = "three", .ttl = 20, .next_ttl = 0}, {.string = "four", .ttl = 0, .next_ttl = 0}};
+} tests[NTESTS] = {{.string = "one", .ttl = 0}, {.string = "two", .ttl = 10}, {.string = "three", .ttl = 20}, {.string = "four", .ttl = 0}};
 
 int nrecv_called;
 
@@ -35,13 +35,18 @@ on_send (udx_socket_send_t *r, int status) {
 
   for (i = 0; i < NTESTS; i++) {
     if (r == &tests[i].req) {
-      int wanted_ttl = tests[i].next_ttl ?: bsock.ttl; /* UDX_DEFAULT_TTL */
+      int wanted_ttl = tests[i].ttl ?: bsock.ttl; /* UDX_DEFAULT_TTL */
 
       tests[i].send_called = true;
 
-      // assert(ttl == wanted_ttl);
+      assert(ttl == wanted_ttl);
     }
   }
+}
+int nclose;
+void
+on_socket_close (udx_socket_t *socket) {
+  nclose++;
 }
 
 void
@@ -58,7 +63,8 @@ on_recv (udx_socket_t *handle, ssize_t read_len, const uv_buf_t *buf, const stru
   }
 
   if (++nrecv_called == 4) {
-    uv_stop(&loop);
+    udx_socket_close(&asock);
+    udx_socket_close(&bsock);
   }
 }
 
@@ -71,10 +77,10 @@ main () {
   e = udx_init(&loop, &udx, NULL);
   assert(e == 0);
 
-  e = udx_socket_init(&udx, &asock, NULL);
+  e = udx_socket_init(&udx, &asock, on_socket_close);
   assert(e == 0);
 
-  e = udx_socket_init(&udx, &bsock, NULL);
+  e = udx_socket_init(&udx, &bsock, on_socket_close);
   assert(e == 0);
 
   struct sockaddr_in baddr;
@@ -103,7 +109,9 @@ main () {
     }
   }
 
-  uv_run(&loop, UV_RUN_DEFAULT);
+  int rc = uv_run(&loop, UV_RUN_DEFAULT);
+
+  assert(rc == 0);
 
   for (int i = 0; i < NTESTS; i++) {
     assert(tests[i].send_called);
