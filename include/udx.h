@@ -216,6 +216,29 @@ struct udx_socket_s {
 #define UDX_CA_RECOVERY 2
 #define UDX_CA_LOSS     3
 
+typedef struct udx_sack_block_s udx_sack_block_t;
+
+struct udx_sack_block_s {
+  uint32_t start;
+  uint32_t end;
+
+  udx_sack_block_t *left;
+  udx_sack_block_t *right;
+  udx_sack_block_t *parent;
+
+  uint8_t color;
+
+  size_t len;    // nbytes of actual data
+  size_t nalloc; // nbytes we have room for
+  uint8_t *data; // points to just after this struct
+};
+
+typedef struct {
+  udx_sack_block_t *root;
+  udx_sack_block_t *sentinel; // sentinel simplifies code over using NULL for empty leaf nodes
+  udx_sack_block_t _sentinel;
+} udx_sack_tree_t;
+
 struct udx_stream_s {
   uint32_t local_id; // must be first entry, so its compat with the cirbuf
   uint32_t remote_id;
@@ -224,7 +247,6 @@ struct udx_stream_s {
   udx_stream_t *next;
 
   int status;
-  int out_of_order;
 
   uint8_t ca_state;
   uint32_t high_seq; // seq at time of congestion, marks end of recovery
@@ -348,8 +370,6 @@ struct udx_stream_s {
 
   uint32_t pacing_bytes_per_ms; // computed by bbr module. 'BBR.pacing_rate' in IETF draft
 
-  uint32_t pkts_buffered; // how many (data) packets received but not processed (out of order)?
-
   // pacing (tb = token bucket)
   uint32_t tb_available;
   uint64_t tb_last_refill_ms;
@@ -382,7 +402,7 @@ struct udx_stream_s {
   udx_queue_t write_queue;
 
   udx_cirbuf_t outgoing;
-  udx_cirbuf_t incoming;
+  udx_sack_tree_t sack_tree;
 
   udx_queue_t retransmit_queue; // udx_packet_t
   udx_queue_t inflight_queue;   // udx_packet_t
