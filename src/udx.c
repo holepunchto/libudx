@@ -219,9 +219,6 @@ cancel_packet (udx_packet_t *pkt) {
 static void
 deref_packet (udx_packet_t *pkt) {
   if (--pkt->ref_count == 0) {
-    if (pkt->cancelled) {
-      cancel_packet(pkt);
-    }
     if (pkt->bufs != &pkt->buf_sml[0]) {
       free(pkt->bufs);
       free(pkt->wbufs);
@@ -248,7 +245,7 @@ clear_outgoing_packets (udx_stream_t *stream) {
     udx_packet_t *pkt = (udx_packet_t *) udx__cirbuf_remove(&(stream->outgoing), seq);
 
     if (pkt == NULL) continue;
-    pkt->cancelled = true;
+    cancel_packet(pkt);
     deref_packet(pkt);
   }
 
