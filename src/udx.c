@@ -2131,11 +2131,6 @@ udx_socket_send_ttl (udx_socket_send_t *req, udx_socket_t *socket, const uv_buf_
     if (ttl) uv_udp_set_ttl(&socket->uv_udp, socket->ttl);
   }
 
-  if (err >= 0 && req->on_send) {
-    req->on_send(req, 0);
-    return 0;
-  }
-
   if (err == UV_EAGAIN) {
     // slow path
     if (ttl) {
@@ -2146,10 +2141,14 @@ udx_socket_send_ttl (udx_socket_send_t *req, udx_socket_t *socket, const uv_buf_
     err = uv_udp_send(&req->uv_udp_send, &socket->uv_udp, bufs, bufs_len, dest, on_socket_send_slow);
     _maybe_adjust_ttl(socket); // edge case: queue was empty
 
-    return err;
+  } else {
+    // swallow other errors on the fast path
+    if (req->on_send) {
+      req->on_send(req, 0);
+    }
   }
 
-  return err;
+  return 0;
 }
 
 int
@@ -2572,7 +2571,7 @@ udx_stream_send (udx_stream_send_t *req, udx_stream_t *stream, const uv_buf_t bu
     }
   }
 
-  return err;
+  return 0;
 }
 
 int
@@ -2748,7 +2747,7 @@ udx_stream_destroy (udx_stream_t *stream) {
     stream_on_destroy_send(stream);
   }
 
-  return err < 0 ? err : 1;
+  return 1;
 }
 
 static void
