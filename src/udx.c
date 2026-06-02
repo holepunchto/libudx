@@ -306,10 +306,6 @@ udx_write_header (uint8_t header[20], udx_stream_t *stream, int type) {
 // returns 1 on success, zero if packet can't be promoted to a probe packet
 static int
 mtu_probeify_packet (udx_packet_t *pkt, int wanted_size) {
-  if (wanted_size > pkt->size) {
-    return 0;
-  }
-
   // cannot probeify a packet with 1) no data 2) already has padding
   if (pkt->nwbufs < 1 || pkt->header[3] != 0) {
     return 0;
@@ -319,7 +315,7 @@ mtu_probeify_packet (udx_packet_t *pkt, int wanted_size) {
 
   int header_size = (ipv4 ? UDX_IPV4_HEADER_SIZE : UDX_IPV6_HEADER_SIZE) - 20;
   int padding_size = wanted_size - (pkt->size + (ipv4 ? UDX_IPV4_HEADER_SIZE : UDX_IPV6_HEADER_SIZE) - 20);
-  if (padding_size > 255) {
+  if (padding_size < 0 || padding_size > 255) {
     return 0;
   }
   debug_printf("mtu: probeify rid=%u seq=%u size=%u wanted=%d padding=%d\n", udx__swap_uint32_if_be(((unsigned int *) pkt->header)[1]), pkt->seq, pkt->size + header_size, wanted_size, padding_size);
