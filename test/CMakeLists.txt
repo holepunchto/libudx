@@ -12,6 +12,7 @@ list(APPEND tests
   stream-preconnect-same-socket
   stream-relay
   stream-relay-force-slow-path
+  stream-relay-passive-startup
   stream-send-recv
   stream-send-recv-ipv6
   stream-write-read

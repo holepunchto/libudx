@@ -2517,6 +2517,9 @@ udx_stream_connect (udx_stream_t *stream, udx_socket_t *socket, uint32_t remote_
     uv_timer_start(&stream->tlp_and_keepalive_timer, udx_keepalive_timeout, stream->keepalive_timeout_ms, 0);
   }
 
+  // Let passive relays learn this endpoint before the first data packet.
+  send_probe(stream);
+
   return 0;
 }
 
