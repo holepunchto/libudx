@@ -5,6 +5,10 @@
 
 #include "../include/udx.h"
 
+// Regression for regular preconnect streams. The relay startup fix sends a
+// heartbeat on connect, but that heartbeat must not make non-relay streams run
+// their firewall before the first application packet.
+
 uv_loop_t loop;
 udx_t udx;
 
@@ -42,7 +46,8 @@ int
 on_firewall (udx_stream_t *stream, udx_socket_t *socket, const struct sockaddr *from) {
   firewall_calls++;
 
-  // The connect probe should not trigger regular preconnect firewalls.
+  // If the connect heartbeat triggered this callback, the following data packet
+  // would be the second firewall call and fail this assertion.
   assert(firewall_calls == 1);
 
   return 0;
@@ -91,18 +96,23 @@ main () {
   e = udx_stream_init(&udx, &bstream, 2, on_close, NULL);
   assert(e == 0);
 
+  // astream starts unconnected, matching the normal preconnect flow used by
+  // udx-native. Only real data should make this firewall run.
   e = udx_stream_firewall(&astream, on_firewall);
   assert(e == 0);
 
   e = udx_stream_read_start(&astream, on_read);
   assert(e == 0);
 
+  // bstream.connect() sends the new heartbeat probe. This test ensures that
+  // probe is ignored by a regular preconnect firewall.
   e = udx_stream_connect(&bstream, &sock, astream.local_id, (struct sockaddr *) &addr);
   assert(e == 0);
 
   uv_timer_init(&loop, &fail_timer);
   uv_timer_start(&fail_timer, on_fail_timeout, 500, 0);
 
+  // The first application payload should be what opens the preconnect firewall.
   uv_buf_t buf = uv_buf_init("hello", 5);
   e = udx_stream_write(req, &bstream, &buf, 1, NULL);
   assert(e == 1);
