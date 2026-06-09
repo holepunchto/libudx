@@ -1478,8 +1478,14 @@ process_packet (udx_socket_t *socket, char *buf, ssize_t buf_len, struct sockadd
   stream->bytes_rx += buf_len;
   stream->packets_rx += 1;
 
+  // Connect probes are sent before application data to let passive relay
+  // streams learn their endpoint address. For regular preconnect streams,
+  // keep the existing contract where the firewall sees the first real packet.
+  bool is_probe = type & UDX_HEADER_HEARTBEAT;
+  bool should_firewall = !is_probe || stream->relay_to != NULL;
+
   // We expect this to be a stream packet from now on
-  if (stream->socket != socket && stream->on_firewall != NULL) {
+  if (stream->socket != socket && stream->on_firewall != NULL && should_firewall) {
     if (is_addr_v4_mapped((struct sockaddr *) addr)) {
       addr_to_v4((struct sockaddr_in6 *) addr);
     }
@@ -1498,7 +1504,6 @@ process_packet (udx_socket_t *socket, char *buf, ssize_t buf_len, struct sockadd
   bool ack_advanced = seq_diff(ack, prior_remote_acked) > 0;
   bool data_inflight = stream->remote_acked != stream->seq;
   // todo: send data packet with seq=remote_acked-1
-  bool is_probe = type & UDX_HEADER_HEARTBEAT;
 
   if (is_probe) {
     send_ack(stream);
