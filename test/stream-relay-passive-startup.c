@@ -117,6 +117,7 @@ main () {
   e = udx_stream_read_start(&astream, on_read);
   assert(e == 0);
 
+  // Endpoint connects should probe the passive relay streams before first data.
   e = udx_stream_connect(&astream, &sock, bstream.local_id, (struct sockaddr *) &addr);
   assert(e == 0);
 
