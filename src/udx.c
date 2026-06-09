@@ -490,7 +490,7 @@ on_packet_send_slow (uv_udp_send_t *req, int status) {
 }
 
 static void
-send_probe (udx_stream_t *stream) {
+send_probe (udx_stream_t *stream, bool count_stats) {
   if (!stream->socket) {
     return;
   }
@@ -518,10 +518,11 @@ send_probe (udx_stream_t *stream) {
     }
   }
 
+  if (!count_stats) return;
+
   // consider the probe to be sent, even on slow path.
   stream->packets_tx++;
   stream->bytes_tx += buf.len;
-
   stream->socket->packets_tx++;
   stream->socket->bytes_tx += buf.len;
   stream->udx->packets_tx++;
@@ -533,7 +534,7 @@ udx_keepalive_timeout (uv_timer_t *timer) {
   udx_stream_t *stream = timer->data;
   assert(stream->seq == stream->remote_acked);
 
-  send_probe(stream);
+  send_probe(stream, true);
 
   uv_timer_start(&stream->tlp_and_keepalive_timer, udx_keepalive_timeout, stream->keepalive_timeout_ms, 0);
 }
@@ -2523,7 +2524,7 @@ udx_stream_connect (udx_stream_t *stream, udx_socket_t *socket, uint32_t remote_
   }
 
   // Let passive relays learn this endpoint before the first data packet.
-  send_probe(stream);
+  send_probe(stream, false);
 
   return 0;
 }
