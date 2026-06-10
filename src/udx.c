@@ -118,6 +118,18 @@ send_window_in_packets (udx_stream_t *stream) {
   return min_uint32(stream->cwnd, send_rwnd_in_packets(stream));
 }
 
+static void debug_printf_ip4 (const struct sockaddr *sa) {
+  // struct sockaddr_in *sin = (struct sockaddr_in *)&sa;
+  // unsigned char *ip = (unsigned char *)&sin->sin_addr.s_addr;
+
+  // debug_printf("%d %d %d %d\n", ip[0], ip[1], ip[2], ip[3]);
+
+  char name[INET6_ADDRSTRLEN];
+  char port[10];
+  getnameinfo(sa, sizeof(sa), name, sizeof(name), port, sizeof(port), NI_NUMERICHOST | NI_NUMERICSERV);
+  debug_printf("%s:%s\n", name, port);
+}
+
 static void
 ref_dec (udx_t *udx) {
   udx->refs--;
@@ -503,6 +515,7 @@ send_probe (udx_stream_t *stream) {
 
   // fast path
   uv_buf_t buf = uv_buf_init((char *) header, sizeof(header));
+  debug_printf("send probe\n");
   int err = uv_udp_try_send(&stream->socket->uv_udp, &buf, 1, (struct sockaddr *) &stream->remote_addr);
 
   if (err == UV_EAGAIN) {
@@ -512,6 +525,7 @@ send_probe (udx_stream_t *stream) {
     memcpy(data, buf.base, buf.len);
     buf.base = data;
     req->data = stream;
+  debug_printf("send probe |slow|\n");
     int err = uv_udp_send(req, &stream->socket->uv_udp, &buf, 1, (struct sockaddr *) &stream->remote_addr, on_packet_send_slow);
     if (err) {
       debug_printf("uv_udp_send error: %s\n", uv_strerror(err));
@@ -618,6 +632,7 @@ send_ack (udx_stream_t *stream) {
   // fast path
 
   uv_buf_t buf = uv_buf_init((char *) &pkt, sizeof(pkt.header) + sizeof(pkt.sacks[0]) * nsacks);
+  debug_printf("send ack \n");
   int err = uv_udp_try_send(&stream->socket->uv_udp, &buf, 1, (struct sockaddr *) &stream->remote_addr);
 
   if (err == UV_EAGAIN) {
@@ -628,6 +643,7 @@ send_ack (udx_stream_t *stream) {
     buf.base = data;
     req->data = stream;
 
+  debug_printf("send ack |slow|\n");
     int err = uv_udp_send(req, &stream->socket->uv_udp, &buf, 1, (struct sockaddr *) &stream->remote_addr, on_packet_send_slow);
     if (err) {
       debug_printf("uv_udp_send: err=%s\n", uv_strerror(err));
@@ -686,6 +702,7 @@ on_stream_data_write (uv_udp_send_t *send, int status) {
 // called by send_new_packet() and retransmit_packet()
 static void
 _send_packet (udx_stream_t *stream, udx_packet_t *pkt, bool is_retransmit) {
+  debug_printf("send packet -1\n");
 
   udx__rate_check_app_limited(stream);
 
@@ -741,15 +758,18 @@ _send_packet (udx_stream_t *stream, udx_packet_t *pkt, bool is_retransmit) {
   pkt->ref_count++;
   assert(pkt->ref_count == 2);
 
+  debug_printf("send packet 0\n");
   if (drop_packet) {
     deref_packet(pkt);
   } else {
+    debug_printf("send packet 1\n");
     int err = uv_udp_send(&pkt->uv_udp_send, &stream->socket->uv_udp, bufs, nbufs, (struct sockaddr *) &pkt->remote_addr, on_stream_data_write);
     if (err) {
       debug_printf("uv_udp_send error: %s\n", uv_strerror(err));
     }
   }
 
+  debug_printf("send packet 2\n");
   udx_socket_t *socket = stream->socket;
   udx_t *udx = stream->udx;
 
@@ -767,6 +787,8 @@ _send_packet (udx_stream_t *stream, udx_packet_t *pkt, bool is_retransmit) {
   if (stream->tb_available == 0) {
     uv_timer_start(&stream->refill_pacing_timer, pacing_timer_timeout, 1, 0);
   }
+  debug_printf("send packet 3\n");
+  debug_printf_ip4((struct sockaddr *) &stream->remote_addr);
 }
 
 static void
@@ -1391,6 +1413,7 @@ relay_packet (udx_stream_t *stream, char *buf, ssize_t buf_len, int type, uint32
     if (stream->udx->debug_flags & UDX_DEBUG_FORCE_RELAY_SLOW_PATH) {
       err = UV_EAGAIN;
     } else {
+      debug_printf("relay packet 1\n");
       err = uv_udp_try_send(&stream->socket->uv_udp, &b, 1, (struct sockaddr *) &relay->remote_addr);
     }
 
@@ -1403,6 +1426,7 @@ relay_packet (udx_stream_t *stream, char *buf, ssize_t buf_len, int type, uint32
       memcpy(data, buf, buf_len);
       b = uv_buf_init(data, b.len);
 
+      debug_printf("relay packet 2\n");
       err = uv_udp_send(req, &stream->socket->uv_udp, &b, 1, (struct sockaddr *) &relay->remote_addr, on_packet_send_slow);
     }
   }
@@ -1411,6 +1435,7 @@ relay_packet (udx_stream_t *stream, char *buf, ssize_t buf_len, int type, uint32
     close_stream(stream, UV_ECONNRESET);
   }
 
+  debug_printf("relay packet 3\n");
   return 1;
 }
 
@@ -1438,6 +1463,7 @@ udx_sack_is_valid (udx_stream_t *stream, uint32_t start_seq, uint32_t end_seq) {
 
 static int
 process_packet (udx_socket_t *socket, char *buf, ssize_t buf_len, struct sockaddr *addr) {
+  debug_printf("[process_packet]\n");
   udx_t *udx = socket->udx;
 
   socket->bytes_rx += buf_len;
@@ -1450,6 +1476,7 @@ process_packet (udx_socket_t *socket, char *buf, ssize_t buf_len, struct sockadd
 
   uint8_t *b = (uint8_t *) buf;
 
+  debug_printf("[beep 1]\n");
   if ((*(b++) != UDX_MAGIC_BYTE) || (*(b++) != UDX_VERSION)) return 0;
 
   int type = (int) *(b++);
@@ -1473,6 +1500,7 @@ process_packet (udx_socket_t *socket, char *buf, ssize_t buf_len, struct sockadd
 
   udx_stream_t *stream = (udx_stream_t *) udx__cirbuf_get(socket->streams_by_id, local_id);
 
+  debug_printf("[beep 2]\n");
   if (stream == NULL || stream->status & UDX_STREAM_DEAD) return 0;
 
   stream->bytes_rx += buf_len;
@@ -1480,6 +1508,7 @@ process_packet (udx_socket_t *socket, char *buf, ssize_t buf_len, struct sockadd
 
   // We expect this to be a stream packet from now on
   if (stream->socket != socket && stream->on_firewall != NULL) {
+    debug_printf("firewall cb\n");
     if (is_addr_v4_mapped((struct sockaddr *) addr)) {
       addr_to_v4((struct sockaddr_in6 *) addr);
     }
@@ -1488,9 +1517,14 @@ process_packet (udx_socket_t *socket, char *buf, ssize_t buf_len, struct sockadd
     if (stream->status & UDX_STREAM_DEAD) return 1;
   }
 
-  if (stream->relay_to) return relay_packet(stream, buf, buf_len, type, seq);
+  if (stream->relay_to) {
+    debug_printf("call relay_packet. rid=%u, local_id %u;\n", stream->remote_id, local_id);
+    debug_printf("call relay_packet. relay_to->remote_id=%u;\n", stream->relay_to->remote_id);
+    return relay_packet(stream, buf, buf_len, type, seq);
+  }
 
   // start ack code
+  debug_printf("ack code\n");
 
   uint32_t delivered = stream->delivered;
   uint32_t lost = stream->lost;
@@ -1799,8 +1833,10 @@ arm_stream_timers (udx_stream_t *stream, bool sent_tlp) {
 // our uv_udp_recv_cb
 static void
 on_uv_udp_recv (uv_udp_t *handle, ssize_t nread, const uv_buf_t *buf, const struct sockaddr *addr, unsigned flags) {
+  debug_printf("[on_uv_udp_recv 1]\n");
   if (nread == 0 && addr == NULL) return;
 
+  debug_printf("[on_uv_udp_recv 2]\n");
   if (nread < 0) {
     debug_printf("udx: uv_udp_recv err=%s\n", uv_strerror(nread));
     assert(nread != UV_EBADF);
@@ -1812,13 +1848,16 @@ on_uv_udp_recv (uv_udp_t *handle, ssize_t nread, const uv_buf_t *buf, const stru
 
   udx_socket_t *socket = handle->data; // todo: cast instead, save a dereference ?
 
+  debug_printf("[on_uv_udp_recv 3]\n");
   assert(!(socket->status & UDX_SOCKET_CLOSED));
 
   if (flags & UV_UDP_PARTIAL) {
     debug_printf("udx: uv_udp_recv received partial packet\n");
   }
 
+  debug_printf("[on_uv_udp_recv 4]\n");
   assert((size_t) nread <= buf->len);
+  debug_printf("[on_uv_udp_recv 5]\n");
   if (!process_packet(socket, buf->base, nread, (struct sockaddr *) addr) && socket->on_recv) {
     if (is_addr_v4_mapped((struct sockaddr *) addr)) {
       addr_to_v4((struct sockaddr_in6 *) addr);
@@ -1828,6 +1867,7 @@ on_uv_udp_recv (uv_udp_t *handle, ssize_t nread, const uv_buf_t *buf, const stru
                           // this is kind of ugly too but it works with the current test & bindings
     socket->on_recv(socket, nread, &copy, (struct sockaddr *) addr);
   }
+  debug_printf("[on_uv_udp_recv 6 (end)]\n");
 }
 
 int
@@ -1924,6 +1964,7 @@ udx_socket_init (udx_t *udx, udx_socket_t *socket, udx_socket_close_cb cb) {
   int err = uv_udp_init(udx->loop, handle);
   assert(err == 0);
 
+  debug_printf("socket init\n");
   handle->data = socket;
 
   return err;
@@ -2043,6 +2084,7 @@ udx_socket_bind (udx_socket_t *socket, const struct sockaddr *addr, unsigned int
   // should probably wait for udx_socket_recv_start / udx_socket_recv_stop
   // but this is how it works in main, receiving and discarding packets until recv_start is called
 
+  debug_printf("recv_start\n");
   return uv_udp_recv_start(&socket->uv_udp, receive_alloc, on_uv_udp_recv);
 }
 
@@ -2078,6 +2120,7 @@ udx_socket_send (udx_socket_send_t *req, udx_socket_t *socket, const uv_buf_t bu
 
 static void
 on_socket_send_slow (uv_udp_send_t *_req, int status) {
+  debug_printf("on_socket_send_slow\n");
   udx_socket_send_t *req = (udx_socket_send_t *) ((char *) _req - offsetof(udx_socket_send_t, uv_udp_send));
 
   udx_socket_t *socket = req->socket;
@@ -2127,6 +2170,7 @@ udx_socket_send_ttl (udx_socket_send_t *req, udx_socket_t *socket, const uv_buf_
     err = UV_EAGAIN;
   } else {
     if (ttl) uv_udp_set_ttl(&socket->uv_udp, ttl);
+    debug_printf("socket sen ttl\n");
     err = uv_udp_try_send(&socket->uv_udp, bufs, bufs_len, dest);
     if (ttl) uv_udp_set_ttl(&socket->uv_udp, socket->ttl);
   }
@@ -2138,6 +2182,7 @@ udx_socket_send_ttl (udx_socket_send_t *req, udx_socket_t *socket, const uv_buf_
       udx__queue_tail(&socket->specific_ttl_send_queue, &req->queue);
     }
 
+    debug_printf("socket sen ttl |slow|\n");
     err = uv_udp_send(&req->uv_udp_send, &socket->uv_udp, bufs, bufs_len, dest, on_socket_send_slow);
     _maybe_adjust_ttl(socket); // edge case: queue was empty
 
@@ -2148,6 +2193,7 @@ udx_socket_send_ttl (udx_socket_send_t *req, udx_socket_t *socket, const uv_buf_
     }
   }
 
+  debug_printf("socket sen ttl (end)\n");
   return 0;
 }
 
@@ -2464,6 +2510,7 @@ udx_stream_connect (udx_stream_t *stream, udx_socket_t *socket, uint32_t remote_
     return UV_EINVAL;
   }
 
+  debug_printf("connect 1\n");
   if (stream->status & UDX_STREAM_CONNECTED) {
     return UV_EISCONN;
   }
@@ -2476,17 +2523,21 @@ udx_stream_connect (udx_stream_t *stream, udx_socket_t *socket, uint32_t remote_
   if (remote_addr->sa_family == AF_INET) {
     stream->remote_addr_len = sizeof(struct sockaddr_in);
     if (((struct sockaddr_in *) remote_addr)->sin_port == 0) {
+      debug_printf("connect 2\n");
       return UV_EINVAL;
     }
   } else if (remote_addr->sa_family == AF_INET6) {
     stream->remote_addr_len = sizeof(struct sockaddr_in6);
     if (((struct sockaddr_in6 *) remote_addr)->sin6_port == 0) {
+      debug_printf("connect 3\n");
       return UV_EINVAL;
     }
   } else {
+    debug_printf("connect 4\n");
     return UV_EINVAL;
   }
 
+  debug_printf("connect 5\n");
   memcpy(&(stream->remote_addr), remote_addr, stream->remote_addr_len);
 
   if (socket->family == 6 && stream->remote_addr.ss_family == AF_INET) {
@@ -2505,6 +2556,7 @@ udx_stream_connect (udx_stream_t *stream, udx_socket_t *socket, uint32_t remote_
 
   stream->mtu_max = mtu;
 
+  debug_printf("connect 6\n");
   if (stream->ack_needed) {
     send_ack(stream);
     stream->ack_needed = false;
@@ -2513,9 +2565,11 @@ udx_stream_connect (udx_stream_t *stream, udx_socket_t *socket, uint32_t remote_
     }
   }
 
+  debug_printf("connect 7\n");
   if (stream->keepalive_timeout_ms) {
     uv_timer_start(&stream->tlp_and_keepalive_timer, udx_keepalive_timeout, stream->keepalive_timeout_ms, 0);
   }
+  debug_printf("connect 8\n");
 
   return 0;
 }
@@ -2545,6 +2599,7 @@ int
 udx_stream_send (udx_stream_send_t *req, udx_stream_t *stream, const uv_buf_t bufs[], unsigned int bufs_len, udx_stream_send_cb cb) {
   UDX_UNUSED(bufs_len);
 
+  debug_printf("stream send -1\n");
   if (!(stream->status & UDX_STREAM_CONNECTED)) {
     return UV_ENOTCONN;
   }
@@ -2560,17 +2615,21 @@ udx_stream_send (udx_stream_send_t *req, udx_stream_t *stream, const uv_buf_t bu
   req->bufs[1] = bufs[0];
   // does a fastpath make sense here? the slow path doesn't avoid an allocation here
 
+  debug_printf("stream send\n");
   int err = uv_udp_try_send(&stream->socket->uv_udp, req->bufs, 2, (struct sockaddr *) &stream->remote_addr);
 
   if (err == UV_EAGAIN) {
     // slow path
+    debug_printf("stream send 2\n");
     err = uv_udp_send(&req->uv_udp_send, &stream->socket->uv_udp, req->bufs, 2, (struct sockaddr *) &stream->remote_addr, on_stream_send_slow);
   } else {
+    debug_printf("stream send 3\n");
     if (req->on_send) {
       req->on_send(req, 0);
     }
   }
 
+  debug_printf("stream send 4\n");
   return 0;
 }
 
@@ -2719,6 +2778,7 @@ udx_stream_destroy (udx_stream_t *stream) {
 
   stream->status |= UDX_STREAM_DESTROYING;
 
+  debug_printf("stream destroy check relayed\n");
   if (stream->relayed) {
     close_stream_internal(stream, 0);
     return 0;
@@ -2732,6 +2792,7 @@ udx_stream_destroy (udx_stream_t *stream) {
   stream->seq++;
 
   uv_buf_t buf = uv_buf_init((char *) header, sizeof(header));
+  debug_printf("stream destroy try send 1\n");
   int err = uv_udp_try_send(&stream->socket->uv_udp, &buf, 1, (struct sockaddr *) &stream->remote_addr);
 
   if (err == UV_EAGAIN) {
@@ -2741,12 +2802,15 @@ udx_stream_destroy (udx_stream_t *stream) {
     memcpy(data, buf.base, buf.len);
     buf.base = data;
     req->data = stream;
+    debug_printf("stream destroy send slow path\n");
     err = uv_udp_send(req, &stream->socket->uv_udp, &buf, 1, (struct sockaddr *) &stream->remote_addr, _stream_on_destroy_send);
   } else {
     if (err < 0) debug_printf("uv_udp_send: error=%s\n", uv_strerror(err));
+    debug_printf("stream destroy send fast path\n");
     stream_on_destroy_send(stream);
   }
 
+  debug_printf("stream destroy (end)\n");
   return 1;
 }
 
