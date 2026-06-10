@@ -14,6 +14,9 @@ list(APPEND tests
   stream-relay
   stream-relay-force-slow-path
   stream-relay-passive-startup
+  stream-relay-pending-startup
+  stream-relay-pending-cleanup
+  stream-relay-pending-overflow
   stream-send-recv
   stream-send-recv-ipv6
   stream-write-read

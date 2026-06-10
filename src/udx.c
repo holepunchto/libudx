@@ -37,6 +37,7 @@
 #define UDX_DEFAULT_SNDBUF_SIZE 212992
 
 #define UDX_MAX_RTO_TIMEOUTS 6
+#define UDX_MAX_PENDING_RELAY_PACKETS 64
 
 #define UDX_RTO_MAX_MS        30000
 #define UDX_RTT_MAX_MS        30000
@@ -63,6 +64,12 @@ typedef struct {
 
   uv_buf_t buf;
 } udx_pending_read_t;
+
+typedef struct udx_pending_relay_packet_s {
+  udx_queue_node_t queue;
+  size_t len;
+  char data[];
+} udx_pending_relay_packet_t;
 
 static uint32_t
 seq_max (uint32_t a, uint32_t b) {
@@ -159,6 +166,16 @@ clear_incoming_packets (udx_stream_t *stream) {
     if (pkt == NULL) continue;
 
     stream->pkts_buffered--;
+    free(pkt);
+  }
+}
+
+static void
+clear_pending_relay_packets (udx_stream_t *stream) {
+  udx_queue_node_t *node;
+
+  while ((node = udx__queue_shift(&stream->pending_relay_packets)) != NULL) {
+    udx_pending_relay_packet_t *pkt = udx__queue_data(node, udx_pending_relay_packet_t, queue);
     free(pkt);
   }
 }
@@ -405,6 +422,7 @@ close_stream_internal (udx_stream_t *stream, int err) {
 
   clear_outgoing_packets(stream);
   clear_incoming_packets(stream);
+  clear_pending_relay_packets(stream);
 
   // TODO: move the instance to a TIME_WAIT state, so we can handle retransmits
 
@@ -1373,6 +1391,86 @@ process_data_packet (udx_stream_t *stream, int type, uint32_t seq, char *data, s
   udx__cirbuf_set(&(stream->incoming), (udx_cirbuf_val_t *) pkt);
 }
 
+static void
+forward_relay_packet (udx_stream_t *stream, udx_stream_t *relay, char *buf, ssize_t buf_len) {
+  assert(stream->socket != NULL);
+  assert(relay->socket != NULL);
+
+  uint32_t *h = (uint32_t *) buf;
+  h[1] = udx__swap_uint32_if_be(relay->remote_id);
+
+  uv_buf_t b = uv_buf_init(buf, buf_len);
+
+  int err;
+
+  if (stream->udx->debug_flags & UDX_DEBUG_FORCE_RELAY_SLOW_PATH) {
+    err = UV_EAGAIN;
+  } else {
+    err = uv_udp_try_send(&stream->socket->uv_udp, &b, 1, (struct sockaddr *) &relay->remote_addr);
+  }
+
+  if (err == UV_EAGAIN) {
+    // create a socket_send_t with no callback to send this packet on the relay's send_queue
+
+    uv_udp_send_t *req = malloc(sizeof(uv_udp_send_t) + b.len);
+
+    char *data = (char *) (req + 1);
+    memcpy(data, buf, buf_len);
+    b = uv_buf_init(data, b.len);
+
+    err = uv_udp_send(req, &stream->socket->uv_udp, &b, 1, (struct sockaddr *) &relay->remote_addr, on_packet_send_slow);
+  }
+
+  if (err < 0) {
+    debug_printf("uv_udp_send error: %s\n", uv_strerror(err));
+  }
+}
+
+static int
+queue_relay_packet (udx_stream_t *stream, char *buf, ssize_t buf_len) {
+  if (stream->pending_relay_packets.len >= UDX_MAX_PENDING_RELAY_PACKETS) return UV_ENOBUFS;
+
+  udx_pending_relay_packet_t *pkt = malloc(sizeof(udx_pending_relay_packet_t) + buf_len);
+  if (pkt == NULL) return UV_ENOMEM;
+
+  pkt->len = buf_len;
+  memcpy(pkt->data, buf, buf_len);
+
+  udx__queue_tail(&stream->pending_relay_packets, &pkt->queue);
+
+  return 0;
+}
+
+static void
+flush_pending_relay_packets (udx_stream_t *stream) {
+  udx_stream_t *relay = stream->relay_to;
+
+  if (relay == NULL || relay->socket == NULL) return;
+
+  udx_queue_node_t *node;
+
+  while ((node = udx__queue_shift(&stream->pending_relay_packets)) != NULL) {
+    udx_pending_relay_packet_t *pkt = udx__queue_data(node, udx_pending_relay_packet_t, queue);
+    forward_relay_packet(stream, relay, pkt->data, pkt->len);
+    free(pkt);
+  }
+}
+
+static void
+flush_pending_relay_packets_to (udx_stream_t *relay) {
+  if (relay->socket == NULL) return;
+
+  udx_cirbuf_t relaying = relay->relaying_streams;
+
+  for (uint32_t i = 0; i < relaying.size; i++) {
+    udx_stream_t *stream = (udx_stream_t *) relaying.values[i];
+
+    if (stream && stream->relay_to == relay) {
+      flush_pending_relay_packets(stream);
+    }
+  }
+}
+
 static int
 relay_packet (udx_stream_t *stream, char *buf, ssize_t buf_len, int type, uint32_t seq) {
 
@@ -1381,30 +1479,12 @@ relay_packet (udx_stream_t *stream, char *buf, ssize_t buf_len, int type, uint32
   udx_stream_t *relay = stream->relay_to;
 
   if (relay->socket != NULL) {
-
-    uint32_t *h = (uint32_t *) buf;
-    h[1] = udx__swap_uint32_if_be(relay->remote_id);
-
-    uv_buf_t b = uv_buf_init(buf, buf_len);
-
-    int err;
-
-    if (stream->udx->debug_flags & UDX_DEBUG_FORCE_RELAY_SLOW_PATH) {
-      err = UV_EAGAIN;
-    } else {
-      err = uv_udp_try_send(&stream->socket->uv_udp, &b, 1, (struct sockaddr *) &relay->remote_addr);
-    }
-
-    if (err == UV_EAGAIN) {
-      // create a socket_send_t with no callback to send this packet on the relay's send_queue
-
-      uv_udp_send_t *req = malloc(sizeof(uv_udp_send_t) + b.len);
-
-      char *data = (char *) (req + 1);
-      memcpy(data, buf, buf_len);
-      b = uv_buf_init(data, b.len);
-
-      err = uv_udp_send(req, &stream->socket->uv_udp, &b, 1, (struct sockaddr *) &relay->remote_addr, on_packet_send_slow);
+    forward_relay_packet(stream, relay, buf, buf_len);
+  } else {
+    int err = queue_relay_packet(stream, buf, buf_len);
+    if (err) {
+      close_stream(stream, err);
+      return 1;
     }
   }
 
@@ -2258,6 +2338,7 @@ udx_stream_init (udx_t *udx, udx_stream_t *stream, uint32_t local_id, udx_stream
   udx__queue_init(&stream->inflight_queue);
   udx__queue_init(&stream->retransmit_queue);
   udx__queue_init(&stream->write_queue);
+  udx__queue_init(&stream->pending_relay_packets);
 
   stream->ssthresh = 0xffff;
   stream->cwnd = 10;
@@ -2525,6 +2606,7 @@ udx_stream_connect (udx_stream_t *stream, udx_socket_t *socket, uint32_t remote_
 
   // Let passive relays learn this endpoint before the first data packet.
   send_probe(stream, false);
+  flush_pending_relay_packets_to(stream);
 
   return 0;
 }
