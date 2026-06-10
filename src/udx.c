@@ -118,18 +118,6 @@ send_window_in_packets (udx_stream_t *stream) {
   return min_uint32(stream->cwnd, send_rwnd_in_packets(stream));
 }
 
-static void debug_printf_ip4 (const struct sockaddr *sa) {
-  // struct sockaddr_in *sin = (struct sockaddr_in *)&sa;
-  // unsigned char *ip = (unsigned char *)&sin->sin_addr.s_addr;
-
-  // debug_printf("%d %d %d %d\n", ip[0], ip[1], ip[2], ip[3]);
-
-  char name[INET6_ADDRSTRLEN];
-  char port[10];
-  getnameinfo(sa, sizeof(sa), name, sizeof(name), port, sizeof(port), NI_NUMERICHOST | NI_NUMERICSERV);
-  debug_printf("%s:%s\n", name, port);
-}
-
 static void
 ref_dec (udx_t *udx) {
   udx->refs--;
@@ -525,7 +513,7 @@ send_probe (udx_stream_t *stream) {
     memcpy(data, buf.base, buf.len);
     buf.base = data;
     req->data = stream;
-  debug_printf("send probe |slow|\n");
+    debug_printf("send probe |slow|\n");
     int err = uv_udp_send(req, &stream->socket->uv_udp, &buf, 1, (struct sockaddr *) &stream->remote_addr, on_packet_send_slow);
     if (err) {
       debug_printf("uv_udp_send error: %s\n", uv_strerror(err));
@@ -632,7 +620,7 @@ send_ack (udx_stream_t *stream) {
   // fast path
 
   uv_buf_t buf = uv_buf_init((char *) &pkt, sizeof(pkt.header) + sizeof(pkt.sacks[0]) * nsacks);
-  debug_printf("send ack \n");
+  debug_printf("send ack\n");
   int err = uv_udp_try_send(&stream->socket->uv_udp, &buf, 1, (struct sockaddr *) &stream->remote_addr);
 
   if (err == UV_EAGAIN) {
@@ -643,7 +631,7 @@ send_ack (udx_stream_t *stream) {
     buf.base = data;
     req->data = stream;
 
-  debug_printf("send ack |slow|\n");
+    debug_printf("send ack |slow|\n");
     int err = uv_udp_send(req, &stream->socket->uv_udp, &buf, 1, (struct sockaddr *) &stream->remote_addr, on_packet_send_slow);
     if (err) {
       debug_printf("uv_udp_send: err=%s\n", uv_strerror(err));
@@ -788,7 +776,6 @@ _send_packet (udx_stream_t *stream, udx_packet_t *pkt, bool is_retransmit) {
     uv_timer_start(&stream->refill_pacing_timer, pacing_timer_timeout, 1, 0);
   }
   debug_printf("send packet 3\n");
-  debug_printf_ip4((struct sockaddr *) &stream->remote_addr);
 }
 
 static void
