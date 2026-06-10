@@ -252,6 +252,7 @@ struct udx_stream_s {
   bool relayed;
   udx_stream_t *relay_to;
   udx_cirbuf_t relaying_streams;
+  udx_queue_t pending_relay_packets;
 
   struct sockaddr_storage remote_addr;
   int remote_addr_len;
