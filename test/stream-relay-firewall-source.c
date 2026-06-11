@@ -1,5 +1,4 @@
 #include <assert.h>
-#include <arpa/inet.h>
 #include <stdbool.h>
 #include <stdlib.h>
 #include <string.h>
@@ -39,15 +38,8 @@ typedef struct {
   size_t read_hash;
   size_t nbytes_read;
 
-  int expected_relay_source_port;
   int nclosed;
 } test_case_t;
-
-static int
-port_of (const struct sockaddr *addr) {
-  assert(addr->sa_family == AF_INET);
-  return ntohs(((const struct sockaddr_in *) addr)->sin_port);
-}
 
 static int
 on_firewall (udx_stream_t *stream, udx_socket_t *socket, const struct sockaddr *from) {
@@ -60,7 +52,8 @@ on_firewall (udx_stream_t *stream, udx_socket_t *socket, const struct sockaddr *
 
   // Relayed packets must arrive from the paired relay stream's socket, not
   // from the incoming stream socket that happened to forward the packet.
-  assert(port_of(from) == test->expected_relay_source_port);
+  assert(from->sa_family == AF_INET);
+  assert(((const struct sockaddr_in *) from)->sin_port == test->baddr.sin_port);
 
   int e = udx_stream_connect(&test->astream, socket, 2, from);
   assert(e == 0);
@@ -139,8 +132,7 @@ static void
 run_case (int base_port, bool force_slow_path) {
   test_case_t test = {
     .write_hash = HASH_INIT,
-    .read_hash = HASH_INIT,
-    .expected_relay_source_port = base_port + 2
+    .read_hash = HASH_INIT
   };
 
   udx_stream_write_t *req = malloc(udx_stream_write_sizeof(1));
