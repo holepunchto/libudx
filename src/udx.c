@@ -1391,7 +1391,7 @@ relay_packet (udx_stream_t *stream, char *buf, ssize_t buf_len, int type, uint32
     if (stream->udx->debug_flags & UDX_DEBUG_FORCE_RELAY_SLOW_PATH) {
       err = UV_EAGAIN;
     } else {
-      err = uv_udp_try_send(&stream->socket->uv_udp, &b, 1, (struct sockaddr *) &relay->remote_addr);
+      err = uv_udp_try_send(&relay->socket->uv_udp, &b, 1, (struct sockaddr *) &relay->remote_addr);
     }
 
     if (err == UV_EAGAIN) {
@@ -1403,7 +1403,7 @@ relay_packet (udx_stream_t *stream, char *buf, ssize_t buf_len, int type, uint32
       memcpy(data, buf, buf_len);
       b = uv_buf_init(data, b.len);
 
-      err = uv_udp_send(req, &stream->socket->uv_udp, &b, 1, (struct sockaddr *) &relay->remote_addr, on_packet_send_slow);
+      err = uv_udp_send(req, &relay->socket->uv_udp, &b, 1, (struct sockaddr *) &relay->remote_addr, on_packet_send_slow);
     }
   }
 
