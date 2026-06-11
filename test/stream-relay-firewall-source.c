@@ -160,6 +160,8 @@ run_case (int base_port, bool force_slow_path) {
   e = udx_socket_init(&test.udx, &test.dsock, on_socket_close);
   assert(e == 0);
 
+  // Use a distinct socket/port per stream so a wrong forwarding socket is
+  // observable as the wrong UDP source port in the firewall callback.
   bind_addr(&test.asock, &test.aaddr, base_port + 1);
   bind_addr(&test.bsock, &test.baddr, base_port + 2);
   bind_addr(&test.csock, &test.caddr, base_port + 3);
@@ -181,9 +183,13 @@ run_case (int base_port, bool force_slow_path) {
   assert(e == 0);
   test.dstream.data = &test;
 
+  // A is the firewalled destination; on_firewall asserts that forwarded relay
+  // traffic arrives from B's socket, not from C's incoming stream socket.
   e = udx_stream_firewall(&test.astream, on_firewall);
   assert(e == 0);
 
+  // Pair B and C as the relay: data received by C should be forwarded to A
+  // using B's socket, which is the source A is expecting.
   e = udx_stream_relay_to(&test.cstream, &test.bstream);
   assert(e == 0);
 
@@ -193,6 +199,8 @@ run_case (int base_port, bool force_slow_path) {
   e = udx_stream_read_start(&test.astream, on_read);
   assert(e == 0);
 
+  // B is the relay leg visible to A; C/D create the incoming relay leg that
+  // triggers forwarding when D writes below.
   e = udx_stream_connect(&test.bstream, &test.bsock, 1, (struct sockaddr *) &test.aaddr);
   assert(e == 0);
 
@@ -211,6 +219,8 @@ run_case (int base_port, bool force_slow_path) {
   uv_timer_init(&test.loop, &test.timeout);
   uv_timer_start(&test.timeout, on_timeout, 5000, 0);
 
+  // Writing from D into C exercises relay_packet(cstream -> bstream). The
+  // regression sent this packet from C's socket instead of B's socket.
   udx_stream_write(req, &test.dstream, &buf, 1, on_ack);
 
   e = uv_run(&test.loop, UV_RUN_DEFAULT);
@@ -219,6 +229,8 @@ run_case (int base_port, bool force_slow_path) {
   e = uv_loop_close(&test.loop);
   assert(e == 0);
 
+  // Ensure the firewalled path was actually used and the relayed payload made
+  // it through intact.
   assert(test.firewall_called);
   assert(test.ack_called && test.read_called);
   assert(test.nbytes_read == NBYTES_TO_SEND && test.read_hash == test.write_hash);
