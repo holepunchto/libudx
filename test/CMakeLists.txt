@@ -6,10 +6,12 @@ list(APPEND tests
   socket-send-recv-dualstack
   socket-send-recv-ipv6
   stream-destroy
+  stream-destroy-slowpath
   stream-destroy-before-connect
   stream-preconnect
   stream-preconnect-same-socket
   stream-relay
+  stream-relay-firewall-source
   stream-relay-force-slow-path
   stream-send-recv
   stream-send-recv-ipv6
@@ -26,6 +28,8 @@ list(APPEND tests
   stream-bbr-state
   stream-combined-write
   stream-keepalive
+  stream-rto
+  stream-strict-sack
 )
 
 list(APPEND skipped_tests

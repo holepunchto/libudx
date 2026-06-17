@@ -400,6 +400,8 @@ struct udx_stream_s {
   uint64_t packets_rx;
   uint64_t packets_tx;
 
+  uint32_t dropped_sacks;
+
 #ifdef UDX_DEBUG_THROUGHPUT
   FILE *throughput_fd;
 #endif
@@ -519,6 +521,8 @@ struct udx_interface_event_s {
   uv_timer_t timer;
   uv_loop_t *loop;
   udx_t *udx;
+
+  bool closing;
 
   udx_interface_event_t *prev;
   udx_interface_event_t *next;

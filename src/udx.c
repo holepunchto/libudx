@@ -188,6 +188,8 @@ on_bytes_acked (udx_stream_write_buf_t *wbuf, size_t bytes, bool cancelled) {
   assert(bytes <= stream->writes_queued_bytes);
   stream->writes_queued_bytes -= bytes;
 
+  if (cancelled) return;
+
   // if high watermark (262k+send window bytes queued for writing was hit)
   // stream->writes_queued_bytes > UDX_HIGH_WATERMARK + send_window_in_bytes(stream)
   // and we are now below high watermark
@@ -195,6 +197,22 @@ on_bytes_acked (udx_stream_write_buf_t *wbuf, size_t bytes, bool cancelled) {
   if (stream->hit_high_watermark && stream->writes_queued_bytes < UDX_HIGH_WATERMARK + send_window_in_bytes(stream)) {
     stream->hit_high_watermark = false;
     if (stream->on_drain != NULL) stream->on_drain(stream);
+  }
+}
+
+static void
+cancel_packet (udx_packet_t *pkt) {
+  for (int i = 0; i < pkt->nwbufs; i++) {
+    size_t buf_len = pkt->bufs[i + 1].len;
+    udx_stream_write_buf_t *wbuf = pkt->wbufs[i];
+    on_bytes_acked(wbuf, buf_len, true);
+
+    // todo: move into on_bytes_acked itself
+    udx_stream_write_t *write = wbuf->write;
+
+    if (write->bytes_acked == write->size && write->on_ack) {
+      write->on_ack(write, UV_ECANCELED, 0);
+    }
   }
 }
 
@@ -210,27 +228,6 @@ deref_packet (udx_packet_t *pkt) {
 }
 
 static void
-cancel_packet (udx_packet_t *pkt) {
-  uv_buf_t *bufs = pkt->bufs;
-  udx_stream_write_buf_t **wbufs = pkt->wbufs;
-
-  for (int i = 0; i < pkt->nwbufs; i++) {
-    size_t buf_len = bufs[i + 1].len;
-    udx_stream_write_buf_t *wbuf = wbufs[i];
-    on_bytes_acked(wbuf, buf_len, true);
-
-    // todo: move into on_bytes_acked itself
-    udx_stream_write_t *write = wbuf->write;
-
-    if (write->bytes_acked == write->size && write->on_ack) {
-      write->on_ack(write, UV_ECANCELED, 0);
-    }
-  }
-
-  deref_packet(pkt);
-}
-
-static void
 clear_outgoing_packets (udx_stream_t *stream) {
   // todo: skip the math, and just
   // 1. destroy all packets
@@ -240,6 +237,7 @@ clear_outgoing_packets (udx_stream_t *stream) {
   if (stream->pkt) {
     assert(stream->pkt->ref_count == 1);
     cancel_packet(stream->pkt);
+    deref_packet(stream->pkt);
   }
 
   // We should make sure all existing packets do not send, and notify the user that they failed
@@ -247,8 +245,8 @@ clear_outgoing_packets (udx_stream_t *stream) {
     udx_packet_t *pkt = (udx_packet_t *) udx__cirbuf_remove(&(stream->outgoing), seq);
 
     if (pkt == NULL) continue;
-
     cancel_packet(pkt);
+    deref_packet(pkt);
   }
 
   while (stream->write_queue.len > 0) {
@@ -308,8 +306,9 @@ udx_write_header (uint8_t header[20], udx_stream_t *stream, int type) {
 // returns 1 on success, zero if packet can't be promoted to a probe packet
 static int
 mtu_probeify_packet (udx_packet_t *pkt, int wanted_size) {
-
-  assert(wanted_size > pkt->size);
+  if (wanted_size > pkt->size) {
+    return 0;
+  }
 
   // cannot probeify a packet with 1) no data 2) already has padding
   if (pkt->nwbufs < 1 || pkt->header[3] != 0) {
@@ -406,8 +405,19 @@ stream_timer_stop (udx_stream_t *stream) {
 // 2. if you call this on the send path, you must immediately return from
 // send_stream_packets
 
-static int
+static void
+close_stream_internal (udx_stream_t *stream, int err);
+
+void
 close_stream (udx_stream_t *stream, int err) {
+  if (stream->status & UDX_STREAM_DESTROYING) {
+    return;
+  }
+  close_stream_internal(stream, err);
+}
+
+void
+close_stream_internal (udx_stream_t *stream, int err) {
   assert((stream->status & UDX_STREAM_CLOSED) == 0);
   stream->status |= UDX_STREAM_CLOSED;
   stream->status &= ~UDX_STREAM_CONNECTED;
@@ -471,8 +481,6 @@ close_stream (udx_stream_t *stream, int err) {
   if (udx->teardown && socket != NULL && socket->streams == NULL) {
     udx_socket_close(socket);
   }
-
-  return 1;
 }
 
 static bool
@@ -661,6 +669,7 @@ send_ack (udx_stream_t *stream) {
   stream->udx->packets_tx++;
   stream->udx->bytes_tx += buf.len;
 
+  // test: do we really need to defer reading EOF until after sending the ACK?
   if ((stream->status & UDX_STREAM_SHOULD_END_REMOTE) == UDX_STREAM_END_REMOTE && seq_compare(stream->remote_ended, stream->ack) <= 0) {
     stream->status |= UDX_STREAM_ENDED_REMOTE;
     if (stream->on_read != NULL) {
@@ -896,7 +905,7 @@ send_new_packet (udx_stream_t *stream, int probe_type) {
 
       if (first_alloc) {
         pkt->bufs = malloc((pkt->nwbufs_capacity + 1) * sizeof(pkt->bufs[0]));
-        pkt->wbufs = malloc((pkt->nwbufs_capacity + 1) * sizeof(pkt->wbufs[0]));
+        pkt->wbufs = malloc((pkt->nwbufs_capacity) * sizeof(pkt->wbufs[0]));
         memcpy(pkt->bufs, pkt->buf_sml, sizeof(pkt->buf_sml));
         memcpy(pkt->wbufs, pkt->wbuf_sml, sizeof(pkt->wbuf_sml));
       } else {
@@ -954,6 +963,7 @@ retransmit_packet (udx_stream_t *stream, udx_packet_t *pkt) {
 
 static void
 send_packets (udx_stream_t *stream) {
+  assert((stream->status & UDX_STREAM_DEAD) == 0);
 
   while (stream->retransmit_queue.len > 0 && stream_may_send(stream)) {
     udx_packet_t *pkt = udx__queue_data(udx__queue_peek(&stream->retransmit_queue), udx_packet_t, queue);
@@ -1239,7 +1249,7 @@ udx_rto_timeout (uv_timer_t *timer) {
     if (pkt->seq == stream->remote_acked || remaining < 0) {
       if (pkt->rto_timeouts >= UDX_MAX_RTO_TIMEOUTS) {
         close_stream(stream, UV_ETIMEDOUT);
-        break;
+        return;
       }
 
       stream->lost++;
@@ -1389,6 +1399,10 @@ ack_packet (udx_stream_t *stream, uint32_t seq, int sack, udx_rate_sample_t *rs)
     udx_stream_write_buf_t *wbuf = wbufs[i];
 
     on_bytes_acked(wbuf, pkt_len, false);
+    if (stream->status & UDX_STREAM_DEAD) {
+      deref_packet(pkt);
+      return 2;
+    }
 
     udx_stream_write_t *write = wbuf->write;
 
@@ -1468,7 +1482,7 @@ relay_packet (udx_stream_t *stream, char *buf, ssize_t buf_len, int type, uint32
     if (stream->udx->debug_flags & UDX_DEBUG_FORCE_RELAY_SLOW_PATH) {
       err = UV_EAGAIN;
     } else {
-      err = uv_udp_try_send(&stream->socket->uv_udp, &b, 1, (struct sockaddr *) &relay->remote_addr);
+      err = uv_udp_try_send(&relay->socket->uv_udp, &b, 1, (struct sockaddr *) &relay->remote_addr);
     }
 
     if (err == UV_EAGAIN) {
@@ -1480,7 +1494,7 @@ relay_packet (udx_stream_t *stream, char *buf, ssize_t buf_len, int type, uint32
       memcpy(data, buf, buf_len);
       b = uv_buf_init(data, b.len);
 
-      err = uv_udp_send(req, &stream->socket->uv_udp, &b, 1, (struct sockaddr *) &relay->remote_addr, on_packet_send_slow);
+      err = uv_udp_send(req, &relay->socket->uv_udp, &b, 1, (struct sockaddr *) &relay->remote_addr, on_packet_send_slow);
     }
   }
 
@@ -1501,6 +1515,15 @@ detect_loss_repaired_by_loss_probe (udx_stream_t *stream, uint32_t ack) {
       stream->tlp_in_flight = false;
     }
   }
+}
+
+static bool
+udx_sack_is_valid (udx_stream_t *stream, uint32_t start_seq, uint32_t end_seq) {
+  if (seq_diff(end_seq, stream->seq) > 0) return false;
+  if (seq_diff(start_seq, end_seq) >= 0) return false;
+  if (seq_diff(start_seq, stream->seq) >= 0) return false;
+  if (seq_diff(start_seq, stream->remote_acked) < 0) return false;
+  return true;
 }
 
 static int
@@ -1721,10 +1744,14 @@ process_packet (udx_socket_t *socket, char *buf, ssize_t buf_len, struct sockadd
     uint32_t start = udx__swap_uint32_if_be(*sacks++);
     uint32_t end = udx__swap_uint32_if_be(*sacks++);
 
-    for (uint32_t p = start; p != end; p++) {
-      int a = ack_packet(stream, p, 1, &rs);
-      if (a == 2) break;
-      if (a == 1) stream->delivered++;
+    if (udx_sack_is_valid(stream, start, end)) {
+      for (uint32_t p = start; p != end; p++) {
+        int a = ack_packet(stream, p, 1, &rs);
+        if (a == 2) break;
+        if (a == 1) stream->delivered++;
+      }
+    } else {
+      stream->dropped_sacks++;
     }
   }
 
@@ -1771,6 +1798,9 @@ process_packet (udx_socket_t *socket, char *buf, ssize_t buf_len, struct sockadd
 
   if (type & UDX_HEADER_DATA_OR_END) {
     send_ack(stream);
+    if (stream->status & UDX_STREAM_DEAD) {
+      return 1;
+    }
   }
 
   if (data_inflight) {
@@ -1851,12 +1881,21 @@ static void
 on_uv_udp_recv (uv_udp_t *handle, ssize_t nread, const uv_buf_t *buf, const struct sockaddr *addr, unsigned flags) {
   if (nread == 0 && addr == NULL) return;
 
+  if (nread < 0) {
+    debug_printf("udx: uv_udp_recv err=%s\n", uv_strerror(nread));
+    assert(nread != UV_EBADF);
+    assert(nread != UV_ENOTSOCK);
+    assert(nread != UV_EINVAL);
+    assert(nread != UV_EFAULT);
+    return;
+  }
+
   udx_socket_t *socket = handle->data; // todo: cast instead, save a dereference ?
 
   assert(!(socket->status & UDX_SOCKET_CLOSED));
 
   if (flags & UV_UDP_PARTIAL) {
-    assert(false && "todo: log error for large messages?");
+    debug_printf("udx: uv_udp_recv received partial packet\n");
   }
 
   assert((size_t) nread <= buf->len);
@@ -2172,11 +2211,6 @@ udx_socket_send_ttl (udx_socket_send_t *req, udx_socket_t *socket, const uv_buf_
     if (ttl) uv_udp_set_ttl(&socket->uv_udp, socket->ttl);
   }
 
-  if (err >= 0 && req->on_send) {
-    req->on_send(req, 0);
-    return 0;
-  }
-
   if (err == UV_EAGAIN) {
     // slow path
     if (ttl) {
@@ -2187,10 +2221,14 @@ udx_socket_send_ttl (udx_socket_send_t *req, udx_socket_t *socket, const uv_buf_
     err = uv_udp_send(&req->uv_udp_send, &socket->uv_udp, bufs, bufs_len, dest, on_socket_send_slow);
     _maybe_adjust_ttl(socket); // edge case: queue was empty
 
-    return err;
+  } else {
+    // swallow other errors on the fast path
+    if (req->on_send) {
+      req->on_send(req, 0);
+    }
   }
 
-  return err;
+  return 0;
 }
 
 int
@@ -2541,6 +2579,9 @@ udx_stream_connect (udx_stream_t *stream, udx_socket_t *socket, uint32_t remote_
   if (stream->ack_needed) {
     send_ack(stream);
     stream->ack_needed = false;
+    if (stream->status & UDX_STREAM_DEAD) {
+      return 0;
+    }
   }
 
   if (stream->keepalive_timeout_ms) {
@@ -2601,7 +2642,7 @@ udx_stream_send (udx_stream_send_t *req, udx_stream_t *stream, const uv_buf_t bu
     }
   }
 
-  return err;
+  return 0;
 }
 
 int
@@ -2722,7 +2763,7 @@ stream_on_destroy_send (udx_stream_t *stream) {
   udx->packets_tx++;
   udx->bytes_tx += UDX_HEADER_SIZE;
 
-  close_stream(stream, 0);
+  close_stream_internal(stream, 0);
 }
 
 static void
@@ -2738,7 +2779,7 @@ _stream_on_destroy_send (uv_udp_send_t *req, int status) {
 int
 udx_stream_destroy (udx_stream_t *stream) {
   if (stream->status & UDX_STREAM_CLOSED) {
-    debug_printf("udx: closing already closed stream %u", stream->local_id);
+    debug_printf("udx: closing already closed stream %u\n", stream->local_id);
     return 0;
   }
 
@@ -2750,7 +2791,7 @@ udx_stream_destroy (udx_stream_t *stream) {
   stream->status |= UDX_STREAM_DESTROYING;
 
   if (stream->relayed) {
-    close_stream(stream, 0);
+    close_stream_internal(stream, 0);
     return 0;
   }
 
@@ -2777,7 +2818,7 @@ udx_stream_destroy (udx_stream_t *stream) {
     stream_on_destroy_send(stream);
   }
 
-  return err < 0 ? err : 1;
+  return 1;
 }
 
 static void
@@ -2898,6 +2939,7 @@ udx_interface_event_init (udx_t *udx, udx_interface_event_t *handle, udx_interfa
   handle->loop = udx->loop;
   handle->sorted = false;
   handle->on_close = cb;
+  handle->closing = false;
 
   int err = uv_interface_addresses(&(handle->addrs), &(handle->addrs_len));
   if (err < 0) return err;
@@ -2931,6 +2973,10 @@ udx_interface_event_stop (udx_interface_event_t *handle) {
 
 int
 udx_interface_event_close (udx_interface_event_t *handle) {
+  if (handle->closing) {
+    return UV_EINVAL;
+  }
+  handle->closing = true;
   handle->on_event = NULL;
 
   uv_free_interface_addresses(handle->addrs, handle->addrs_len);
