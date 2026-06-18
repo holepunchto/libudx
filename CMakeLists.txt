@@ -16,7 +16,7 @@ set_target_properties(
 )
 
 if(UNIX)
-  target_compile_options(udx PRIVATE -Wall -Wextra)
+  target_compile_options(udx PRIVATE -Wall -Werror -Wextra)
 endif()
 
 if(WIN32)
@@ -42,6 +42,8 @@ target_sources(
     src/io.h
     src/udx.c
     src/udx_rate.c
+    src/udx_sack_tree.c
+    src/udx_sack_tree.h
     src/win_filter.h
     src/win_filter.c
     src/win_filter_f64.h

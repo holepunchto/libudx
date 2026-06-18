@@ -2,6 +2,7 @@ list(APPEND tests
   lookup
   lookup-invalid
   lookup-ipv6
+  sack
   socket-send-recv
   socket-send-recv-dualstack
   socket-send-recv-ipv6
