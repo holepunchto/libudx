@@ -374,14 +374,14 @@ udx_keepalive_timeout (uv_timer_t *timer);
 
 static void
 stream_timer_start (udx_stream_t *stream, udx_stream_timer_type_t timer, uint32_t time_wait_ms) {
-  // todo: see if we can get this from uv_timer_get_due_in in stream_timer_start
-  // if (stream->pending_timer == UDX_TIMER_RTO && (timer == UDX_TIMER_RACK_REO || timer == UDX_TIMER_TLP)
-  //   stream->next_rto_ts = uv_now(stream->udx->loop) + uv_timer_get_due_in(&stream->timer);
-  // }
+  // as a special case, save the next_rto_ts so that it can be restored if necessary
+  if (timer == UDX_TIMER_RTO) {
+    stream->next_rto_ts = uv_now(stream->udx->loop) + time_wait_ms;
+  }
 
   stream->pending_timer = timer;
 
-  uv_timer_cb timer_to_callback[] = {
+  static uv_timer_cb timer_to_callback[] = {
     NULL,
     udx_rto_timeout,
     udx_rack_reo_timeout,
@@ -977,18 +977,6 @@ send_packets (udx_stream_t *stream) {
   }
 }
 
-// how many ms into the future should the rto fire
-int64_t
-udx_rto_delta_ms (udx_stream_t *stream) {
-  udx_packet_t *pkt = udx__cirbuf_get(&stream->outgoing, stream->remote_acked);
-  assert(pkt != NULL);
-
-  uint32_t rto = stream->rto;
-  uint64_t rto_ts = pkt->time_sent + rto;
-
-  return rto_ts - uv_now(stream->udx->loop);
-}
-
 // if not 'from_now' then we use the saved rto in `stream->next_rto_ts`
 // this is used when the reorder timeout or the tail-loss probe timer is
 // set over top of the normal rto.
@@ -998,10 +986,7 @@ rearm_rto (udx_stream_t *stream, bool from_now) {
     stream_timer_stop(stream);
   } else {
     uint64_t rto = stream->rto;
-    if (from_now) {
-      stream->next_rto_ts = uv_now(stream->udx->loop) + rto;
-    } else {
-
+    if (!from_now) {
       assert(stream->pending_timer == UDX_TIMER_RACK_REO || stream->pending_timer == UDX_TIMER_TLP);
       int64_t rto_delta_ms = stream->next_rto_ts - uv_now(stream->udx->loop);
       if (rto_delta_ms < 0) {
@@ -1009,7 +994,7 @@ rearm_rto (udx_stream_t *stream, bool from_now) {
       }
       rto = rto_delta_ms;
     }
-    uv_timer_start(&stream->timer, udx_rto_timeout, rto, 0);
+    stream_timer_start(stream, UDX_TIMER_RTO, rto);
   }
 }
 
@@ -1222,7 +1207,6 @@ udx_rto_timeout (uv_timer_t *timer) {
   stream->tlp_is_retrans = false;
 
   assert(!(stream->status & UDX_STREAM_CLOSED));
-  stream->next_rto_ts = uv_now(stream->udx->loop) + stream->rto * 2;
   stream_timer_start(stream, UDX_TIMER_RTO, stream->rto * 2);
 
   // zero retransmit queue
@@ -1863,9 +1847,7 @@ arm_stream_timers (udx_stream_t *stream, bool sent_tlp) {
   assert(stream->rto > 0);
   assert(stream->status != UDX_STREAM_CLOSED);
 
-  stream->next_rto_ts = uv_now(stream->udx->loop) + stream->rto;
-
-  if (stream->pending_timer == UDX_TIMER_NONE || stream->pending_timer == UDX_TIMER_ZWP || stream->pending_timer == UDX_TIMER_KEEPALIVE || stream->pending_timer == UDX_TIMER_TLP) {
+  if (stream->pending_timer == UDX_TIMER_NONE || stream->pending_timer == UDX_TIMER_ZWP || stream->pending_timer == UDX_TIMER_KEEPALIVE) {
     stream_timer_start(stream, UDX_TIMER_RTO, stream->rto);
   }
 
