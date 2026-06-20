@@ -54,7 +54,7 @@
 #define UDX_ARRAY_SIZE(a) (sizeof(a) / sizeof((a)[0]))
 
 static void
-arm_stream_timers (udx_stream_t *stream, bool sent_tlp);
+arm_stream_timers (udx_stream_t *stream, bool arm_tlp);
 
 typedef struct {
   uint32_t seq; // must be the first entry, so its compat with the cirbuf
@@ -861,7 +861,7 @@ _send_new_packet (udx_stream_t *stream, int probe_type) {
     stream->tlp_permitted = false;
   }
 
-  arm_stream_timers(stream, tlp);
+  arm_stream_timers(stream, !tlp); // arm TLP timer unless this packet itself was a TLP
 
   assert(pkt->size > 0 && pkt->size < 1500);
 
@@ -957,7 +957,7 @@ retransmit_packet (udx_stream_t *stream, udx_packet_t *pkt) {
     bbr_on_transmit_start(stream, uv_now(stream->udx->loop));
   }
 
-  arm_stream_timers(stream, false);
+  arm_stream_timers(stream, false); // don't arm TLP on retransmit
   return;
 }
 
@@ -1839,9 +1839,9 @@ pacing_timer_timeout (uv_timer_t *timer) {
 }
 
 // arms the retransmit timers (RTO, TLP), called after data is transmitted
-// or retransmitted.
+// or retransmitted. 'arm_tlp' is set when transmitting new data that is not itself a TLP
 static void
-arm_stream_timers (udx_stream_t *stream, bool sent_tlp) {
+arm_stream_timers (udx_stream_t *stream, bool arm_tlp) {
   assert(stream->inflight_queue.len > 0);
   assert(stream->remote_acked != stream->seq);
   assert(stream->rto > 0);
@@ -1853,7 +1853,7 @@ arm_stream_timers (udx_stream_t *stream, bool sent_tlp) {
 
   // rack 7.2 rearm tlp timer
 
-  if (stream->ca_state == UDX_CA_OPEN && !stream->sacks && !sent_tlp) {
+  if (arm_tlp && stream->ca_state == UDX_CA_OPEN && !stream->sacks) {
     schedule_loss_probe(stream, false);
   }
 }
