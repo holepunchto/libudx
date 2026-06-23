@@ -1060,7 +1060,7 @@ schedule_loss_probe (udx_stream_t *stream, bool advancing_rto) {
 
   uint32_t rto_delta_ms = stream->rto;
 
-  if (advancing_rto) {
+  if (!advancing_rto) {
     int64_t delta = stream->next_rto_ts - uv_now(stream->udx->loop);
     if (delta < 0) {
       delta = 1;
