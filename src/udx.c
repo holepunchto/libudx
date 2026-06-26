@@ -1044,7 +1044,7 @@ udx_tlp_timeout (uv_timer_t *timer) {
 // returns false if we cannot schedule a probe
 static bool
 schedule_loss_probe (udx_stream_t *stream, bool advancing_rto) {
-  if (stream->seq == stream->remote_acked || stream->ca_state != UDX_CA_OPEN) {
+  if (stream->seq == stream->remote_acked || stream->ca_state != UDX_CA_OPEN || stream->sacks) {
     return false;
   }
 
@@ -1170,7 +1170,7 @@ udx_rack_reo_timeout (uv_timer_t *timer) {
   udx_stream_t *stream = timer->data;
   rack_detect_loss(stream);
 
-  bool from_now = stream->pending_timer == UDX_TIMER_RACK_REO || stream->pending_timer == UDX_TIMER_TLP;
+  bool from_now = !(stream->pending_timer == UDX_TIMER_RACK_REO || stream->pending_timer == UDX_TIMER_TLP);
 
   if (stream->pending_timer != UDX_TIMER_RTO) {
     rearm_rto(stream, from_now);
