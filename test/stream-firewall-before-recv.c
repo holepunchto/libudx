@@ -23,7 +23,7 @@ uv_timer_t timeout;
 udx_stream_send_t first_req;
 udx_stream_send_t second_req;
 
-bool firewall_called = false;
+bool firewall_called_before_recv = false;
 int recv_count = 0;
 
 static void
@@ -54,9 +54,9 @@ on_firewall (udx_stream_t *stream, udx_socket_t *socket, const struct sockaddr *
   assert(stream == &astream);
   assert(socket == &asock);
   assert(recv_count == 1);
-  assert(!firewall_called);
+  assert(!firewall_called_before_recv);
 
-  firewall_called = true;
+  firewall_called_before_recv = true;
 
   return 0;
 }
@@ -70,7 +70,7 @@ on_recv (udx_stream_t *stream, ssize_t read_len, const uv_buf_t *buf) {
   if (recv_count == 0) {
     assert(read_len == 5);
     assert(memcmp(buf->base, "first", 5) == 0);
-    assert(!firewall_called);
+    assert(!firewall_called_before_recv);
 
     recv_count++;
 
@@ -88,7 +88,10 @@ on_recv (udx_stream_t *stream, ssize_t read_len, const uv_buf_t *buf) {
 
   assert(read_len == 6);
   assert(memcmp(buf->base, "second", 6) == 0);
-  assert(firewall_called);
+  // The second message arrives on the old socket after change_remote() moved
+  // the stream to csock. This must be set by on_firewall before on_recv is
+  // called for that same packet.
+  assert(firewall_called_before_recv);
 
   recv_count++;
 
@@ -145,7 +148,7 @@ main () {
 
   uv_run(&loop, UV_RUN_DEFAULT);
 
-  assert(firewall_called);
+  assert(firewall_called_before_recv);
   assert(recv_count == 2);
 
   return 0;
