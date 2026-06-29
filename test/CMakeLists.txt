@@ -13,6 +13,7 @@ list(APPEND tests
   stream-relay
   stream-relay-firewall-source
   stream-relay-force-slow-path
+  stream-recv-source
   stream-send-recv
   stream-send-recv-ipv6
   stream-write-read

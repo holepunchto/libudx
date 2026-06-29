@@ -1538,13 +1538,24 @@ process_packet (udx_socket_t *socket, char *buf, ssize_t buf_len, struct sockadd
     }
   }
 
-  if (type & UDX_HEADER_MESSAGE) {
-    if (stream->on_recv != NULL) {
-      uv_buf_t b = uv_buf_init(buf, buf_len);
+  if (type & UDX_HEADER_MESSAGE && (stream->status & UDX_STREAM_RECEIVING)) {
+    uv_buf_t b = uv_buf_init(buf, buf_len);
+
+    if (stream->on_recv_with_info != NULL) {
+      udx_stream_recv_info_t info = {
+        .socket = socket,
+        .from = addr,
+        .source = stream->socket == socket ? UDX_STREAM_RECV_SOURCE_CURRENT : UDX_STREAM_RECV_SOURCE_OTHER
+      };
+
+      stream->on_recv_with_info(stream, buf_len, &b, &info);
+    } else {
+      assert(stream->on_recv != NULL);
       stream->on_recv(stream, buf_len, &b);
-      if (stream->status & UDX_STREAM_DEAD) {
-        return 1;
-      }
+    }
+
+    if (stream->status & UDX_STREAM_DEAD) {
+      return 1;
     }
   }
 
@@ -2347,6 +2358,18 @@ udx_stream_recv_start (udx_stream_t *stream, udx_stream_recv_cb cb) {
   if (stream->status & UDX_STREAM_RECEIVING) return UV_EALREADY;
 
   stream->on_recv = cb;
+  stream->on_recv_with_info = NULL;
+  stream->status |= UDX_STREAM_RECEIVING;
+
+  return 0;
+}
+
+int
+udx_stream_recv_start_with_info (udx_stream_t *stream, udx_stream_recv_with_info_cb cb) {
+  if (stream->status & UDX_STREAM_RECEIVING) return UV_EALREADY;
+
+  stream->on_recv = NULL;
+  stream->on_recv_with_info = cb;
   stream->status |= UDX_STREAM_RECEIVING;
 
   return 0;
@@ -2357,6 +2380,7 @@ udx_stream_recv_stop (udx_stream_t *stream) {
   if ((stream->status & UDX_STREAM_RECEIVING) == 0) return 0;
 
   stream->on_recv = NULL;
+  stream->on_recv_with_info = NULL;
   stream->status ^= UDX_STREAM_RECEIVING;
 
   return 0;

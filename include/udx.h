@@ -125,6 +125,19 @@ typedef void (*udx_stream_remote_changed_cb)(udx_stream_t *stream);
 typedef void (*udx_stream_ack_cb)(udx_stream_write_t *req, int status, int unordered);
 typedef void (*udx_stream_send_cb)(udx_stream_send_t *req, int status);
 typedef void (*udx_stream_recv_cb)(udx_stream_t *stream, ssize_t read_len, const uv_buf_t *buf);
+
+typedef enum {
+  UDX_STREAM_RECV_SOURCE_CURRENT = 0,
+  UDX_STREAM_RECV_SOURCE_OTHER = 1,
+} udx_stream_recv_source_t;
+
+typedef struct {
+  udx_socket_t *socket;
+  const struct sockaddr *from;
+  udx_stream_recv_source_t source;
+} udx_stream_recv_info_t;
+
+typedef void (*udx_stream_recv_with_info_cb)(udx_stream_t *stream, ssize_t read_len, const uv_buf_t *buf, const udx_stream_recv_info_t *info);
 typedef void (*udx_stream_close_cb)(udx_stream_t *stream, int status);
 typedef void (*udx_stream_finalize_cb)(udx_stream_t *stream);
 typedef uint32_t (*udx_stream_get_read_buffer_size_cb)(udx_stream_t *stream);
@@ -265,6 +278,7 @@ struct udx_stream_s {
   udx_stream_firewall_cb on_firewall;
   udx_stream_read_cb on_read;
   udx_stream_recv_cb on_recv;
+  udx_stream_recv_with_info_cb on_recv_with_info;
   udx_stream_drain_cb on_drain;
   udx_stream_close_cb on_close;
   udx_stream_finalize_cb on_finalize;
@@ -647,6 +661,9 @@ udx_stream_firewall (udx_stream_t *stream, udx_stream_firewall_cb firewall_cb);
 
 int
 udx_stream_recv_start (udx_stream_t *stream, udx_stream_recv_cb cb);
+
+int
+udx_stream_recv_start_with_info (udx_stream_t *stream, udx_stream_recv_with_info_cb cb);
 
 int
 udx_stream_recv_stop (udx_stream_t *stream);
