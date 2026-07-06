@@ -381,6 +381,7 @@ stream_timer_start (udx_stream_t *stream, udx_stream_timer_type_t timer, uint32_
 
   stream->pending_timer = timer;
 
+  // important: order must match order in the udx_stream_timer_type_t enum
   static uv_timer_cb timer_to_callback[] = {
     NULL,
     udx_rto_timeout,
