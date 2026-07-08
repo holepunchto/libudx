@@ -157,7 +157,10 @@ main () {
   // zwp_count only counts the number of zwp timeouts, since we start with a zero window
   // we automatically probe (without waiting for a timeout) when data is queued.
 
-  assert(send_stream.zwp_count == 1 && recv_stream.zwp_count == 0 && ack_called && send_stream.retransmit_count == 0 && recv_stream.retransmit_count == 0);
+  assert(send_stream.zwp_count == 1);
+  assert(recv_stream.zwp_count == 0);
+  assert(ack_called);
+  assert(recv_stream.retransmit_count == 0);
   assert(nend == 2 && nstream_close == 2 && nfinalize == 2 && nsocket_close == 2);
   free(data);
 
