@@ -830,6 +830,7 @@ _send_new_packet (udx_stream_t *stream, int probe_type) {
 
   bool inflight_queue_was_empty = stream->inflight_queue.len == 0;
   bool tlp = probe_type == UDX_PROBE_TYPE_TLP;
+  bool zwp = probe_type == UDX_PROBE_TYPE_ZWP;
 
   udx_packet_t *pkt = stream->pkt;
 
@@ -865,7 +866,9 @@ _send_new_packet (udx_stream_t *stream, int probe_type) {
     stream->tlp_permitted = false;
   }
 
-  arm_stream_timers(stream, !tlp); // arm TLP timer unless this packet itself was a TLP
+  if (!zwp) {
+    arm_stream_timers(stream, !tlp); // arm TLP timer unless this packet itself was a TLP
+  }
 
   assert(pkt->size > 0 && pkt->size < 1500);
 
@@ -887,7 +890,7 @@ send_new_packet (udx_stream_t *stream, int probe_type) {
   if (stream->write_queue.len == 0) return false;
   if (!stream_may_send(stream) && probe_type == UDX_PROBE_TYPE_NONE) return false;
 
-  bool tlp = probe_type == UDX_PROBE_TYPE_TLP;
+  bool probe = probe_type != UDX_PROBE_TYPE_NONE;
   udx_packet_t *pkt = stream->pkt;
 
   while (stream->pkt_capacity > 0 && stream->write_queue.len > 0) {
@@ -935,7 +938,7 @@ send_new_packet (udx_stream_t *stream, int probe_type) {
     }
   }
 
-  if (stream->pkt_capacity == 0 || tlp || (stream->pkt_header_flag & UDX_HEADER_END)) {
+  if (stream->pkt_capacity == 0 || probe || (stream->pkt_header_flag & UDX_HEADER_END)) {
     _send_new_packet(stream, probe_type);
     return true;
   }
@@ -1191,7 +1194,9 @@ udx_zwp_timeout (uv_timer_t *timer) {
 
   stream->zwp_count++;
   debug_printf("zwp: stream=%u\n", stream->remote_id);
-  send_new_packet(stream, UDX_PROBE_TYPE_ZWP);
+  if (send_new_packet(stream, UDX_PROBE_TYPE_ZWP)) {
+    stream_timer_start(stream, UDX_TIMER_ZWP, stream->rto * 2);
+  }
 }
 
 static void
@@ -2676,7 +2681,9 @@ _udx_stream_write (udx_stream_write_t *write, udx_stream_t *stream, const uv_buf
 
   // if an idle, zero window stream has data queued, send a zero-window probe immediately
   if (stream->writes_queued_bytes > 0 && stream->send_rwnd == 0) {
-    send_new_packet(stream, UDX_PROBE_TYPE_ZWP);
+    if (send_new_packet(stream, UDX_PROBE_TYPE_ZWP)) {
+      stream_timer_start(stream, UDX_TIMER_ZWP, stream->rto);
+    }
   }
   send_packets(stream);
 }
