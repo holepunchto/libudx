@@ -520,7 +520,7 @@ on_packet_send_slow (uv_udp_send_t *req, int status) {
 }
 
 static void
-send_probe (udx_stream_t *stream) {
+send_probe (udx_stream_t *stream, bool count_stats) {
   if (!stream->socket) {
     return;
   }
@@ -548,10 +548,11 @@ send_probe (udx_stream_t *stream) {
     }
   }
 
+  if (!count_stats) return;
+
   // consider the probe to be sent, even on slow path.
   stream->packets_tx++;
   stream->bytes_tx += buf.len;
-
   stream->socket->packets_tx++;
   stream->socket->bytes_tx += buf.len;
   stream->udx->packets_tx++;
@@ -563,7 +564,7 @@ udx_keepalive_timeout (uv_timer_t *timer) {
   udx_stream_t *stream = timer->data;
   assert(stream->seq == stream->remote_acked);
 
-  send_probe(stream);
+  send_probe(stream, true);
 
   stream_timer_start(stream, UDX_TIMER_KEEPALIVE, stream->keepalive_timeout_ms);
 }
@@ -1556,8 +1557,14 @@ process_packet (udx_socket_t *socket, char *buf, ssize_t buf_len, struct sockadd
   stream->bytes_rx += buf_len;
   stream->packets_rx += 1;
 
+  // Connect probes are sent before application data to let passive relay
+  // streams learn their endpoint address. For regular preconnect streams,
+  // keep the existing contract where the firewall sees the first real packet.
+  bool is_probe = type & UDX_HEADER_HEARTBEAT;
+  bool should_firewall = !is_probe || stream->relay_to != NULL;
+
   // We expect this to be a stream packet from now on
-  if (stream->socket != socket && stream->on_firewall != NULL) {
+  if (stream->socket != socket && stream->on_firewall != NULL && should_firewall) {
     if (is_addr_v4_mapped((struct sockaddr *) addr)) {
       addr_to_v4((struct sockaddr_in6 *) addr);
     }
@@ -1576,7 +1583,6 @@ process_packet (udx_socket_t *socket, char *buf, ssize_t buf_len, struct sockadd
   bool ack_advanced = seq_diff(ack, prior_remote_acked) > 0;
   bool data_inflight = stream->remote_acked != stream->seq;
   // todo: send data packet with seq=remote_acked-1
-  bool is_probe = type & UDX_HEADER_HEARTBEAT;
 
   if (is_probe) {
     send_ack(stream);
@@ -2573,6 +2579,9 @@ udx_stream_connect (udx_stream_t *stream, udx_socket_t *socket, uint32_t remote_
   if (stream->keepalive_timeout_ms) {
     stream_timer_start(stream, UDX_TIMER_KEEPALIVE, stream->keepalive_timeout_ms);
   }
+
+  // Let passive relays learn this endpoint before the first data packet.
+  send_probe(stream, false);
 
   return 0;
 }

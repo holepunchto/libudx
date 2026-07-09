@@ -9,10 +9,12 @@ list(APPEND tests
   stream-destroy-slowpath
   stream-destroy-before-connect
   stream-preconnect
+  stream-preconnect-probe-firewall
   stream-preconnect-same-socket
   stream-relay
   stream-relay-firewall-source
   stream-relay-force-slow-path
+  stream-relay-passive-startup
   stream-send-recv
   stream-send-recv-ipv6
   stream-write-read
