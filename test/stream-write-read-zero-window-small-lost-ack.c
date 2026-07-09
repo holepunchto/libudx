@@ -8,16 +8,17 @@
 #include "../src/endian.h"
 
 /*
- * Regression test for a small zero-window write whose first ACK is lost. The
- * initial ZWP can consume the whole write queue, leaving only in-flight data.
- * When the ZWP timer fires, send_new_packet(ZWP) cannot queue new data, but
- * the sender must still probe and keep the ZWP timer alive until the in-flight
- * bytes are acknowledged.
+ * Regression test for a small zero-window write whose initial data-carrying
+ * ZWP is lost. The initial ZWP can consume the whole write queue, leaving only
+ * in-flight data. When the ZWP timer fires, send_new_packet(ZWP) cannot queue
+ * new data, but the sender must still retransmit and keep the ZWP timer alive
+ * until the in-flight bytes are acknowledged.
  */
 
 #define DATA_SIZE                    16
-#define DROPPED_ZERO_WINDOW_ACKS     2
-#define EXPECTED_ZERO_WINDOW_PROBES  (DROPPED_ZERO_WINDOW_ACKS + 1)
+#define DROPPED_DATA_PACKETS         1
+#define DROPPED_ZERO_WINDOW_ACKS     1
+#define EXPECTED_ZERO_WINDOW_PROBES  (DROPPED_DATA_PACKETS + DROPPED_ZERO_WINDOW_ACKS)
 #define TEST_TIMEOUT_MS              5000
 
 uv_loop_t loop;
@@ -42,6 +43,7 @@ udx_stream_write_t *req;
 
 bool ack_called;
 int read_counter;
+int dropped_data_packets;
 int dropped_zero_window_acks;
 int packets_to_recv;
 
@@ -87,6 +89,12 @@ proxy_forward (uv_udp_t *proxy, const char *data, ssize_t len, const struct sock
 void
 on_proxy_to_recv (uv_udp_t *proxy, ssize_t nread, const uv_buf_t *buf, const struct sockaddr *from, unsigned flags) {
   if (nread > 0) {
+    if (dropped_data_packets < DROPPED_DATA_PACKETS) {
+      dropped_data_packets++;
+      free(buf->base);
+      return;
+    }
+
     packets_to_recv++;
     proxy_forward(proxy, buf->base, nread, (const struct sockaddr *) &recv_addr);
   }
@@ -100,9 +108,9 @@ on_proxy_to_send (uv_udp_t *proxy, ssize_t nread, const uv_buf_t *buf, const str
     uint32_t rwnd = nread >= UDX_HEADER_SIZE ? read_u32(buf->base + 8) : UINT32_MAX;
     uint32_t ack = nread >= UDX_HEADER_SIZE ? read_u32(buf->base + 16) : 0;
 
-    // Drop the ACKs for the initial data-carrying ZWP and the first fallback
-    // heartbeat probe. For this small write, the sender has moved all bytes
-    // out of write_queue and only has in-flight data left.
+    // Drop the first ACK after the retransmitted data arrives. For this small
+    // write, the sender has moved all bytes out of write_queue and only has
+    // in-flight data left.
     if (rwnd == 0 && ack > 0 && dropped_zero_window_acks < DROPPED_ZERO_WINDOW_ACKS) {
       dropped_zero_window_acks++;
       free(buf->base);
@@ -210,12 +218,13 @@ main () {
 
   uv_run(&loop, UV_RUN_DEFAULT);
 
+  assert(dropped_data_packets == DROPPED_DATA_PACKETS);
   assert(dropped_zero_window_acks == DROPPED_ZERO_WINDOW_ACKS);
   assert(read_counter == 1);
-  // The timeout must send follow-up probes even though send_new_packet(ZWP)
-  // cannot queue more data. Dropping two ACKs makes this require both the
-  // fallback probe and re-arming ZWP after that fallback path.
-  assert(send_stream.zwp_count >= DROPPED_ZERO_WINDOW_ACKS);
+  // The timeout must retransmit follow-up probes even though
+  // send_new_packet(ZWP) cannot queue more data. Dropping the initial data and
+  // the first ACK makes this require both retransmission and re-arming ZWP.
+  assert(send_stream.zwp_count >= EXPECTED_ZERO_WINDOW_PROBES);
   assert(packets_to_recv >= EXPECTED_ZERO_WINDOW_PROBES);
   assert(ack_called);
   assert(send_stream.writes_queued_bytes == 0);

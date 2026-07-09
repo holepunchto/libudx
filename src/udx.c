@@ -1172,6 +1172,22 @@ rack_detect_loss_and_arm_timer (udx_stream_t *stream) {
   return false;
 }
 
+static bool
+retransmit_zwp_probe (udx_stream_t *stream) {
+  udx_packet_t *pkt = (udx_packet_t *) udx__cirbuf_get(&stream->outgoing, stream->remote_acked);
+
+  // Match TLP retransmit ownership rules: only pull from inflight if the
+  // packet is not already lost or queued in libuv for async send.
+  if (!pkt || pkt->lost || pkt->ref_count == 2) {
+    return false;
+  }
+
+  udx__queue_unlink(&stream->inflight_queue, &pkt->queue);
+  retransmit_packet(stream, pkt);
+
+  return true;
+}
+
 static void
 udx_rack_reo_timeout (uv_timer_t *timer) {
   udx_stream_t *stream = timer->data;
@@ -1194,7 +1210,8 @@ udx_zwp_timeout (uv_timer_t *timer) {
 
   stream->zwp_count++;
   debug_printf("zwp: stream=%u\n", stream->remote_id);
-  if (!send_new_packet(stream, UDX_PROBE_TYPE_ZWP) && stream->writes_queued_bytes > 0) {
+  bool sent = send_new_packet(stream, UDX_PROBE_TYPE_ZWP);
+  if (!sent && stream->writes_queued_bytes > 0 && !retransmit_zwp_probe(stream)) {
     send_probe(stream);
   }
 
