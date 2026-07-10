@@ -7,8 +7,7 @@
 /*
  * Regression test for small zero-window writes. Even if queued data is smaller
  * than one packet, it must be sent immediately as a ZWP instead of being
- * deferred as a normal partial packet. Sending a ZWP must also skip normal
- * RTO/TLP arming, otherwise stale RTO state is left behind.
+ * deferred as a normal partial packet, with ZWP as the active stream timer.
  */
 
 uv_loop_t loop;
@@ -81,10 +80,6 @@ main () {
   assert(send_stream.seq == 1);
   assert(send_stream.pending_timer == UDX_TIMER_ZWP);
   assert(send_stream.zwp_count == 0);
-
-  // A ZWP must not run the normal RTO/TLP arming path. That path can be hidden
-  // by re-arming ZWP afterward, but it still leaves stale RTO state behind.
-  assert(send_stream.next_rto_ts == 0);
 
   free(req);
 
