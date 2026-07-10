@@ -9,10 +9,11 @@
  * Regression test for a lost ZWP while more data is queued. The forced loss
  * drops the first data packet, then the next ZWP arrives out of order and RACK
  * moves the first packet to retransmit_queue. ZWP must retransmit that known
- * loss even though the advertised receive window remains zero.
+ * loss even though the advertised receive window remains zero. The write spans
+ * three packets so new data is still queued when that choice is made.
  */
 
-#define DATA_SIZE        UDX_MTU_MAX
+#define DATA_SIZE        (UDX_MTU_BASE * 2)
 #define TEST_TIMEOUT_MS  5000
 
 uv_loop_t loop;
@@ -25,10 +26,15 @@ udx_socket_t send_sock;
 udx_stream_t send_stream;
 
 uv_timer_t timeout;
+uv_check_t observe;
 udx_stream_write_t *req;
 
 bool ack_called;
+bool priority_state_seen;
+bool priority_verified;
 size_t bytes_read;
+uint16_t zwp_count_before;
+uint16_t retransmit_count_before;
 
 uint32_t
 pretend_buffer_is_full (udx_stream_t *stream) {
@@ -47,6 +53,25 @@ on_ack (udx_stream_write_t *req, int status, int unordered) {
   assert(unordered == 0);
   ack_called = true;
   uv_stop(&loop);
+}
+
+void
+on_observe (uv_check_t *check) {
+  if (!priority_state_seen) {
+    if (send_stream.retransmit_queue.len == 0 || send_stream.write_queue.len == 0) {
+      return;
+    }
+
+    priority_state_seen = true;
+    zwp_count_before = send_stream.zwp_count;
+    retransmit_count_before = send_stream.retransmit_count;
+    return;
+  }
+
+  if (!priority_verified && send_stream.zwp_count > zwp_count_before) {
+    assert(send_stream.retransmit_count > retransmit_count_before);
+    priority_verified = true;
+  }
 }
 
 void
@@ -95,6 +120,8 @@ main () {
 
   recv_stream.get_read_buffer_size = &pretend_buffer_is_full;
   send_stream.send_rwnd = 0;
+  // Keep the three ZWP rounds short without changing their order.
+  send_stream.rto = 250;
 
   e = udx_stream_connect(&recv_stream, &recv_sock, 2, (struct sockaddr *) &send_addr);
   assert(e == 0);
@@ -110,6 +137,13 @@ main () {
 
   e = udx_stream_write(req, &send_stream, &buf, 1, on_ack);
   assert(e && "drained");
+  // Only the initial data-carrying ZWP should be force-dropped.
+  udx.debug_flags &= ~UDX_DEBUG_FORCE_DROP_DATA;
+
+  e = uv_check_init(&loop, &observe);
+  assert(e == 0);
+  e = uv_check_start(&observe, on_observe);
+  assert(e == 0);
 
   e = uv_timer_init(&loop, &timeout);
   assert(e == 0);
@@ -118,6 +152,8 @@ main () {
 
   uv_run(&loop, UV_RUN_DEFAULT);
 
+  assert(priority_state_seen);
+  assert(priority_verified);
   assert(ack_called);
   assert(bytes_read == DATA_SIZE);
   assert(send_stream.lost > 0);
