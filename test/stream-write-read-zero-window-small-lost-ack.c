@@ -9,16 +9,13 @@
 
 /*
  * Regression test for a small zero-window write whose initial data-carrying
- * ZWP is lost. The initial ZWP can consume the whole write queue, leaving only
- * in-flight data. When the ZWP timer fires, send_new_packet(ZWP) cannot queue
- * new data, but the sender must still retransmit and keep the ZWP timer alive
+ * ZWP is lost. The write must be sent immediately with ZWP active. Its loss
+ * leaves only in-flight data, so the sender must retransmit and keep ZWP alive
  * until the in-flight bytes are acknowledged.
  */
 
 #define DATA_SIZE                    16
-#define DROPPED_DATA_PACKETS         1
 #define DROPPED_ZERO_WINDOW_ACKS     1
-#define EXPECTED_ZERO_WINDOW_PROBES  (DROPPED_DATA_PACKETS + DROPPED_ZERO_WINDOW_ACKS)
 #define TEST_TIMEOUT_MS              5000
 
 uv_loop_t loop;
@@ -30,12 +27,10 @@ udx_stream_t recv_stream;
 udx_socket_t send_sock;
 udx_stream_t send_stream;
 
-uv_udp_t proxy_to_recv;
 uv_udp_t proxy_to_send;
 
 struct sockaddr_in recv_addr;
 struct sockaddr_in send_addr;
-struct sockaddr_in proxy_to_recv_addr;
 struct sockaddr_in proxy_to_send_addr;
 
 uv_timer_t timeout;
@@ -43,9 +38,7 @@ udx_stream_write_t *req;
 
 bool ack_called;
 int read_counter;
-int dropped_data_packets;
 int dropped_zero_window_acks;
-int packets_to_recv;
 
 typedef struct {
   uv_udp_send_t req;
@@ -84,22 +77,6 @@ proxy_forward (uv_udp_t *proxy, const char *data, ssize_t len, const struct sock
   uv_buf_t buf = uv_buf_init(send->data, len);
   int e = uv_udp_send(&send->req, proxy, &buf, 1, to, on_proxy_send);
   assert(e == 0);
-}
-
-void
-on_proxy_to_recv (uv_udp_t *proxy, ssize_t nread, const uv_buf_t *buf, const struct sockaddr *from, unsigned flags) {
-  if (nread > 0) {
-    if (dropped_data_packets < DROPPED_DATA_PACKETS) {
-      dropped_data_packets++;
-      free(buf->base);
-      return;
-    }
-
-    packets_to_recv++;
-    proxy_forward(proxy, buf->base, nread, (const struct sockaddr *) &recv_addr);
-  }
-
-  free(buf->base);
 }
 
 void
@@ -159,17 +136,11 @@ main () {
   e = udx_init(&loop, &udx, NULL);
   assert(e == 0);
 
+  udx.debug_flags |= UDX_DEBUG_FORCE_DROP_DATA;
+
   bind_addr(&recv_addr, 9101);
   bind_addr(&send_addr, 9102);
-  bind_addr(&proxy_to_recv_addr, 9103);
   bind_addr(&proxy_to_send_addr, 9104);
-
-  e = uv_udp_init(&loop, &proxy_to_recv);
-  assert(e == 0);
-  e = uv_udp_bind(&proxy_to_recv, (const struct sockaddr *) &proxy_to_recv_addr, 0);
-  assert(e == 0);
-  e = uv_udp_recv_start(&proxy_to_recv, on_proxy_alloc, on_proxy_to_recv);
-  assert(e == 0);
 
   e = uv_udp_init(&loop, &proxy_to_send);
   assert(e == 0);
@@ -198,7 +169,7 @@ main () {
 
   e = udx_stream_connect(&recv_stream, &recv_sock, 2, (struct sockaddr *) &proxy_to_send_addr);
   assert(e == 0);
-  e = udx_stream_connect(&send_stream, &send_sock, 1, (struct sockaddr *) &proxy_to_recv_addr);
+  e = udx_stream_connect(&send_stream, &send_sock, 1, (struct sockaddr *) &recv_addr);
   assert(e == 0);
 
   e = udx_stream_read_start(&recv_stream, on_read);
@@ -211,6 +182,12 @@ main () {
   e = udx_stream_write(req, &send_stream, &buf, 1, on_ack);
   assert(e && "drained");
 
+  // A small write must be packetized immediately as a ZWP, not deferred as a
+  // normal partial packet.
+  assert(send_stream.seq == 1);
+  assert(send_stream.pending_timer == UDX_TIMER_ZWP);
+  assert(send_stream.zwp_count == 0);
+
   e = uv_timer_init(&loop, &timeout);
   assert(e == 0);
   e = uv_timer_start(&timeout, on_timeout, TEST_TIMEOUT_MS, 0);
@@ -218,14 +195,13 @@ main () {
 
   uv_run(&loop, UV_RUN_DEFAULT);
 
-  assert(dropped_data_packets == DROPPED_DATA_PACKETS);
   assert(dropped_zero_window_acks == DROPPED_ZERO_WINDOW_ACKS);
   assert(read_counter == 1);
   // The timeout must retransmit follow-up probes even though
   // send_new_packet(ZWP) cannot queue more data. Dropping the initial data and
   // the first ACK makes this require both retransmission and re-arming ZWP.
-  assert(send_stream.zwp_count >= EXPECTED_ZERO_WINDOW_PROBES);
-  assert(packets_to_recv >= EXPECTED_ZERO_WINDOW_PROBES);
+  assert(send_stream.zwp_count >= 2);
+  assert(send_stream.retransmit_count >= 2);
   assert(ack_called);
   assert(send_stream.writes_queued_bytes == 0);
 

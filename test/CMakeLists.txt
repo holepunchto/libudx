@@ -28,7 +28,6 @@ list(APPEND tests
   stream-write-read-zero-window-rack-loss
   stream-write-read-zero-window-reopen
   stream-write-read-zero-window-small-lost-ack
-  stream-write-read-zero-window-small-probe
   win-filter
   stream-bbr-state
   stream-combined-write

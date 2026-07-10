@@ -27,12 +27,10 @@ udx_stream_t recv_stream;
 udx_socket_t send_sock;
 udx_stream_t send_stream;
 
-uv_udp_t proxy_to_recv;
 uv_udp_t proxy_to_send;
 
 struct sockaddr_in recv_addr;
 struct sockaddr_in send_addr;
-struct sockaddr_in proxy_to_recv_addr;
 struct sockaddr_in proxy_to_send_addr;
 
 uv_timer_t timeout;
@@ -85,15 +83,6 @@ proxy_forward (uv_udp_t *proxy, const char *data, ssize_t len, const struct sock
   uv_buf_t buf = uv_buf_init(send->data, len);
   int e = uv_udp_send(&send->req, proxy, &buf, 1, to, on_proxy_send);
   assert(e == 0);
-}
-
-void
-on_proxy_to_recv (uv_udp_t *proxy, ssize_t nread, const uv_buf_t *buf, const struct sockaddr *from, unsigned flags) {
-  if (nread > 0) {
-    proxy_forward(proxy, buf->base, nread, (const struct sockaddr *) &recv_addr);
-  }
-
-  free(buf->base);
 }
 
 void
@@ -150,15 +139,7 @@ main () {
 
   bind_addr(&recv_addr, 9081);
   bind_addr(&send_addr, 9082);
-  bind_addr(&proxy_to_recv_addr, 9083);
   bind_addr(&proxy_to_send_addr, 9084);
-
-  e = uv_udp_init(&loop, &proxy_to_recv);
-  assert(e == 0);
-  e = uv_udp_bind(&proxy_to_recv, (const struct sockaddr *) &proxy_to_recv_addr, 0);
-  assert(e == 0);
-  e = uv_udp_recv_start(&proxy_to_recv, on_proxy_alloc, on_proxy_to_recv);
-  assert(e == 0);
 
   e = uv_udp_init(&loop, &proxy_to_send);
   assert(e == 0);
@@ -187,7 +168,7 @@ main () {
 
   e = udx_stream_connect(&recv_stream, &recv_sock, 2, (struct sockaddr *) &proxy_to_send_addr);
   assert(e == 0);
-  e = udx_stream_connect(&send_stream, &send_sock, 1, (struct sockaddr *) &proxy_to_recv_addr);
+  e = udx_stream_connect(&send_stream, &send_sock, 1, (struct sockaddr *) &recv_addr);
   assert(e == 0);
 
   e = udx_stream_read_start(&recv_stream, on_read);
