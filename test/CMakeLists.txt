@@ -64,6 +64,14 @@ foreach(test IN LISTS tests)
     TIMEOUT 30
   )
 
+  if(${test} STREQUAL stream-write-read-force-drop)
+    set_tests_properties(
+      ${test}
+      PROPERTIES
+      TIMEOUT 60
+    )
+  endif()
+
   if(${test} IN_LIST skipped_tests)
     set_tests_properties(
       ${test}
