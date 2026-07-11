@@ -830,6 +830,7 @@ _send_new_packet (udx_stream_t *stream, int probe_type) {
 
   bool inflight_queue_was_empty = stream->inflight_queue.len == 0;
   bool tlp = probe_type == UDX_PROBE_TYPE_TLP;
+  bool zwp = probe_type == UDX_PROBE_TYPE_ZWP;
 
   udx_packet_t *pkt = stream->pkt;
 
@@ -865,7 +866,9 @@ _send_new_packet (udx_stream_t *stream, int probe_type) {
     stream->tlp_permitted = false;
   }
 
-  arm_stream_timers(stream, !tlp); // arm TLP timer unless this packet itself was a TLP
+  if (!zwp) {
+    arm_stream_timers(stream, !tlp); // arm TLP timer unless this packet itself was a TLP
+  }
 
   assert(pkt->size > 0 && pkt->size < 1500);
 
@@ -887,7 +890,7 @@ send_new_packet (udx_stream_t *stream, int probe_type) {
   if (stream->write_queue.len == 0) return false;
   if (!stream_may_send(stream) && probe_type == UDX_PROBE_TYPE_NONE) return false;
 
-  bool tlp = probe_type == UDX_PROBE_TYPE_TLP;
+  bool probe = probe_type != UDX_PROBE_TYPE_NONE;
   udx_packet_t *pkt = stream->pkt;
 
   while (stream->pkt_capacity > 0 && stream->write_queue.len > 0) {
@@ -935,7 +938,7 @@ send_new_packet (udx_stream_t *stream, int probe_type) {
     }
   }
 
-  if (stream->pkt_capacity == 0 || tlp || (stream->pkt_header_flag & UDX_HEADER_END)) {
+  if (stream->pkt_capacity == 0 || probe || (stream->pkt_header_flag & UDX_HEADER_END)) {
     _send_new_packet(stream, probe_type);
     return true;
   }
@@ -1169,6 +1172,38 @@ rack_detect_loss_and_arm_timer (udx_stream_t *stream) {
   return false;
 }
 
+static bool
+retransmit_zwp_probe (udx_stream_t *stream) {
+  udx_packet_t *pkt = NULL;
+
+  if (stream->retransmit_queue.len > 0) {
+    pkt = udx__queue_data(udx__queue_peek(&stream->retransmit_queue), udx_packet_t, queue);
+  } else {
+    pkt = (udx_packet_t *) udx__cirbuf_get(&stream->outgoing, stream->remote_acked);
+  }
+
+  if (!pkt || pkt->ref_count == 2) {
+    return false;
+  }
+
+  // Lost packets already live in retransmit_queue.
+  if (!pkt->lost) {
+    udx__queue_unlink(&stream->inflight_queue, &pkt->queue);
+  }
+  retransmit_packet(stream, pkt);
+
+  return true;
+}
+
+static bool
+send_zwp_probe (udx_stream_t *stream) {
+  if (stream->retransmit_queue.len == 0 && send_new_packet(stream, UDX_PROBE_TYPE_ZWP)) {
+    return true;
+  }
+
+  return retransmit_zwp_probe(stream);
+}
+
 static void
 udx_rack_reo_timeout (uv_timer_t *timer) {
   udx_stream_t *stream = timer->data;
@@ -1191,7 +1226,13 @@ udx_zwp_timeout (uv_timer_t *timer) {
 
   stream->zwp_count++;
   debug_printf("zwp: stream=%u\n", stream->remote_id);
-  send_new_packet(stream, UDX_PROBE_TYPE_ZWP);
+  if (!send_zwp_probe(stream) && stream->writes_queued_bytes > 0) {
+    send_probe(stream);
+  }
+
+  if (stream->writes_queued_bytes > 0 && stream->send_rwnd == 0) {
+    stream_timer_start(stream, UDX_TIMER_ZWP, stream->rto * 2);
+  }
 }
 
 static void
@@ -1575,6 +1616,7 @@ process_packet (udx_socket_t *socket, char *buf, ssize_t buf_len, struct sockadd
   uint32_t prior_remote_acked = stream->remote_acked;
   bool ack_advanced = seq_diff(ack, prior_remote_acked) > 0;
   bool data_inflight = stream->remote_acked != stream->seq;
+  bool leaving_zwp = false;
   // todo: send data packet with seq=remote_acked-1
   bool is_probe = type & UDX_HEADER_HEARTBEAT;
 
@@ -1656,7 +1698,7 @@ process_packet (udx_socket_t *socket, char *buf, ssize_t buf_len, struct sockadd
     if (seq_compare(stream->send_wl1, seq) < 0 || (stream->send_wl1 == seq && seq_compare(stream->send_wl2, ack) <= 0)) {
       // update send window
       if (rwnd > 0 && stream->pending_timer == UDX_TIMER_ZWP) {
-        stream_timer_stop(stream);
+        leaving_zwp = true;
       }
       stream->send_rwnd = rwnd;
       stream->send_wl1 = seq;
@@ -1782,6 +1824,11 @@ process_packet (udx_socket_t *socket, char *buf, ssize_t buf_len, struct sockadd
     if (!schedule_loss_probe(stream, true)) {
       rearm_rto(stream, true);
     }
+  }
+
+  // A window update without ACK progress must hand recovery back to RTO.
+  if (leaving_zwp && stream->pending_timer == UDX_TIMER_ZWP) {
+    rearm_rto(stream, true);
   }
 
   if (type & UDX_HEADER_DATA_OR_END) {
@@ -2676,7 +2723,9 @@ _udx_stream_write (udx_stream_write_t *write, udx_stream_t *stream, const uv_buf
 
   // if an idle, zero window stream has data queued, send a zero-window probe immediately
   if (stream->writes_queued_bytes > 0 && stream->send_rwnd == 0) {
-    send_new_packet(stream, UDX_PROBE_TYPE_ZWP);
+    if (send_zwp_probe(stream)) {
+      stream_timer_start(stream, UDX_TIMER_ZWP, stream->rto);
+    }
   }
   send_packets(stream);
 }
