@@ -24,6 +24,7 @@ list(APPEND tests
   stream-change-remote
   stream-multiple
   stream-write-read-receive-window
+  stream-write-read-receive-window-2
   win-filter
   stream-bbr-state
   stream-combined-write
