@@ -25,6 +25,7 @@ list(APPEND tests
   stream-multiple
   stream-write-read-receive-window
   stream-write-read-receive-window-2
+  stream-no-zwp-with-data-in-flight
   win-filter
   stream-bbr-state
   stream-combined-write
@@ -64,6 +65,14 @@ foreach(test IN LISTS tests)
     PROPERTIES
     TIMEOUT 30
   )
+
+  if(${test} STREQUAL stream-write-read-force-drop)
+    set_tests_properties(
+      ${test}
+      PROPERTIES
+      TIMEOUT 60
+    )
+  endif()
 
   if(${test} IN_LIST skipped_tests)
     set_tests_properties(

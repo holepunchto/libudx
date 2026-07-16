@@ -684,12 +684,18 @@ send_ack (udx_stream_t *stream) {
 }
 
 static bool
-stream_may_send (udx_stream_t *stream) {
+stream_may_send (udx_stream_t *stream, bool retransmit) {
   update_pacing_time(stream);
   if (stream->tb_available == 0) {
     return false;
   }
-  return stream->inflight_queue.len < send_window_in_packets(stream);
+  if (retransmit) {
+    // ignore rwnd for retransmits to cope with receiver shrinking the window
+    // while data is in flight.
+    return stream->inflight_queue.len < stream->cwnd;
+  } else {
+    return stream->inflight_queue.len < send_window_in_packets(stream);
+  }
 }
 
 void
@@ -881,7 +887,7 @@ on_pending_packet_prepare (uv_prepare_t *check) {
 static bool
 send_new_packet (udx_stream_t *stream, bool tlp) {
   if (stream->write_queue.len == 0) return false;
-  if (!stream_may_send(stream) && !tlp) return false;
+  if (!stream_may_send(stream, false) && !tlp) return false;
 
   udx_packet_t *pkt = stream->pkt;
 
@@ -964,7 +970,7 @@ static void
 send_packets (udx_stream_t *stream) {
   assert((stream->status & UDX_STREAM_DEAD) == 0);
 
-  while (stream->retransmit_queue.len > 0 && stream_may_send(stream)) {
+  while (stream->retransmit_queue.len > 0 && stream_may_send(stream, true)) {
     udx_packet_t *pkt = udx__queue_data(udx__queue_peek(&stream->retransmit_queue), udx_packet_t, queue);
     assert(pkt != NULL);
 
@@ -2639,6 +2645,8 @@ static void
 _udx_stream_write (udx_stream_write_t *write, udx_stream_t *stream, const uv_buf_t bufs[], unsigned int bufs_len, udx_stream_ack_cb ack_cb, bool is_write_end) {
   assert(bufs_len > 0);
 
+  bool stream_was_idle = stream->writes_queued_bytes == 0;
+
   // initialize write object
 
   write->size = 0;
@@ -2673,7 +2681,7 @@ _udx_stream_write (udx_stream_write_t *write, udx_stream_t *stream, const uv_buf
   }
 
   // if an idle, zero window stream has data queued, send a zero-window probe immediately
-  if (stream->send_rwnd == 0) {
+  if (stream_was_idle && stream->send_rwnd == 0 && stream_was_idle) {
     send_probe(stream);
     stream_timer_start(stream, UDX_TIMER_ZWP, stream->rto);
   }
