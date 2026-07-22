@@ -2681,7 +2681,7 @@ _udx_stream_write (udx_stream_write_t *write, udx_stream_t *stream, const uv_buf
   }
 
   // if an idle, zero window stream has data queued, send a zero-window probe immediately
-  if (stream_was_idle && stream->send_rwnd == 0 && stream_was_idle) {
+  if (stream_was_idle && stream->send_rwnd == 0) {
     send_probe(stream);
     stream_timer_start(stream, UDX_TIMER_ZWP, stream->rto);
   }

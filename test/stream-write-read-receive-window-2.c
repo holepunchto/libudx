@@ -179,7 +179,7 @@ main () {
   assert(send_stream.zwp_count > 10);
   assert(recv_stream.zwp_count == 0);
   assert(ack_called);
-  assert(send_stream.retransmit_count == 0);
+  assert(send_stream.rto_count == 0);
   assert(recv_stream.retransmit_count == 0);
   assert(nend == 2 && nstream_close == 2 && nfinalize == 2 && nsocket_close == 2);
   free(data);
