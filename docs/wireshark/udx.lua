@@ -8,11 +8,12 @@ udx.fields.type_end      = ProtoField.bool("udx.type.end", "End", 8, nil, 0x2)
 udx.fields.type_sack     = ProtoField.bool("udx.type.sack", "SACK", 8, nil, 0x4)
 udx.fields.type_message  = ProtoField.bool("udx.type.message", "Message", 8, nil, 0x8)
 udx.fields.type_destroy  = ProtoField.bool("udx.type.destroy", "Destroy", 8, nil, 0x10)
+udx.fields.type_ping     = ProtoField.bool("udx.type.ping", "Ping", 8, nil, 0x20)
 udx.fields.data_offset   = ProtoField.uint8("udx.data_offset", "Data Offset", base.DEC)
 udx.fields.length        = ProtoField.uint32("udx.length", "Length", base.DEC)
 
 udx.fields.id            = ProtoField.uint32("udx.id", "Id", base.DEC)
-udx.fields.window        = ProtoField.uint32("udx.window", "Window", base.DEC)
+udx.fields.rwnd          = ProtoField.uint32("udx.rwnd", "Window", base.DEC)
 udx.fields.seq           = ProtoField.uint32("udx.seq", "Seq", base.DEC)
 udx.fields.ack           = ProtoField.uint32("udx.ack", "Ack", base.DEC)
 
@@ -24,17 +25,20 @@ local TYPE_END = 2
 local TYPE_SACK = 4
 local TYPE_MSG = 8
 local TYPE_DESTROY = 16
+local TYPE_PING = 32
 
 local function get_type_names(type)
-        local txt = "ACK,"
+    
+    local txt = type > 0 and "" or "ACK,"
 
-        if bit.band(type, TYPE_DATA) > 0 then txt = txt .. "DATA," end
-        if bit.band(type, TYPE_END) > 0 then txt = txt .. "END," end
-        if bit.band(type, TYPE_SACK) > 0 then txt = txt .. "SACK," end
-        if bit.band(type, TYPE_MSG) > 0 then txt = txt .. "MSG," end
-        if bit.band(type, TYPE_DESTROY) > 0 then txt = txt .. "DESTROY," end
+    if bit.band(type, TYPE_DATA) > 0 then txt = txt .. "DATA," end
+    if bit.band(type, TYPE_END) > 0 then txt = txt .. "END," end
+    if bit.band(type, TYPE_SACK) > 0 then txt = txt .. "SACK," end
+    if bit.band(type, TYPE_MSG) > 0 then txt = txt .. "MSG," end
+    if bit.band(type, TYPE_DESTROY) > 0 then txt = txt .. "DESTROY," end
+    if bit.band(type, TYPE_PING) > 0 then txt = txt .. "PING," end
 
-        return txt:sub(1,-2)
+    return txt:sub(1,-2)
 end
 
 function udx.dissector(tvb, pinfo, tree)
@@ -55,15 +59,18 @@ function udx.dissector(tvb, pinfo, tree)
     subtree:add(udx.fields.type_sack, tvb(2,1))
     subtree:add(udx.fields.type_message, tvb(2,1))
     subtree:add(udx.fields.type_destroy, tvb(2,1))
+    subtree:add(udx.fields.type_ping, tvb(2,1))
     subtree:add(udx.fields.data_offset, tvb(3,1))
 
     subtree:add_le(udx.fields.id, tvb(4,4))
+    subtree:add_le(udx.fields.rwnd, tvb(8,4))
     subtree:add_le(udx.fields.seq, tvb(12,4))
     subtree:add_le(udx.fields.ack, tvb(16,4))
 
     local data_offset = tvb(3,1):uint()
     local pos = 20
     local sacks = ""
+    local len_str = ""
 
     if bit.band(type, TYPE_SACK) > 0 then
         sacks = " "
@@ -81,17 +88,21 @@ function udx.dissector(tvb, pinfo, tree)
     if pos < len then
         subtree:add(udx.fields.length, len - pos):set_generated(true)
         subtree:add(udx.fields.payload, tvb(pos, len-pos))
+        len_str = " Len=" .. (len-pos)
     end
 
     local id = tvb(4,4):le_uint()
+    local wnd = tvb(8,4):le_uint()
     local seq = tvb(12,4):le_uint()
     local ack = tvb(16,4):le_uint()
-    local info = pinfo.src_port .. " → " .. pinfo.dst_port ..
-        " Id=" .. id ..
+    local info = " Id=" .. id ..
+        " Rwnd=" .. wnd ..
         " Seq=" .. seq ..
         " Ack=" .. ack ..
         sacks .. 
-        " " .. type_names
+        " " .. type_names ..
+        len_str
+        
     pinfo.cols.info:set(info)
 end
 
@@ -115,7 +126,7 @@ local function heuristic_checker(tvb, pinfo, tree)
 
     local flags = tvb(2,1):uint()
 
-    if flags >= 32 then
+    if flags >= 64 then
         return false
     end
 
