@@ -30,6 +30,7 @@ list(APPEND tests
   stream-keepalive
   stream-rto
   stream-strict-sack
+  stream-rack-tlp-example
 )
 
 list(APPEND skipped_tests
