@@ -1914,11 +1914,6 @@ udx_init (uv_loop_t *loop, udx_t *udx, udx_idle_cb on_idle) {
   return 0;
 }
 
-void
-udx_idle (udx_t *udx, udx_idle_cb cb) {
-  udx->on_idle = cb;
-}
-
 int
 udx_is_idle (udx_t *udx) {
   return udx->refs == 0;
