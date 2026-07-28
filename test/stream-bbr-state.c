@@ -252,4 +252,5 @@ main () {
   assert(rc == 0);
 
   uv_loop_close(&loop);
+  free(req);
 }

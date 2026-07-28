@@ -600,10 +600,6 @@ udx_socket_recv_stop (udx_socket_t *socket);
 int
 udx_socket_close (udx_socket_t *socket);
 
-// only exposed here as a convenience / debug tool - the udx instance uses this automatically
-int
-udx_check_timeouts (udx_t *udx);
-
 int
 udx_stream_init (udx_t *udx, udx_stream_t *stream, uint32_t local_id, udx_stream_close_cb close_cb, udx_stream_finalize_cb finalize_cb);
 
@@ -618,9 +614,6 @@ udx_stream_set_seq (udx_stream_t *stream, uint32_t seq);
 
 int
 udx_stream_set_keepalive (udx_stream_t *stream, uint32_t keepalive_timeout_ms);
-
-int
-udx_stream_clear_keepalive (udx_stream_t *stream);
 
 int
 udx_stream_get_ack (udx_stream_t *stream, uint32_t *ack);
