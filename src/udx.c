@@ -1967,9 +1967,9 @@ udx_socket_init (udx_t *udx, udx_socket_t *socket, udx_socket_close_cb cb) {
   assert(err == 0);
   socket->uv_udp.data = socket;
 
-  err = uv_timer_init(udx->loop, &socket->timer);
+  err = uv_check_init(udx->loop, &socket->ttl_check);
   assert(err == 0);
-  socket->timer.data = socket;
+  socket->ttl_check.data = socket;
 
   socket->nrefs = 2;
 
@@ -2133,8 +2133,8 @@ on_socket_send_slow (uv_udp_send_t *_req, int status) {
 }
 
 static void
-retry_send_specific_ttl (uv_timer_t *timer) {
-  udx_socket_t *socket = timer->data;
+retry_send_specific_ttl (uv_check_t *check) {
+  udx_socket_t *socket = check->data;
   debug_printf("retry sending specific ttl, qlen=%u\n", socket->specific_ttl_send_queue.len);
 
   while (socket->specific_ttl_send_queue.len) {
@@ -2146,19 +2146,16 @@ retry_send_specific_ttl (uv_timer_t *timer) {
 
     if (err == UV_EAGAIN) {
       break;
-    } else {
-      req->on_send(req, err >= 0 ? 0 : err);
     }
 
+    req->on_send(req, err < 0 ? err : 0);
     udx__queue_shift(&socket->specific_ttl_send_queue);
   }
 
   uv_udp_set_ttl(&socket->uv_udp, socket->ttl);
 
-  if (socket->specific_ttl_send_queue.len > 0) {
-    uv_timer_start(&socket->timer, retry_send_specific_ttl, 1, 0);
-  } else {
-    uv_timer_stop(&socket->timer);
+  if (socket->specific_ttl_send_queue.len == 0) {
+    uv_check_stop(&socket->ttl_check);
   }
 }
 
@@ -2206,9 +2203,7 @@ udx_socket_send_ttl (udx_socket_send_t *req, udx_socket_t *socket, const uv_buf_
     // slow path (1) with specific TTL
     if (ttl) {
       udx__queue_tail(&socket->specific_ttl_send_queue, &req->queue);
-      if (!uv_is_active((uv_handle_t *) &socket->timer)) {
-        uv_timer_start(&socket->timer, retry_send_specific_ttl, 1, 0);
-      }
+      uv_check_start(&socket->ttl_check, retry_send_specific_ttl);
       err = 0;
     } else {
       // slow path (2) - non-specific TTL
@@ -2252,8 +2247,8 @@ udx_socket_close (udx_socket_t *socket) {
   socket->status |= UDX_SOCKET_CLOSED;
 
   uv_close((uv_handle_t *) &socket->uv_udp, on_udx_socket_handle_close);
-  uv_timer_stop(&socket->timer);
-  uv_close((uv_handle_t *) &socket->timer, on_udx_socket_handle_close);
+  uv_check_stop(&socket->ttl_check);
+  uv_close((uv_handle_t *) &socket->ttl_check, on_udx_socket_handle_close);
 
   udx_t *udx = socket->udx;
   udx__link_remove(udx->sockets, socket);
