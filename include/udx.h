@@ -215,6 +215,15 @@ struct udx_socket_s {
 #define UDX_CA_RECOVERY 2
 #define UDX_CA_LOSS     3
 
+typedef enum {
+  UDX_TIMER_NONE,
+  UDX_TIMER_RTO,
+  UDX_TIMER_RACK_REO,
+  UDX_TIMER_TLP,
+  UDX_TIMER_ZWP,
+  UDX_TIMER_KEEPALIVE
+} udx_stream_timer_type_t;
+
 struct udx_stream_s {
   uint32_t local_id; // must be first entry, so its compat with the cirbuf
   uint32_t remote_id;
@@ -292,6 +301,8 @@ struct udx_stream_s {
   uint32_t rate_interval_ms;       // saved rate sample: time elapsed
   bool rate_sample_is_app_limited; // saved rate sample: app limited?
 
+  udx_stream_timer_type_t pending_timer;
+  uint64_t next_rto_ts; // todo: remove this, calculate from oldest packet (head) in rtx queue
   uint32_t srtt;
   uint32_t rttvar;
   uint32_t rto;
@@ -359,12 +370,8 @@ struct udx_stream_s {
   bool tlp_permitted;   // if set, srtt has been updated since the last tlp
   uint32_t tlp_end_seq; // seq at time of tlp sent. invalid if tlp_inflight is not set
 
-  // optimize: use one timer and a action (RTO, RACK_REO, TLP) variable
-  int nrefs;
-  uv_timer_t rto_timer;
-  uv_timer_t rack_reo_timer;
-  uv_timer_t tlp_and_keepalive_timer;
-  uv_timer_t zwp_timer;
+  int nrefs;        // # of libuv handles open (2 timer, 1 prepare)
+  uv_timer_t timer; // RTO, RACK_REO,TLP, ZWP and keepalive timer. stream.pending_timer tells which is currently set (if any)
   uv_timer_t refill_pacing_timer;
 
   size_t inflight;
@@ -391,6 +398,8 @@ struct udx_stream_s {
 
   uint64_t packets_rx;
   uint64_t packets_tx;
+
+  uint32_t dropped_sacks;
 
 #ifdef UDX_DEBUG_THROUGHPUT
   FILE *throughput_fd;
@@ -512,6 +521,8 @@ struct udx_interface_event_s {
   uv_loop_t *loop;
   udx_t *udx;
 
+  bool closing;
+
   udx_interface_event_t *prev;
   udx_interface_event_t *next;
 
@@ -588,10 +599,6 @@ udx_socket_recv_stop (udx_socket_t *socket);
 int
 udx_socket_close (udx_socket_t *socket);
 
-// only exposed here as a convenience / debug tool - the udx instance uses this automatically
-int
-udx_check_timeouts (udx_t *udx);
-
 int
 udx_stream_init (udx_t *udx, udx_stream_t *stream, uint32_t local_id, udx_stream_close_cb close_cb, udx_stream_finalize_cb finalize_cb);
 
@@ -606,9 +613,6 @@ udx_stream_set_seq (udx_stream_t *stream, uint32_t seq);
 
 int
 udx_stream_set_keepalive (udx_stream_t *stream, uint32_t keepalive_timeout_ms);
-
-int
-udx_stream_clear_keepalive (udx_stream_t *stream);
 
 int
 udx_stream_get_ack (udx_stream_t *stream, uint32_t *ack);
