@@ -2148,7 +2148,7 @@ retry_send_specific_ttl (uv_check_t *check) {
       break;
     }
 
-    req->on_send(req, err < 0 ? err : 0);
+    req->on_send(req, 0);
     udx__queue_shift(&socket->specific_ttl_send_queue);
   }
 
