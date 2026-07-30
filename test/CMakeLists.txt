@@ -7,10 +7,12 @@ list(APPEND tests
   socket-send-recv-dualstack
   socket-send-recv-ipv6
   stream-destroy
+  stream-destroy-slowpath
   stream-destroy-before-connect
   stream-preconnect
   stream-preconnect-same-socket
   stream-relay
+  stream-relay-firewall-source
   stream-relay-force-slow-path
   stream-send-recv
   stream-send-recv-ipv6
@@ -23,10 +25,15 @@ list(APPEND tests
   stream-change-remote
   stream-multiple
   stream-write-read-receive-window
+  stream-write-read-receive-window-2
+  stream-no-zwp-with-data-in-flight
   win-filter
   stream-bbr-state
   stream-combined-write
   stream-keepalive
+  stream-rto
+  stream-strict-sack
+  stream-rack-tlp-example
 )
 
 list(APPEND skipped_tests
@@ -60,6 +67,14 @@ foreach(test IN LISTS tests)
     PROPERTIES
     TIMEOUT 30
   )
+
+  if(${test} STREQUAL stream-write-read-force-drop)
+    set_tests_properties(
+      ${test}
+      PROPERTIES
+      TIMEOUT 60
+    )
+  endif()
 
   if(${test} IN_LIST skipped_tests)
     set_tests_properties(

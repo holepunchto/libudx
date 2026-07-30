@@ -106,6 +106,9 @@ main () {
     e = udx_stream_connect(&receiver[i].stream, &receiver[i].usock, sender_id, (struct sockaddr *) &sender[i].addr);
     assert(e == 0);
 
+    assert(sender[i].stream.dropped_sacks == 0);
+    assert(receiver[i].stream.dropped_sacks == 0);
+
     udx_stream_write(sender[i].write, &sender[i].stream, &buf, 1, on_ack);
   }
 

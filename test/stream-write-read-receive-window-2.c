@@ -5,12 +5,8 @@
 
 #include "../include/udx.h"
 
-/*
- * this test is contrived to start with a receiver advertizing zero receive
- * window to cause the sender to send zero window probes. after two zero-window
- * probes are received we switch to advertizing an empty receive window (see `on_read`
- * below) to allow the data to flow at max speed.
- */
+// sends a UDX_MTU_MAX * 6 (8000?) byte write to an application with a 2000 byte buffer.
+// the application consumes 1000 bytes / second (5 bytes per 5 ms)
 
 uv_loop_t loop;
 udx_t udx;
@@ -23,10 +19,59 @@ udx_stream_t send_stream;
 
 udx_stream_write_t *req;
 
-int nprobe_timeouts;
-uint64_t start_time_ms;
+uv_timer_t application_timer;
+
+#define APPLICATION_BUFFER_SIZE 2000
+
+struct {
+  size_t nbytes_in_buffer;
+} application;
 
 bool ack_called;
+
+void
+app_tick (uv_timer_t *timer) {
+  printf("app_tick: nbytes_in_buffer=%zu->", application.nbytes_in_buffer);
+
+  if (application.nbytes_in_buffer < 500) {
+    application.nbytes_in_buffer = 0;
+  } else {
+    application.nbytes_in_buffer -= 500;
+  }
+  printf("%zu\n", application.nbytes_in_buffer);
+
+  if (application.nbytes_in_buffer == 0 && ack_called) {
+    uv_timer_stop(timer);
+    uv_close((uv_handle_t *) timer, NULL);
+  }
+}
+
+uint32_t
+application_get_buffer (udx_stream_t *stream) {
+  return application.nbytes_in_buffer;
+}
+
+void
+init_application () {
+  uv_timer_init(&loop, &application_timer);
+  uv_timer_start(&application_timer, app_tick, 0, 1000);
+  application.nbytes_in_buffer = 0;
+  udx_stream_set_rwnd_max(&recv_stream, APPLICATION_BUFFER_SIZE);
+  recv_stream.get_read_buffer_size = application_get_buffer;
+}
+
+void
+application_on_read (udx_stream_t *stream, ssize_t read_len, const uv_buf_t *buf) {
+
+  printf("read=%zd", read_len);
+  if (read_len > 0) {
+    application.nbytes_in_buffer += read_len;
+  }
+  printf(" nbytes_in_buffer=%zu\n", application.nbytes_in_buffer);
+}
+
+int nprobe_timeouts;
+uint64_t start_time_ms;
 
 udx_stream_write_t *send_end_req;
 udx_stream_write_t *recv_end_req;
@@ -73,22 +118,6 @@ on_ack (udx_stream_write_t *req, int status, int unordered) {
   udx_stream_write_end(recv_end_req, &recv_stream, NULL, 0, on_end);
 }
 
-uint32_t
-pretend_buffer_is_full (udx_stream_t *stream) {
-  return stream->recv_rwnd_max;
-}
-
-uint32_t
-pretend_buffer_is_empty (udx_stream_t *stream) {
-  return 0;
-}
-
-uv_timer_t after_two_seconds_timer;
-static void
-after_two_seconds_open_rwnd (uv_timer_t *timer) {
-  recv_stream.get_read_buffer_size = &pretend_buffer_is_empty;
-}
-
 int
 main () {
   int e;
@@ -122,15 +151,9 @@ main () {
   e = udx_stream_init(&udx, &send_stream, 2, on_close, on_finalize);
   assert(e == 0);
 
-  // start of with a zero window
-
-  recv_stream.get_read_buffer_size = &pretend_buffer_is_full;
-  send_stream.send_rwnd = 0;
+  init_application();
+  send_stream.send_rwnd = APPLICATION_BUFFER_SIZE;
   assert(recv_stream.rto == 1000);
-
-  // after two seconds, open the window
-  uv_timer_init(&loop, &after_two_seconds_timer);
-  uv_timer_start(&after_two_seconds_timer, after_two_seconds_open_rwnd, 2100, 0);
 
   e = udx_stream_connect(&recv_stream, &recv_sock, 2, (struct sockaddr *) &send_addr);
   assert(e == 0);
@@ -138,7 +161,7 @@ main () {
   e = udx_stream_connect(&send_stream, &send_sock, 1, (struct sockaddr *) &recv_addr);
   assert(e == 0);
 
-  e = udx_stream_read_start(&recv_stream, NULL);
+  e = udx_stream_read_start(&recv_stream, application_on_read);
   assert(e == 0);
 
   int data_sz = UDX_MTU_MAX * 6;
@@ -153,9 +176,10 @@ main () {
   // zwp_count only counts the number of zwp timeouts, since we start with a zero window
   // we automatically probe (without waiting for a timeout) when data is queued.
 
-  assert(send_stream.zwp_count == 2);
+  assert(send_stream.zwp_count > 10);
   assert(recv_stream.zwp_count == 0);
   assert(ack_called);
+  assert(send_stream.rto_count == 0);
   assert(recv_stream.retransmit_count == 0);
   assert(nend == 2 && nstream_close == 2 && nfinalize == 2 && nsocket_close == 2);
   free(data);
