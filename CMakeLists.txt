@@ -16,7 +16,7 @@ set_target_properties(
 )
 
 if(UNIX)
-  target_compile_options(udx PRIVATE -Wall -Werror -Wextra)
+  target_compile_options(udx PRIVATE -Wall -Wextra)
 endif()
 
 if(WIN32)

@@ -597,13 +597,19 @@ send_ack (udx_stream_t *stream) {
   while (p != NULL && nsacks < UDX_MAX_SACKS) {
     if (nsacks > 0 && pkt.sacks[nsacks - 1].end == p->start) {
       // merge adjacent ooo blocks
-      pkt.sacks[nsacks - 1].end = udx__swap_uint32_if_be(p->end);
+      pkt.sacks[nsacks - 1].end = p->end;
     } else {
-      pkt.sacks[nsacks].start = udx__swap_uint32_if_be(p->start);
-      pkt.sacks[nsacks].end = udx__swap_uint32_if_be(p->end);
+      pkt.sacks[nsacks].start = p->start;
+      pkt.sacks[nsacks].end = p->end;
       nsacks++;
     }
     p = udx_sack_tree_next(&stream->sack_tree, p);
+  }
+
+  // re-write to little endian before sending
+  for (int i = 0; i < nsacks; i++) {
+    pkt.sacks[i].start = udx__swap_uint32_if_be(pkt.sacks[i].start);
+    pkt.sacks[i].end = udx__swap_uint32_if_be(pkt.sacks[i].end);
   }
 
   // debug_printf("sending ack ack=%u nsasks=%d\n", stream->ack, nsacks);
@@ -1423,10 +1429,15 @@ process_data_packet (udx_stream_t *stream, int type, uint32_t seq, char *data, s
 
   udx_sack_block_t *block = udx_sack_tree_find(&stream->sack_tree, seq);
 
+  // if we've already sacked the packet there is nothing to do
+  if (block && block->end != seq) {
+    return;
+  }
+
   if (block == NULL) {
     block = calloc(1, sizeof(udx_sack_block_t)); // todo: allocate data with the sack block itself
-    block->nalloc = data_len;
     assert(block != NULL);
+    block->nalloc = data_len;
     block->start = seq;
     block->end = seq;
     block->len = 0;
@@ -1434,12 +1445,12 @@ process_data_packet (udx_stream_t *stream, int type, uint32_t seq, char *data, s
     udx_sack_tree_insert(&stream->sack_tree, block);
   }
 
-  if (block->end == seq) {
-    block->end++;
-    if (block->len + data_len > block->nalloc) {
-      block->nalloc = next_power_of_two(block->len + data_len);
-      block->data = realloc(block->data, block->nalloc);
-    }
+  assert(block->end == seq);
+
+  block->end++;
+  if (block->len + data_len > block->nalloc) {
+    block->nalloc = next_power_of_two(block->len + data_len);
+    block->data = realloc(block->data, block->nalloc);
   }
 
   memcpy(block->data + block->len, data, data_len);
@@ -1592,9 +1603,7 @@ process_packet (udx_socket_t *socket, char *buf, ssize_t buf_len, struct sockadd
 
   // For all stream packets, ensure that they are causally newer (or same)
   if (seq_compare(stream->ack, seq) <= 0) {
-    udx_sack_block_t *sack = udx_sack_tree_find(&stream->sack_tree, seq);
-    bool sacked = sack && sack->end != seq;
-    if (type & UDX_HEADER_DATA_OR_END && !sacked && (stream->status & UDX_STREAM_SHOULD_READ) == UDX_STREAM_READ) {
+    if (type & UDX_HEADER_DATA_OR_END && (stream->status & UDX_STREAM_SHOULD_READ) == UDX_STREAM_READ) {
       process_data_packet(stream, type, seq, buf, buf_len);
       if (stream->status & UDX_STREAM_DEAD) {
         return 1; // re-entry on read callback

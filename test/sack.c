@@ -8,7 +8,6 @@ udx_sack_block_t block[10];
 int
 main () {
   udx_sack_tree_t tree;
-  udx_sack_block_t sentinel;
 
   udx_sack_tree_init(&tree);
 
@@ -72,7 +71,7 @@ main () {
   // [4294967285:4294967286] [4294967290:4294967292] [4294967292:4294967293] [4294967295:0]
   // [1:3] [3:4] [5:7] [10:11] [13:14] [15:38]
 
-  int offset = UINT32_MAX - middle_sack_block_start;
+  uint32_t offset = UINT32_MAX - middle_sack_block_start;
   for (i = 0; i < 10; i++) {
     block[i].start += offset;
     block[i].end += offset;
