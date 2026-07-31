@@ -81,9 +81,6 @@ uint32_t
 udx__max_payload (udx_stream_t *stream);
 
 void
-udx__close_handles (udx_socket_t *socket);
-
-void
 udx__rate_pkt_sent (udx_stream_t *stream, udx_packet_t *pkt);
 
 void

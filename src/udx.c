@@ -1681,8 +1681,6 @@ process_packet (udx_socket_t *socket, char *buf, ssize_t buf_len, struct sockadd
     detect_loss_repaired_by_loss_probe(stream, ack);
   }
 
-  bool is_limited = stream->ca_state == UDX_CA_RECOVERY || stream->ca_state == UDX_CA_LOSS;
-
   if (seq_compare(ack, stream->high_seq) > 0 && (stream->ca_state == UDX_CA_RECOVERY || stream->ca_state == UDX_CA_LOSS)) {
     if (stream->ca_state == UDX_CA_RECOVERY) {
       stream->cwnd = stream->ssthresh;
@@ -1749,10 +1747,6 @@ process_packet (udx_socket_t *socket, char *buf, ssize_t buf_len, struct sockadd
   if (stream->status & UDX_STREAM_DEAD) {
     return 1; /* re-entry check */
   }
-
-  // we are user limited if queued bytes (that includes current inflight + a max packet) is less than the window
-  // we are rwnd limited if rwnd < cwnd
-  if (!is_limited) is_limited = stream->writes_queued_bytes + udx__max_payload(stream) < cwnd_in_bytes(stream) || send_rwnd_in_packets(stream) < stream->cwnd;
 
   delivered = stream->delivered - delivered;
   lost = stream->lost - lost;
@@ -1922,11 +1916,6 @@ udx_init (uv_loop_t *loop, udx_t *udx, udx_idle_cb on_idle) {
   udx->debug_flags = 0;
 
   return 0;
-}
-
-void
-udx_idle (udx_t *udx, udx_idle_cb cb) {
-  udx->on_idle = cb;
 }
 
 int
