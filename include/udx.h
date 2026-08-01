@@ -171,10 +171,11 @@ typedef struct udx_queue_s {
 } udx_queue_t;
 
 struct udx_socket_s {
-  uv_udp_t uv_udp;      // must be first
-  uv_check_t ttl_check; // used for draining the specific-ttl-send-queue
+  uv_udp_t uv_udp;            // must be first
+  uv_check_t ttl_check;       // used for draining the specific-ttl-send-queue
+  uv_timer_t ttl_check_timer; // used for draining the specific-ttl-send-queue
 
-  int nrefs; // 2 - uv_udp and uv_check
+  int nrefs; // 3 - uv_udp, ttl_check and ttl_check_timer
 
   // packets queued with udx_socket_send_ttl that both
   // 1. override the socket's TTL value and

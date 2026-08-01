@@ -1970,8 +1970,11 @@ udx_socket_init (udx_t *udx, udx_socket_t *socket, udx_socket_close_cb cb) {
   err = uv_check_init(udx->loop, &socket->ttl_check);
   assert(err == 0);
   socket->ttl_check.data = socket;
+  err = uv_timer_init(udx->loop, &socket->ttl_check_timer);
+  assert(err == 0);
+  socket->ttl_check_timer.data = socket;
 
-  socket->nrefs = 2;
+  socket->nrefs = 3;
 
   return err;
 }
@@ -2133,6 +2136,13 @@ on_socket_send_slow (uv_udp_send_t *_req, int status) {
 }
 
 static void
+retry_send_specific_ttl_timer_cb (uv_timer_t *timer) {
+  UDX_UNUSED(timer);
+  ; // do nothing - this timer is only to limit the time spent polling for
+    // io to allow our check to fire and prevent deadlock
+}
+
+static void
 retry_send_specific_ttl (uv_check_t *check) {
   udx_socket_t *socket = check->data;
   debug_printf("retry sending specific ttl, qlen=%u\n", socket->specific_ttl_send_queue.len);
@@ -2158,6 +2168,7 @@ retry_send_specific_ttl (uv_check_t *check) {
 
   if (socket->specific_ttl_send_queue.len == 0) {
     uv_check_stop(&socket->ttl_check);
+    uv_timer_stop(&socket->ttl_check_timer);
   }
 }
 
@@ -2206,6 +2217,7 @@ udx_socket_send_ttl (udx_socket_send_t *req, udx_socket_t *socket, const uv_buf_
     if (ttl) {
       udx__queue_tail(&socket->specific_ttl_send_queue, &req->queue);
       uv_check_start(&socket->ttl_check, retry_send_specific_ttl);
+      uv_timer_start(&socket->ttl_check_timer, retry_send_specific_ttl_timer_cb, 1, 1);
       err = 0;
     } else {
       // slow path (2) - non-specific TTL
@@ -2251,6 +2263,8 @@ udx_socket_close (udx_socket_t *socket) {
   uv_close((uv_handle_t *) &socket->uv_udp, on_udx_socket_handle_close);
   uv_check_stop(&socket->ttl_check);
   uv_close((uv_handle_t *) &socket->ttl_check, on_udx_socket_handle_close);
+  uv_timer_stop(&socket->ttl_check_timer);
+  uv_close((uv_handle_t *) &socket->ttl_check_timer, on_udx_socket_handle_close);
 
   udx_t *udx = socket->udx;
   udx__link_remove(udx->sockets, socket);
