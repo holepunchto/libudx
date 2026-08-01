@@ -456,7 +456,7 @@ struct udx_socket_send_s {
   uint32_t ttl;
 
   // these are for saving the buffer + destination when sending with specific TTL on the slow path
-  uv_buf_t buf;                        // only for sending with specific ttl, buf.base = (char *) (req+1)
+  uv_buf_t buf;                        // only for sending with specific ttl
   struct sockaddr_storage remote_addr; // only for sending with specific ttl
   int remote_addr_len;                 // only for sending with specific ttl
 
