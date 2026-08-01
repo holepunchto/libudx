@@ -2217,7 +2217,9 @@ udx_socket_send_ttl (udx_socket_send_t *req, udx_socket_t *socket, const uv_buf_
     if (ttl) {
       udx__queue_tail(&socket->specific_ttl_send_queue, &req->queue);
       uv_check_start(&socket->ttl_check, retry_send_specific_ttl);
-      uv_timer_start(&socket->ttl_check_timer, retry_send_specific_ttl_timer_cb, 1, 1);
+      if (!uv_is_active((uv_handle_t *) &socket->ttl_check_timer)) {
+        uv_timer_start(&socket->ttl_check_timer, retry_send_specific_ttl_timer_cb, 1, 1);
+      }
       err = 0;
     } else {
       // slow path (2) - non-specific TTL
@@ -2265,6 +2267,13 @@ udx_socket_close (udx_socket_t *socket) {
   uv_close((uv_handle_t *) &socket->ttl_check, on_udx_socket_handle_close);
   uv_timer_stop(&socket->ttl_check_timer);
   uv_close((uv_handle_t *) &socket->ttl_check_timer, on_udx_socket_handle_close);
+
+  while (socket->specific_ttl_send_queue.len > 0) {
+    udx_socket_send_t *req = udx__queue_data(udx__queue_shift(&socket->specific_ttl_send_queue), udx_socket_send_t, queue);
+    if (req->on_send) {
+      req->on_send(req, UV_ECANCELED);
+    }
+  }
 
   udx_t *udx = socket->udx;
   udx__link_remove(udx->sockets, socket);
