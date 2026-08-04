@@ -25,12 +25,10 @@ jobs:
     runs-on: ${{ matrix.os }}
     name: ${{ matrix.platform }}-${{ matrix.arch }}
     steps:
-    - uses: actions/checkout@v4
-    - uses: actions/setup-node@v4
+    - uses: holepunchto/actions/bare-base@v1
+    - uses: holepunchto/actions/compile-prebuilds@v1
       with:
-        node-version: lts/*
-    - run: npm install -g bare-make
-    - run: npm install
-    - run: bare-make generate --platform ${{ matrix.platform }} --arch ${{ matrix.arch }} --debug
-    - run: bare-make build
+        platform: ${{ matrix.platform }}
+        arch: ${{ matrix.arch }}
+        flags: --debug ${{ matrix.flags }}
     - run: bare-make test
