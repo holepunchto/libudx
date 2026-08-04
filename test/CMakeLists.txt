@@ -33,6 +33,7 @@ list(APPEND tests
   stream-rto
   stream-strict-sack
   stream-rack-tlp-example
+  stream-fast-recovery-order
 )
 
 list(APPEND skipped_tests
