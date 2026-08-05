@@ -34,6 +34,7 @@ list(APPEND tests
   stream-rto
   stream-strict-sack
   stream-rack-tlp-example
+  stream-ooo-shuffle
 )
 
 list(APPEND skipped_tests

@@ -218,6 +218,12 @@ struct udx_socket_s {
 
 typedef struct udx_sack_block_s udx_sack_block_t;
 
+typedef struct {
+  udx_queue_node_t queue;
+  uint32_t len;
+  uint8_t data[];
+} udx_buf_t;
+
 struct udx_sack_block_s {
   uint32_t start;
   uint32_t end;
@@ -228,9 +234,7 @@ struct udx_sack_block_s {
 
   uint8_t color;
 
-  size_t len;    // nbytes of actual data
-  size_t nalloc; // nbytes we have room for
-  uint8_t *data; // points to just after this struct
+  udx_queue_t packet_queue; // udx_buf_t
 };
 
 typedef struct {

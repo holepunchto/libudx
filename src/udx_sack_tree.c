@@ -24,15 +24,6 @@ udx_sack_tree_find (udx_sack_tree_t *tree, uint32_t seq) {
       continue;
     }
 
-    // if there are two adjacent sack blocks, ie [3:4] and [4:5]
-    // then return [4:5]
-    if (block->end == seq) {
-      udx_sack_block_t *next = udx_sack_tree_next(tree, block);
-      if (next && next->start == seq) {
-        return next;
-      }
-    }
-
     return block;
   }
   return NULL;

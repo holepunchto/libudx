@@ -71,3 +71,14 @@ udx__queue_shift (udx_queue_t *q) { // udx__queue_dequeue
   }
   return ret;
 }
+
+void
+udx__queue_splice_tail (udx_queue_t *q, udx_queue_t *t /* 'tail' */) {
+  q->len += t->len;
+
+  q->node.prev->next = t->node.next;
+  t->node.next->prev = q->node.prev;
+  q->node.prev = t->node.prev;
+  q->node.prev->next = &q->node;
+  udx__queue_init(t); // just in case
+}

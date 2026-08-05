@@ -145,7 +145,10 @@ clear_incoming_packets (udx_stream_t *stream) {
   while (stream->sack_tree.root != stream->sack_tree.sentinel) {
     udx_sack_block_t *root = stream->sack_tree.root;
     udx_sack_tree_remove(&stream->sack_tree, root);
-    free(root->data);
+
+    while (root->packet_queue.len > 0) {
+      free(udx__queue_shift(&root->packet_queue));
+    }
     free(root);
   }
 }
@@ -595,21 +598,10 @@ send_ack (udx_stream_t *stream) {
 
   int nsacks = 0;
   while (p != NULL && nsacks < UDX_MAX_SACKS) {
-    if (nsacks > 0 && pkt.sacks[nsacks - 1].end == p->start) {
-      // merge adjacent ooo blocks
-      pkt.sacks[nsacks - 1].end = p->end;
-    } else {
-      pkt.sacks[nsacks].start = p->start;
-      pkt.sacks[nsacks].end = p->end;
-      nsacks++;
-    }
+    pkt.sacks[nsacks].start = udx__swap_uint32_if_be(p->start);
+    pkt.sacks[nsacks].end = udx__swap_uint32_if_be(p->end);
+    nsacks++;
     p = udx_sack_tree_next(&stream->sack_tree, p);
-  }
-
-  // re-write to little endian before sending
-  for (int i = 0; i < nsacks; i++) {
-    pkt.sacks[i].start = udx__swap_uint32_if_be(pkt.sacks[i].start);
-    pkt.sacks[i].end = udx__swap_uint32_if_be(pkt.sacks[i].end);
   }
 
   // debug_printf("sending ack ack=%u nsasks=%d\n", stream->ack, nsacks);
@@ -1397,19 +1389,6 @@ ack_packet (udx_stream_t *stream, uint32_t seq, int sack, udx_rate_sample_t *rs)
   return 1;
 }
 
-static uint64_t
-next_power_of_two (uint64_t v) {
-  v--;
-  v |= v >> 1;
-  v |= v >> 2;
-  v |= v >> 4;
-  v |= v >> 8;
-  v |= v >> 16;
-  v |= v >> 32;
-  v++;
-  return v;
-}
-
 static void
 process_data_packet (udx_stream_t *stream, int type, uint32_t seq, char *data, ssize_t data_len) {
   if (seq == stream->ack && type & UDX_HEADER_DATA) {
@@ -1435,27 +1414,30 @@ process_data_packet (udx_stream_t *stream, int type, uint32_t seq, char *data, s
   }
 
   if (block == NULL) {
-    block = calloc(1, sizeof(udx_sack_block_t)); // todo: allocate data with the sack block itself
+    block = calloc(1, sizeof(udx_sack_block_t));
     assert(block != NULL);
-    block->nalloc = data_len;
     block->start = seq;
     block->end = seq;
-    block->len = 0;
-    block->data = malloc(data_len);
+    udx__queue_init(&block->packet_queue);
     udx_sack_tree_insert(&stream->sack_tree, block);
   }
 
-  assert(block->end == seq);
-
+  udx_buf_t *pkt = malloc(sizeof(udx_buf_t) + data_len);
+  memset(pkt, 0, sizeof(*pkt));
+  udx__queue_tail(&block->packet_queue, &pkt->queue);
   block->end++;
-  if (block->len + data_len > block->nalloc) {
-    block->nalloc = next_power_of_two(block->len + data_len);
-    block->data = realloc(block->data, block->nalloc);
-  }
+  memcpy(&pkt->data, data, data_len);
+  pkt->len = data_len;
 
-  memcpy(block->data + block->len, data, data_len);
-  block->len += data_len;
-  assert(block->len <= block->nalloc);
+  // if this block is now adjacent to a next block, merge them:
+  udx_sack_block_t *next = udx_sack_tree_next(&stream->sack_tree, block);
+
+  if (next && next->start == block->end) {
+    udx_sack_tree_remove(&stream->sack_tree, next);
+    block->end = next->end;
+    udx__queue_splice_tail(&block->packet_queue, &next->packet_queue);
+    free(next);
+  }
 }
 
 static int
@@ -1631,29 +1613,26 @@ process_packet (udx_socket_t *socket, char *buf, ssize_t buf_len, struct sockadd
     }
   }
 
-  udx_sack_block_t *p = udx_sack_tree_min(&stream->sack_tree);
+  udx_sack_block_t *block = udx_sack_tree_min(&stream->sack_tree);
 
   // process the (out of order) read queue
-  while ((stream->status & UDX_STREAM_SHOULD_READ) == UDX_STREAM_READ && p && p->start == stream->ack) {
-    udx_sack_block_t *block = p;
-    p = udx_sack_tree_next(&stream->sack_tree, p);
+  if ((stream->status & UDX_STREAM_SHOULD_READ) == UDX_STREAM_READ && block && block->start == stream->ack) {
     udx_sack_tree_remove(&stream->sack_tree, block);
 
-    stream->ack += seq_diff(block->end, block->start);
-    assert(stream->ack == block->end);
-
-    // block could have 0 length if it was a sack of a pure END packet
-    if (block->len && stream->on_read != NULL) {
-      uv_buf_t b = uv_buf_init((char *) block->data, block->len);
-      stream->on_read(stream, block->len, &b);
-      if (stream->status & UDX_STREAM_DEAD) {
-        free(block->data);
-        free(block);
-        return 1;
+    while (block->packet_queue.len > 0) {
+      udx_buf_t *ooo_pkt = udx__queue_data(udx__queue_shift(&block->packet_queue), udx_buf_t, queue);
+      stream->ack++;
+      if (ooo_pkt->len && stream->on_read) {
+        uv_buf_t buf = uv_buf_init((char *) ooo_pkt->data, ooo_pkt->len);
+        stream->on_read(stream, ooo_pkt->len, &buf);
+        if (stream->status & UDX_STREAM_DEAD) {
+          free(ooo_pkt);
+          free(block);
+          return 1;
+        }
       }
+      free(ooo_pkt);
     }
-
-    free(block->data);
     free(block);
   }
 
