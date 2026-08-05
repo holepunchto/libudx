@@ -42,6 +42,10 @@ struct sack_packet {
 } sack_packets[2];
 
 enum {
+  RECOVERY_CWND = 4
+};
+
+enum {
   WAIT_INITIAL,
   WAIT_FIRST_RECOVERY,
   WAIT_LATER_PACKET,
@@ -52,7 +56,8 @@ enum {
 int transmits[32];
 int sacks_sent;
 uint32_t later_seq;
-uint32_t first_second_recovery_seq = UINT32_MAX;
+uint32_t second_recovery_packets;
+bool blocking_packet_retransmitted;
 
 #if defined(_WIN32)
 static void
@@ -154,7 +159,7 @@ on_recv (udx_socket_t *socket, ssize_t read_len, const uv_buf_t *buf, const stru
 
   if (stage == WAIT_LATER_PACKET && seq == later_seq) {
     // Four is BBR's minimum cwnd and is smaller than the pending loss set.
-    stream.cwnd = 4;
+    stream.cwnd = RECOVERY_CWND;
     stage = WAIT_SECOND_RECOVERY;
     sleep_ms(2);
     send_sack(later_seq);
@@ -162,8 +167,10 @@ on_recv (udx_socket_t *socket, ssize_t read_len, const uv_buf_t *buf, const stru
   }
 
   if (stage == WAIT_SECOND_RECOVERY) {
-    // The earliest gap should be repaired before higher sequence packets.
-    first_second_recovery_seq = seq;
+    // A full recovery window without sequence 0 cannot advance the cumulative ACK.
+    if (seq == 0) blocking_packet_retransmitted = true;
+    if (++second_recovery_packets < RECOVERY_CWND) return;
+
     stage = DONE;
     udx_stream_destroy(&stream);
   }
@@ -221,7 +228,7 @@ main () {
   assert(e == 0);
 
   assert(stage == DONE);
-  assert(first_second_recovery_seq == 0);
+  assert(blocking_packet_retransmitted);
 
   free(initial_write);
   free(later_write);
