@@ -103,7 +103,7 @@ main (int argc, char **argv) {
   }
   // shuffle
   for (int i = npackets - 1; i > 0 /* stop before 0 */; i--) {
-    int j = random() % i;
+    int j = rand() % i;
     int tmp = sequence[j];
     sequence[j] = sequence[i];
     sequence[i] = tmp;
