@@ -43,10 +43,9 @@ on_send (udx_socket_send_t *r, int status) {
     }
   }
 }
-int nclose;
 void
 on_socket_close (udx_socket_t *socket) {
-  nclose++;
+  (void) socket;
 }
 
 void
