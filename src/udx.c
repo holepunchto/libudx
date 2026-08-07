@@ -2158,10 +2158,10 @@ retry_send_specific_ttl (uv_check_t *check) {
       break;
     }
 
+    udx__queue_shift(&socket->specific_ttl_send_queue);
     if (req->on_send) {
       req->on_send(req, 0);
     }
-    udx__queue_shift(&socket->specific_ttl_send_queue);
   }
 
   uv_udp_set_ttl(&socket->uv_udp, socket->ttl);
