@@ -624,6 +624,9 @@ udx_stream_get_min_rtt (udx_stream_t *stream, uint32_t *min_rtt_ms) {
 void
 bbr_on_rto (udx_stream_t *stream) {
   // BBR 4.2.4
+  bbr_save_cwnd(stream);
+  stream->cwnd = stream->inflight_queue.len + 1;
+
   // simulate a dummy loss rate sample when we hit RTO
   stream->bbr.prev_ca_state = UDX_CA_LOSS;
   stream->bbr.full_bw = 0.0;
