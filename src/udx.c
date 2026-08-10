@@ -300,15 +300,6 @@ udx_write_header (uint8_t header[20], udx_stream_t *stream, int type) {
   *(i++) = udx__swap_uint32_if_be(stream->ack);
 }
 
-static void
-refresh_retransmit_header (uint8_t header[20], udx_stream_t *stream) {
-  uint32_t *i = (uint32_t *) (header + 8);
-
-  // Keep the original sequence and payload, but advertise current receive state.
-  i[0] = udx__swap_uint32_if_be(get_recv_rwnd(stream));
-  i[2] = udx__swap_uint32_if_be(stream->ack);
-}
-
 // returns 1 on success, zero if packet can't be promoted to a probe packet
 static int
 mtu_probeify_packet (udx_packet_t *pkt, int wanted_size) {
@@ -963,7 +954,9 @@ void
 retransmit_packet (udx_stream_t *stream, udx_packet_t *pkt) {
   bool inflight_queue_was_empty = stream->inflight_queue.len == 0;
 
-  refresh_retransmit_header(pkt->header, stream);
+  // Keep the original sequence and payload, but advertise current receive state.
+  *(uint32_t *) (pkt->header + 8) = udx__swap_uint32_if_be(get_recv_rwnd(stream));
+  *(uint32_t *) (pkt->header + 16) = udx__swap_uint32_if_be(stream->ack);
   _send_packet(stream, pkt, true);
 
   stream->retransmit_count++;

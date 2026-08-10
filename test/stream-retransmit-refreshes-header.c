@@ -39,9 +39,8 @@ on_recv (udx_socket_t *socket, ssize_t read_len, const uv_buf_t *buf, const stru
   assert(read_len >= UDX_HEADER_SIZE);
   if (!((uint8_t) buf->base[2] & UDX_HEADER_DATA)) return;
 
-  uint32_t *header = (uint32_t *) (buf->base + 4);
-  uint32_t rwnd = udx__swap_uint32_if_be(header[1]);
-  uint32_t ack = udx__swap_uint32_if_be(header[3]);
+  uint32_t rwnd = udx__swap_uint32_if_be(*(uint32_t *) (buf->base + 8));
+  uint32_t ack = udx__swap_uint32_if_be(*(uint32_t *) (buf->base + 16));
 
   if (++data_packets == 1) {
     first_rwnd = rwnd;
