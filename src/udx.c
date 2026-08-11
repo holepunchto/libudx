@@ -932,6 +932,9 @@ void
 retransmit_packet (udx_stream_t *stream, udx_packet_t *pkt) {
   bool inflight_queue_was_empty = stream->inflight_queue.len == 0;
 
+  // Keep the original sequence and payload, but advertise current receive state.
+  *(uint32_t *) (pkt->header + 8) = udx__swap_uint32_if_be(get_recv_rwnd(stream));
+  *(uint32_t *) (pkt->header + 16) = udx__swap_uint32_if_be(stream->ack);
   _send_packet(stream, pkt, true);
 
   stream->retransmit_count++;
