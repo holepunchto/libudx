@@ -1060,6 +1060,18 @@ schedule_loss_probe (udx_stream_t *stream, bool advancing_rto) {
   return true;
 }
 
+static void
+rebuild_retransmit_queue (udx_stream_t *stream) {
+  udx__queue_init(&stream->retransmit_queue);
+
+  for (uint32_t seq = stream->remote_acked; seq != stream->seq; seq++) {
+    udx_packet_t *pkt = (udx_packet_t *) udx__cirbuf_get(&stream->outgoing, seq);
+
+    if (pkt == NULL || !pkt->lost) continue;
+    udx__queue_tail(&stream->retransmit_queue, &pkt->queue);
+  }
+}
+
 static uint32_t
 rack_detect_loss (udx_stream_t *stream) {
   uint64_t timeout = 0;
@@ -1102,7 +1114,6 @@ rack_detect_loss (udx_stream_t *stream) {
         stream->inflight -= pkt->size;
 
         udx__queue_unlink(&stream->inflight_queue, &pkt->queue);
-        udx__queue_tail(&stream->retransmit_queue, &pkt->queue);
 
         if (pkt->is_mtu_probe) {
           mtu_unprobeify_packet(pkt, stream);
@@ -1131,6 +1142,10 @@ rack_detect_loss (udx_stream_t *stream) {
     stream->tlp_is_retrans = false;
 
     // debug_printf("rack: fast recovery rid=%u start=[%u:%u] (%u pkts) inflight=%zu cwnd=%u srtt=%u\n", stream->remote_id, stream->remote_acked, stream->seq, stream->seq - stream->remote_acked, stream->inflight, stream->cwnd, stream->srtt);
+  }
+
+  if (resending > 0) {
+    rebuild_retransmit_queue(stream);
   }
 
   send_packets(stream);

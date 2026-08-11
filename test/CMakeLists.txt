@@ -34,6 +34,7 @@ list(APPEND tests
   stream-retransmit-refreshes-header
   stream-strict-sack
   stream-rack-tlp-example
+  stream-fast-recovery-order
 )
 
 list(APPEND skipped_tests
