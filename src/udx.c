@@ -306,19 +306,22 @@ udx_write_header (uint8_t header[20], udx_stream_t *stream, int type) {
 // returns 1 on success, zero if packet can't be promoted to a probe packet
 static int
 mtu_probeify_packet (udx_packet_t *pkt, int wanted_size) {
-  // cannot probeify a packet with 1) no data 2) already has padding
-  if (pkt->nwbufs < 1 || pkt->header[3] != 0) {
+  // Only DATA packets can carry an in-band MTU probe, and a packet that
+  // already has an extension cannot be padded again.
+  if (!(pkt->header[2] & UDX_HEADER_DATA) || pkt->nwbufs < 1 || pkt->header[3] != 0) {
     return 0;
   }
 
-  bool ipv4 = pkt->remote_addr.ss_family == AF_INET;
+  const int family = pkt->remote_addr.ss_family;
+  assert(family == AF_INET || family == AF_INET6);
 
-  int header_size = (ipv4 ? UDX_IPV4_HEADER_SIZE : UDX_IPV6_HEADER_SIZE) - 20;
-  int padding_size = wanted_size - (pkt->size + (ipv4 ? UDX_IPV4_HEADER_SIZE : UDX_IPV6_HEADER_SIZE) - 20);
+  const int ip_udp_overhead = (family == AF_INET ? UDX_IPV4_HEADER_SIZE : UDX_IPV6_HEADER_SIZE) - UDX_HEADER_SIZE;
+  const int ip_packet_size = pkt->size + ip_udp_overhead;
+  const int padding_size = wanted_size - ip_packet_size;
   if (padding_size < 0 || padding_size > 255) {
     return 0;
   }
-  debug_printf("mtu: probeify rid=%u seq=%u size=%u wanted=%d padding=%d\n", udx__swap_uint32_if_be(((unsigned int *) pkt->header)[1]), pkt->seq, pkt->size + header_size, wanted_size, padding_size);
+  debug_printf("mtu: probeify rid=%u seq=%u size=%d wanted=%d padding=%d\n", udx__swap_uint32_if_be(((unsigned int *) pkt->header)[1]), pkt->seq, ip_packet_size, wanted_size, padding_size);
 
   pkt->header[3] = padding_size;
   pkt->is_mtu_probe = true;

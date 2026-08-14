@@ -5,6 +5,8 @@
 
 #include "../include/udx.h"
 
+// MTU promotion is ACK-driven. Keep enough data queued for every search step
+// to have a later DATA packet available to carry the next probe.
 #define TOTAL_BYTES (8 * 1024 * 1024)
 
 uv_loop_t loop;
@@ -117,7 +119,7 @@ main () {
 
   uv_buf_t buf = uv_buf_init(data, TOTAL_BYTES);
   e = udx_stream_write(req, &bstream, &buf, 1, on_ack);
-  (void) e;
+  assert(e >= 0);
 
   uv_run(&loop, UV_RUN_DEFAULT);
   e = uv_loop_close(&loop);

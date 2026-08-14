@@ -106,8 +106,17 @@ main () {
   udx_stream_write_t *end_request_a = malloc(udx_stream_write_sizeof(1));
   udx_stream_write_t *end_request_b = malloc(udx_stream_write_sizeof(1));
 
+  // A zero-length END has one write buffer but no DATA flag. Use a deliberately
+  // small target so the padding limit does not mask the packet-type guard.
+  astream.mtu_state = UDX_MTU_STATE_SEARCH;
+  astream.mtu_probe_wanted = true;
+  astream.mtu_probe_size = UDX_IPV4_HEADER_SIZE + 1;
+
   e = udx_stream_write_end(end_request_a, &astream, NULL, 0, NULL);
   assert(e);
+  assert(astream.mtu_probe_count == 0);
+  assert(astream.mtu_probe_wanted);
+
   e = udx_stream_write_end(end_request_b, &bstream, NULL, 0, NULL);
   assert(e);
 
