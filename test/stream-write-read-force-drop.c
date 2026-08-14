@@ -157,5 +157,9 @@ main () {
     assert(asock.packets_dropped_by_kernel + bsock.packets_dropped_by_kernel == udx.packets_dropped_by_kernel);
   }
 
+  assert(bstream.bytes_queued == buf.len);
+  assert(bstream.bytes_sent == buf.len);
+  assert(bstream.bytes_acked == buf.len);
+
   return 0;
 }

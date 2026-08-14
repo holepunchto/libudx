@@ -160,5 +160,9 @@ main () {
   assert(nend == 2 && nstream_close == 2 && nfinalize == 2 && nsocket_close == 2);
   free(data);
 
+  assert(send_stream.bytes_queued == buf.len);
+  assert(send_stream.bytes_sent == buf.len);
+  assert(send_stream.bytes_acked == buf.len);
+
   return 0;
 }

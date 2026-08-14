@@ -22,7 +22,6 @@ struct {
 
 struct {
   uint64_t bytes_read;
-  uint64_t last_bytes_read;
 
   uint64_t last_print_ms;
   uint64_t time_zero_ms;
@@ -90,8 +89,11 @@ print_rate_on_interval (uv_timer_t *t) {
   udx_stream_get_bw(&astream, &a_bw);
   udx_stream_get_bw(&bstream, &b_bw);
 
-  printf("A bbr.bw=%" PRIu64 " rate=%9.3f/kpkts/sec %s\n", a_bw, astream.rate_delivered / (1.0f * astream.rate_interval_ms), astream.rate_sample_is_app_limited ? "(app limited)" : "");
-  printf("B bbr.bw=%" PRIu64 " rate=%9.3f/kpkts/sec %s\n", b_bw, bstream.rate_delivered / (1.0f * bstream.rate_interval_ms), bstream.rate_sample_is_app_limited ? "(app limited)" : "");
+  double a_rate = astream.rate_interval_ms ? astream.rate_delivered / (1.0f * astream.rate_interval_ms) : 0.0;
+  double b_rate = bstream.rate_interval_ms ? bstream.rate_delivered / (1.0f * bstream.rate_interval_ms) : 0.0;
+
+  printf("A bbr.bw=%12" PRIu64 " rate=%9.3f/kpkts/sec %s\n", a_bw, a_rate, astream.rate_sample_is_app_limited ? "(app limited)" : "");
+  printf("B bbr.bw=%12" PRIu64 " rate=%9.3f/kpkts/sec %s\n", b_bw, b_rate, bstream.rate_sample_is_app_limited ? "(app limited)" : "");
 }
 
 int
@@ -174,6 +176,11 @@ main () {
 
     assert(asock.packets_dropped_by_kernel + bsock.packets_dropped_by_kernel == udx.packets_dropped_by_kernel);
   }
+
+  assert(stats.bytes_read == buf.len);
+  assert(bstream.bytes_queued == buf.len);
+  assert(bstream.bytes_sent == buf.len);
+  assert(bstream.bytes_acked == buf.len);
 
   return 0;
 }

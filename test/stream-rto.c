@@ -81,5 +81,9 @@ main () {
 
   assert(ack_called);
 
+  assert(stream.bytes_queued == buf.len);
+  assert(stream.bytes_sent == buf.len);
+  assert(stream.bytes_acked == 0);
+
   return 0;
 }

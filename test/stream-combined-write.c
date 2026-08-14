@@ -113,6 +113,10 @@ main () {
     free(writes[i].write);
   }
 
+  assert(send_stream.bytes_queued == NUM_WRITES * CHUNK_SIZE);
+  assert(send_stream.bytes_sent == NUM_WRITES * CHUNK_SIZE);
+  assert(send_stream.bytes_acked == NUM_WRITES * CHUNK_SIZE);
+
   // assert(ack_called && read_called && eof_received);
 }
 
