@@ -245,7 +245,6 @@ struct udx_stream_s {
   uint64_t bytes_queued; // total bytes written to stream
   uint64_t bytes_sent;   // total bytes written and sent by stream
   uint64_t bytes_acked;  // total bytes written, sent, and acked by stream
-  uint64_t bytes_cumulatively_acked;
 
   uint8_t ca_state;
   uint32_t high_seq; // seq at time of congestion, marks end of recovery
