@@ -42,6 +42,8 @@ on_ack (udx_stream_write_t *r, int status, int unordered) {
 
 void
 on_read (udx_stream_t *handle, ssize_t read_len, const uv_buf_t *buf) {
+  // A full-write ACK proves that the receiver processed the entire write, so
+  // this test only needs reads enabled; data integrity is covered elsewhere.
   (void) handle;
   (void) read_len;
   (void) buf;

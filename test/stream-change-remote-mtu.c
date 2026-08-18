@@ -102,6 +102,7 @@ on_recv (udx_socket_t *socket, ssize_t read_len, const uv_buf_t *buf, const stru
     assert(payload_size == WRITE_SIZE);
 
     if (!old_ack_sent) {
+      // This ACK releases on_remote_changed(), which queues the new-path write.
       old_ack_sent = true;
       send_old_ack();
     }
