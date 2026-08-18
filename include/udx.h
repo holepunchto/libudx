@@ -416,11 +416,11 @@ struct udx_packet_s {
                      // when 0, packet has been acked and is not in flight. the packet may be free().
   uint16_t size;
 
-  // we store remote_addr for each packet instead of using stream->remote_addr
-  // because we want any retransmits to go to the original host even if the user
-  // calls udx_stream_change_remote().
+  // Store the remote identity per packet so partially constructed packets and
+  // retransmits keep going to the original host after udx_stream_change_remote().
   struct sockaddr_storage remote_addr;
   int remote_addr_len;
+  uint32_t remote_id;
 
   uint64_t time_sent;
 

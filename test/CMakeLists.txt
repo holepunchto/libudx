@@ -22,6 +22,7 @@ list(APPEND tests
   stream-write-read-ipv6
   stream-write-read-perf
   stream-change-remote
+  stream-change-remote-mtu
   stream-multiple
   stream-write-read-receive-window
   win-filter
