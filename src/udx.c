@@ -284,7 +284,7 @@ get_recv_rwnd (udx_stream_t *stream) {
 }
 
 static void
-udx_write_header (uint8_t header[20], udx_stream_t *stream, int type) {
+udx_write_header (uint8_t header[20], udx_stream_t *stream, int type, uint32_t remote_id) {
   uint8_t *b = header;
 
   // 8 bit magic byte + 8 bit version + 8 bit type + 8 bit extensions
@@ -296,7 +296,7 @@ udx_write_header (uint8_t header[20], udx_stream_t *stream, int type) {
   uint32_t *i = (uint32_t *) b;
 
   // 32 bit (le) remote id
-  *(i++) = udx__swap_uint32_if_be(stream->remote_id);
+  *(i++) = udx__swap_uint32_if_be(remote_id);
   // 32 bit (le) recv window
   *(i++) = udx__swap_uint32_if_be(get_recv_rwnd(stream));
   // 32 bit (le) seq
@@ -308,23 +308,22 @@ udx_write_header (uint8_t header[20], udx_stream_t *stream, int type) {
 // returns 1 on success, zero if packet can't be promoted to a probe packet
 static int
 mtu_probeify_packet (udx_packet_t *pkt, int wanted_size) {
-  if (wanted_size > pkt->size) {
+  // Only DATA packets can carry an in-band MTU probe, and a packet that
+  // already has an extension cannot be padded again.
+  if (!(pkt->header[2] & UDX_HEADER_DATA) || pkt->header[3] != 0) {
     return 0;
   }
 
-  // cannot probeify a packet with 1) no data 2) already has padding
-  if (pkt->nwbufs < 1 || pkt->header[3] != 0) {
+  const int family = pkt->remote_addr.ss_family;
+  assert(family == AF_INET || family == AF_INET6);
+
+  const int ip_udp_overhead = (family == AF_INET ? UDX_IPV4_HEADER_SIZE : UDX_IPV6_HEADER_SIZE) - UDX_HEADER_SIZE;
+  const int ip_packet_size = pkt->size + ip_udp_overhead;
+  const int padding_size = wanted_size - ip_packet_size;
+  if (padding_size < 0 || padding_size > 255) {
     return 0;
   }
-
-  bool ipv4 = pkt->remote_addr.ss_family == AF_INET;
-
-  int header_size = (ipv4 ? UDX_IPV4_HEADER_SIZE : UDX_IPV6_HEADER_SIZE) - 20;
-  int padding_size = wanted_size - (pkt->size + (ipv4 ? UDX_IPV4_HEADER_SIZE : UDX_IPV6_HEADER_SIZE) - 20);
-  if (padding_size > 255) {
-    return 0;
-  }
-  debug_printf("mtu: probeify rid=%u seq=%u size=%u wanted=%d padding=%d\n", udx__swap_uint32_if_be(((unsigned int *) pkt->header)[1]), pkt->seq, pkt->size + header_size, wanted_size, padding_size);
+  debug_printf("mtu: probeify rid=%u seq=%u size=%d wanted=%d padding=%d\n", udx__swap_uint32_if_be(((unsigned int *) pkt->header)[1]), pkt->seq, ip_packet_size, wanted_size, padding_size);
 
   pkt->header[3] = padding_size;
   pkt->is_mtu_probe = true;
@@ -505,7 +504,7 @@ send_probe (udx_stream_t *stream) {
 
   alignas(4) uint8_t header[20];
 
-  udx_write_header(header, stream, UDX_HEADER_HEARTBEAT);
+  udx_write_header(header, stream, UDX_HEADER_HEARTBEAT, stream->remote_id);
 
   // fast path
   uv_buf_t buf = uv_buf_init((char *) header, sizeof(header));
@@ -617,7 +616,7 @@ send_ack (udx_stream_t *stream) {
 
   // debug_printf("sending ack ack=%u nsasks=%d\n", stream->ack, nsacks);
 
-  udx_write_header(pkt.header, stream, nsacks > 0 ? UDX_HEADER_SACK : 0);
+  udx_write_header(pkt.header, stream, nsacks > 0 ? UDX_HEADER_SACK : 0, stream->remote_id);
   // fast path
 
   uv_buf_t buf = uv_buf_init((char *) &pkt, sizeof(pkt.header) + sizeof(pkt.sacks[0]) * nsacks);
@@ -802,6 +801,14 @@ reset_next_packet (udx_stream_t *stream) {
   uv_prepare_stop(&stream->pending_packet_prepare);
 }
 
+static void
+bind_packet_remote (udx_packet_t *pkt, udx_stream_t *stream) {
+  assert(pkt->remote_addr_len == 0);
+  pkt->remote_id = stream->remote_id;
+  pkt->remote_addr = stream->remote_addr;
+  pkt->remote_addr_len = stream->remote_addr_len;
+}
+
 // called by send_new_packet and on_pending_packet_prepare
 // sends stream->pkt
 static void
@@ -813,11 +820,13 @@ _send_new_packet (udx_stream_t *stream, bool tlp) {
 
   udx_packet_t *pkt = stream->pkt;
 
-  udx_write_header(pkt->header, stream, stream->pkt_header_flag);
+  if (pkt->remote_addr_len == 0) {
+    bind_packet_remote(pkt, stream);
+  }
+
+  udx_write_header(pkt->header, stream, stream->pkt_header_flag, pkt->remote_id);
   pkt->seq = stream->seq;
   pkt->stream = stream; // todo: necessary?
-  pkt->remote_addr = stream->remote_addr;
-  pkt->remote_addr_len = stream->remote_addr_len;
   pkt->ref_count = 1;
 
   pkt->bufs[0] = uv_buf_init((char *) &pkt->header, UDX_HEADER_SIZE);
@@ -902,7 +911,8 @@ send_new_packet (udx_stream_t *stream, bool tlp) {
 
     pkt->nwbufs++;
 
-    if (len > 0) {
+    if (len > 0 && !(stream->pkt_header_flag & UDX_HEADER_DATA)) {
+      bind_packet_remote(pkt, stream);
       stream->pkt_header_flag |= UDX_HEADER_DATA;
     }
 
@@ -2534,6 +2544,10 @@ udx_stream_change_remote (udx_stream_t *stream, udx_socket_t *socket, uint32_t r
 
   reset_mtu_state_machine(stream);
 
+  if (!(stream->pkt_header_flag & UDX_HEADER_DATA)) {
+    stream->pkt_capacity = udx__max_payload(stream);
+  }
+
   return !defer_change;
 }
 
@@ -2633,7 +2647,7 @@ udx_stream_send (udx_stream_send_t *req, udx_stream_t *stream, const uv_buf_t bu
   req->stream = stream;
   req->on_send = cb;
 
-  udx_write_header(req->header, stream, UDX_HEADER_MESSAGE);
+  udx_write_header(req->header, stream, UDX_HEADER_MESSAGE, stream->remote_id);
   req->bufs[0].base = (char *) req->header;
   req->bufs[0].len = sizeof(req->header);
   req->bufs[1] = bufs[0];
@@ -2810,7 +2824,7 @@ udx_stream_destroy (udx_stream_t *stream) {
 
   alignas(4) uint8_t header[20];
 
-  udx_write_header(header, stream, UDX_HEADER_DESTROY);
+  udx_write_header(header, stream, UDX_HEADER_DESTROY, stream->remote_id);
   stream->seq++;
 
   uv_buf_t buf = uv_buf_init((char *) header, sizeof(header));

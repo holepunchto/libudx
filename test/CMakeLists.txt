@@ -18,10 +18,12 @@ list(APPEND tests
   stream-write-read
   stream-write-read-force-drop
   stream-write-read-and-drop-probes
+  stream-write-read-mtu-probe
   stream-write-read-multiple
   stream-write-read-ipv6
   stream-write-read-perf
   stream-change-remote
+  stream-change-remote-mtu
   stream-multiple
   stream-write-read-receive-window
   stream-write-read-receive-window-2
