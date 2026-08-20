@@ -4,7 +4,7 @@
 #include "../include/udx.h"
 
 #define udx__queue_data(pointer, type, field) \
-  ((type *) ((char *) (pointer) -offsetof(type, field)))
+  ((type *) ((char *) (pointer) - offsetof(type, field)))
 
 #define udx__queue_foreach(q, h) \
   for ((q) = (h)->next; (q) != (h); (q) = (q)->next)
@@ -15,6 +15,9 @@ void
 udx__queue_head (udx_queue_t *q, udx_queue_node_t *pkt); // unshift
 void
 udx__queue_tail (udx_queue_t *q, udx_queue_node_t *pkt); // push
+
+void
+udx__queue_splice_tail (udx_queue_t *q, udx_queue_t *p);
 
 void
 udx__queue_unlink (udx_queue_t *q, udx_queue_node_t *pkt);
