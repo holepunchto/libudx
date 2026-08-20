@@ -220,6 +220,7 @@ typedef struct udx_sack_block_s udx_sack_block_t;
 
 typedef struct {
   udx_queue_node_t queue;
+  uint8_t type; // DATA or END
   uint32_t len;
   uint8_t data[];
 } udx_buf_t;

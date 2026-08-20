@@ -1428,6 +1428,7 @@ process_data_packet (udx_stream_t *stream, int type, uint32_t seq, char *data, s
   block->end++;
   memcpy(&pkt->data, data, data_len);
   pkt->len = data_len;
+  pkt->type = type;
 
   // if this block is now adjacent to a next block, merge them:
   udx_sack_block_t *next = udx_sack_tree_next(&stream->sack_tree, block);
@@ -1622,11 +1623,14 @@ process_packet (udx_socket_t *socket, char *buf, ssize_t buf_len, struct sockadd
     while (block->packet_queue.len > 0) {
       udx_buf_t *ooo_pkt = udx__queue_data(udx__queue_shift(&block->packet_queue), udx_buf_t, queue);
       stream->ack++;
-      if (ooo_pkt->len && stream->on_read) {
+      if ((ooo_pkt->type & UDX_HEADER_DATA) && stream->on_read) {
         uv_buf_t buf = uv_buf_init((char *) ooo_pkt->data, ooo_pkt->len);
         stream->on_read(stream, ooo_pkt->len, &buf);
         if (stream->status & UDX_STREAM_DEAD) {
           free(ooo_pkt);
+          while (block->packet_queue.len) {
+            free(udx__queue_data(udx__queue_shift(&block->packet_queue), udx_buf_t, queue));
+          }
           free(block);
           return 1;
         }

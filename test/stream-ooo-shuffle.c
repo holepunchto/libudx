@@ -73,15 +73,23 @@ main (int argc, char **argv) {
   e = udx_socket_init(&udx, &recv_sock, on_socket_close);
   assert(e == 0);
 
-  uv_ip4_addr("127.0.0.1", 18081, &send_addr);
+  uv_ip4_addr("127.0.0.1", 0, &send_addr);
   e = udx_socket_bind(&send_sock, (struct sockaddr *) &send_addr, 0);
   assert(e == 0);
 
-  uv_ip4_addr("127.0.0.1", 18082, &recv_addr);
+  int send_addr_sz = sizeof(send_addr);
+  e = udx_socket_getsockname(&send_sock, (struct sockaddr *) &send_addr, &send_addr_sz);
+  assert(e == 0);
+
+  uv_ip4_addr("127.0.0.1", 0, &recv_addr);
   e = udx_socket_bind(&recv_sock, (struct sockaddr *) &recv_addr, 0);
   assert(e == 0);
 
   e = udx_stream_init(&udx, &stream, 1, on_stream_close, NULL);
+  assert(e == 0);
+
+  int recv_addr_sz = sizeof(recv_addr);
+  e = udx_socket_getsockname(&recv_sock, (struct sockaddr *) &recv_addr, &recv_addr_sz);
   assert(e == 0);
 
   e = udx_stream_connect(&stream, &send_sock, 2, (struct sockaddr *) &recv_addr);
@@ -133,7 +141,8 @@ main (int argc, char **argv) {
   hdr.type = UDX_HEADER_END;
   uv_buf_t b = uv_buf_init((char *) &hdr, sizeof(hdr));
 
-  uv_udp_try_send(&recv_sock.uv_udp, &b, 1, (struct sockaddr *) &send_addr);
+  int rc = uv_udp_try_send(&recv_sock.uv_udp, &b, 1, (struct sockaddr *) &send_addr);
+  assert(rc == b.len);
   hdr.type = UDX_HEADER_DATA;
 
   for (int i = 0; i < npackets; i++) {
