@@ -100,6 +100,9 @@ bbr_init (udx_stream_t *stream);
 void
 bbr_on_rto (udx_stream_t *stream);
 
+uint32_t
+bbr_ssthresh (udx_stream_t *stream);
+
 void
 bbr_main (udx_stream_t *stream, udx_rate_sample_t *rs);
 

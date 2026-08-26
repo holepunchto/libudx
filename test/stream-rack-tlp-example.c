@@ -63,6 +63,7 @@ int event = 1;
 int transmits[4]; // number of times each packet has been received
 
 uint64_t t0;
+uint32_t cwnd_before_recovery;
 
 uv_loop_t loop;
 udx_t udx;
@@ -183,6 +184,7 @@ on_recv (udx_socket_t *handle, ssize_t read_len, const uv_buf_t *buf, const stru
     pkt.type |= UDX_HEADER_SACK;
     pkt.sack.start = udx__swap_uint32_if_be(3);
     pkt.sack.end = udx__swap_uint32_if_be(4);
+    cwnd_before_recovery = stream.cwnd;
 
     sleep_ms(2);
 
@@ -195,6 +197,8 @@ on_recv (udx_socket_t *handle, ssize_t read_len, const uv_buf_t *buf, const stru
 
   else if (event == 4) {
     assert(seq == 1 || seq == 2);
+    assert(stream.ca_state == UDX_CA_RECOVERY);
+    assert(stream.bbr.prior_cwnd == cwnd_before_recovery);
     if (seq == 1) {
       assert(transmits[1] == 2);
       printf("rack-tlp-test: event=5c, time=%u dropping P1\n", time_ms);

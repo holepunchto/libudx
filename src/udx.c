@@ -1123,6 +1123,8 @@ rack_detect_loss (udx_stream_t *stream) {
 
     stream->fast_recovery_count++;
 
+    stream->ssthresh = bbr_ssthresh(stream);
+
     // recover until the full window is acked
     stream->ca_state = UDX_CA_RECOVERY;
     stream->high_seq = stream->seq;
@@ -1663,9 +1665,6 @@ process_packet (udx_socket_t *socket, char *buf, ssize_t buf_len, struct sockadd
   }
 
   if (seq_compare(ack, stream->high_seq) > 0 && (stream->ca_state == UDX_CA_RECOVERY || stream->ca_state == UDX_CA_LOSS)) {
-    if (stream->ca_state == UDX_CA_RECOVERY) {
-      stream->cwnd = stream->ssthresh;
-    }
     stream->ca_state = UDX_CA_OPEN;
   }
 

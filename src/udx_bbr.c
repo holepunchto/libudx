@@ -223,8 +223,9 @@ bbr_set_cwnd_to_recover_or_restore (udx_stream_t *stream, udx_rate_sample_t *rs,
 static void
 bbr_set_cwnd (udx_stream_t *stream, udx_rate_sample_t *rs, uint32_t acked, double bw, double gain) {
   uint32_t cwnd = stream->cwnd;
+  bool ca_state_changed = stream->bbr.prev_ca_state != stream->ca_state;
 
-  if (!acked) goto done;
+  if (!acked && !ca_state_changed) goto done;
 
   if (bbr_set_cwnd_to_recover_or_restore(stream, rs, acked, &cwnd)) {
     goto done;
@@ -242,7 +243,7 @@ bbr_set_cwnd (udx_stream_t *stream, udx_rate_sample_t *rs, uint32_t acked, doubl
 
   cwnd = max_uint32(cwnd, bbr_cwnd_min_target);
 done:
-  stream->cwnd = cwnd;
+  stream->cwnd = max_uint32(cwnd, 1);
   if (stream->bbr.state == UDX_BBR_STATE_PROBE_RTT) {
     stream->cwnd = min_uint32(stream->cwnd, bbr_cwnd_min_target);
   }
@@ -595,9 +596,8 @@ bbr_init (udx_stream_t *stream) {
 //     (besides of course the kernels send buffer)
 // bbr_undo_cwnd(socket)
 //   - used for cwnd reduction undo e.g. with DSACK
-// bbr_ssthresh(socket)
-//   - called when entering loss recovery, used to save cwnd for recovery
 
+// Called when entering loss recovery to save cwnd for restoration.
 uint32_t
 bbr_ssthresh (udx_stream_t *stream) {
   bbr_save_cwnd(stream);
