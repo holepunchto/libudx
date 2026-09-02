@@ -36,6 +36,7 @@ list(APPEND tests
   stream-combined-write
   stream-keepalive
   stream-rto
+  stream-rto-backoff
   stream-rto-sack-progress
   stream-delivery-timeout
   stream-delivery-timeout-stall

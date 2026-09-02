@@ -1286,7 +1286,8 @@ udx_rto_timeout (uv_timer_t *timer) {
   }
 
   assert(!(stream->status & UDX_STREAM_CLOSED));
-  stream_timer_start(stream, UDX_TIMER_RTO, stream->rto * 2);
+  stream->rto = min_uint32(stream->rto * 2, UDX_RTO_MAX_MS);
+  stream_timer_start(stream, UDX_TIMER_RTO, stream->rto);
 
   // zero retransmit queue
   udx__queue_init(&stream->retransmit_queue);
