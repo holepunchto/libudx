@@ -31,6 +31,7 @@ list(APPEND tests
   stream-combined-write
   stream-keepalive
   stream-rto
+  stream-rto-backoff
   stream-retransmit-refreshes-header
   stream-strict-sack
   stream-rack-tlp-example
