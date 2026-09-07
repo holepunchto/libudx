@@ -1,7 +1,13 @@
+// Keep the regression checks active in Release builds too.
+#ifdef NDEBUG
+#undef NDEBUG
+#endif
+
 #include <assert.h>
 #include <stdbool.h>
 #include <stddef.h>
 #include <stdint.h>
+#include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -9,7 +15,7 @@
 #include "../src/endian.h"
 
 #define INITIAL_RTO_MS 1000
-#define ACK_DELAY_MS   1050
+#define ACK_DELAY_MS   1500
 
 typedef struct {
   uint8_t magic;
@@ -55,8 +61,10 @@ static void
 on_stream_close (udx_stream_t *stream, int status) {
   (void) stream;
   assert(status == 0);
-  assert(udx_socket_close(&sender) == 0);
-  assert(udx_socket_close(&receiver) == 0);
+  int err = udx_socket_close(&sender);
+  assert(err == 0);
+  err = udx_socket_close(&receiver);
+  assert(err == 0);
 }
 
 static void
@@ -99,11 +107,15 @@ on_receiver_read (udx_socket_t *socket, ssize_t read_len, const uv_buf_t *buf, c
   assert(seq < 2);
   transmits[seq]++;
 
-  if (!ack_scheduled[seq]) {
-    ack_scheduled[seq] = true;
-    int err = uv_timer_start(&ack_timers[seq], send_delayed_ack, ACK_DELAY_MS, 0);
-    assert(err == 0);
-  }
+  if (ack_scheduled[seq]) return;
+
+  // Observe the first retransmission before acknowledging it. Scheduling this
+  // ACK from the original send can race the TLP/RTO timers on a busy loop.
+  if (seq == 0 && transmits[0] == 1) return;
+
+  ack_scheduled[seq] = true;
+  int err = uv_timer_start(&ack_timers[seq], send_delayed_ack, seq == 0 ? 0 : ACK_DELAY_MS, 0);
+  assert(err == 0);
 }
 
 static void
@@ -129,6 +141,7 @@ on_write_acked (udx_stream_write_t *req, int status, int unordered) {
     // leaves the RTT estimator uninitialized. The backed-off RTO must be
     // retained for the next packet instead of reverting to INITIAL_RTO_MS.
     assert(transmits[0] == 2);
+    assert(stream.rto_count == 1);
     assert(stream.retransmit_count == 1);
     assert(stream.srtt == 0);
     assert(stream.rto == 2 * INITIAL_RTO_MS);
@@ -149,13 +162,15 @@ on_write_acked (udx_stream_write_t *req, int status, int unordered) {
   completed = true;
   uv_timer_stop(&watchdog);
   uv_close((uv_handle_t *) &watchdog, NULL);
-  assert(udx_stream_destroy(&stream) >= 0);
+  int err = udx_stream_destroy(&stream);
+  assert(err >= 0);
 }
 
 static void
 on_timeout (uv_timer_t *timer) {
   (void) timer;
-  assert(false && "RTO backoff test timed out");
+  fputs("RTO backoff test timed out\n", stderr);
+  abort();
 }
 
 int
@@ -207,7 +222,7 @@ main () {
   assert(err == 0);
   err = uv_timer_init(&loop, &watchdog);
   assert(err == 0);
-  err = uv_timer_start(&watchdog, on_timeout, 5000, 0);
+  err = uv_timer_start(&watchdog, on_timeout, 10000, 0);
   assert(err == 0);
 
   uv_buf_t buf = uv_buf_init(&payloads[0], 1);
