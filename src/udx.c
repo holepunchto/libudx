@@ -38,7 +38,7 @@
 
 #define UDX_MAX_RTO_TIMEOUTS 6
 
-#define UDX_RTO_MAX_MS        30000
+#define UDX_RTO_MAX_MS        29000 // Leave a margin below 30s UDP NAT timeouts.
 #define UDX_RTT_MAX_MS        30000
 #define UDX_RTT_MIN_WINDOW_MS 300000            // 300 seconds, same as Linux default
 #define UDX_DEFAULT_RWND_MAX  (4 * 1024 * 1024) // arbitrary, ~175 1500 mtu packets, @20ms latency = 416 mbits/sec
