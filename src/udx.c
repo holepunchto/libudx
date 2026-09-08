@@ -38,7 +38,7 @@
 
 #define UDX_MAX_RTO_TIMEOUTS 6
 
-#define UDX_RTO_MAX_MS        30000
+#define UDX_RTO_MAX_MS        29000 // Leave a margin below 30s UDP NAT timeouts.
 #define UDX_RTT_MAX_MS        30000
 #define UDX_RTT_MIN_WINDOW_MS 300000            // 300 seconds, same as Linux default
 #define UDX_DEFAULT_RWND_MAX  (4 * 1024 * 1024) // arbitrary, ~175 1500 mtu packets, @20ms latency = 416 mbits/sec
@@ -1204,7 +1204,8 @@ udx_rto_timeout (uv_timer_t *timer) {
   stream->tlp_is_retrans = false;
 
   assert(!(stream->status & UDX_STREAM_CLOSED));
-  stream_timer_start(stream, UDX_TIMER_RTO, stream->rto * 2);
+  stream->rto = min_uint32(stream->rto * 2, UDX_RTO_MAX_MS);
+  stream_timer_start(stream, UDX_TIMER_RTO, stream->rto);
 
   // zero retransmit queue
   udx__queue_init(&stream->retransmit_queue);
