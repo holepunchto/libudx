@@ -2842,6 +2842,7 @@ udx_stream_destroy (udx_stream_t *stream) {
 static void
 on_uv_getaddrinfo (uv_getaddrinfo_t *req, int status, struct addrinfo *res) {
   udx_lookup_t *lookup = (udx_lookup_t *) req->data;
+  udx_t *udx = lookup->udx;
 
   if (status < 0) {
     lookup->on_lookup(lookup, status, NULL, 0);
@@ -2851,7 +2852,7 @@ on_uv_getaddrinfo (uv_getaddrinfo_t *req, int status, struct addrinfo *res) {
 
   uv_freeaddrinfo(res);
 
-  ref_dec(lookup->udx);
+  ref_dec(udx);
 }
 
 int
@@ -2946,7 +2947,7 @@ on_interface_event_close (uv_handle_t *handle) {
     event->on_close(event);
   }
 
-  ref_dec(event->udx);
+  ref_dec(udx);
 }
 
 int
