@@ -1347,8 +1347,8 @@ ack_packet (udx_stream_t *stream, uint32_t seq, int sack, udx_rate_sample_t *rs)
 
     stream->tlp_permitted = true;
 
-    // RTO <- SRTT + max (G, K*RTTVAR) where K is 4 maxed with 1s
-    stream->rto = max_uint32(stream->srtt + 4 * stream->rttvar, 1000);
+    // Add four times the RTT variation, with a minimum 200ms margin above SRTT.
+    stream->rto = stream->srtt + max_uint32(4 * stream->rttvar, 200);
 
     if (stream->rto > UDX_RTO_MAX_MS) {
       debug_printf("rto: computed rto=%u ms, capping to %u ms\n", stream->rto, UDX_RTO_MAX_MS);
