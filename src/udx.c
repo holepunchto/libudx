@@ -1336,7 +1336,7 @@ ack_packet (udx_stream_t *stream, uint32_t seq, int sack, udx_rate_sample_t *rs)
 
     stream->tlp_permitted = true;
 
-    // Allow at least 200ms for RTT variation.
+    // Add four times the RTT variation, with a minimum 200ms margin above SRTT.
     stream->rto = stream->srtt + max_uint32(4 * stream->rttvar, 200);
 
     if (stream->rto > UDX_RTO_MAX_MS) {
