@@ -36,7 +36,8 @@
 #define UDX_INIT_PACING_RATE    25000 // 25MB/s, 200mbit. updated by bbr_init
 #define UDX_DEFAULT_SNDBUF_SIZE 212992
 
-#define UDX_MAX_RTO_TIMEOUTS 6
+#define UDX_MAX_RTO_TIMEOUTS           6
+#define UDX_DEFAULT_DELIVERY_TIMEOUT_MS 60000
 
 #define UDX_RTO_MAX_MS        29000 // Leave a margin below 30s UDP NAT timeouts.
 #define UDX_RTT_MAX_MS        30000
@@ -419,6 +420,30 @@ close_stream (udx_stream_t *stream, int err) {
   close_stream_internal(stream, err);
 }
 
+static void
+udx_delivery_timeout (uv_timer_t *timer) {
+  udx_stream_t *stream = timer->data;
+  if (stream->status & UDX_STREAM_DEAD) return;
+
+  assert(stream->remote_acked != stream->seq);
+  close_stream(stream, UV_ETIMEDOUT);
+}
+
+static void
+update_delivery_timer (udx_stream_t *stream) {
+  // ACK callbacks can destroy the stream before ACK processing completes.
+  if (stream->status & UDX_STREAM_DEAD) return;
+
+  if (stream->relayed || stream->delivery_timeout_ms == 0 || stream->remote_acked == stream->seq) {
+    uv_timer_stop(&stream->delivery_timer);
+    return;
+  }
+
+  uint64_t elapsed = uv_now(stream->udx->loop) - stream->delivery_progress_ts;
+  uint64_t remaining = elapsed < stream->delivery_timeout_ms ? stream->delivery_timeout_ms - elapsed : 0;
+  uv_timer_start(&stream->delivery_timer, udx_delivery_timeout, remaining, 0);
+}
+
 void
 close_stream_internal (udx_stream_t *stream, int err) {
   assert((stream->status & UDX_STREAM_CLOSED) == 0);
@@ -476,9 +501,11 @@ close_stream_internal (udx_stream_t *stream, int err) {
 
   uv_timer_stop(&stream->timer);
   uv_timer_stop(&stream->refill_pacing_timer);
+  uv_timer_stop(&stream->delivery_timer);
 
   uv_close((uv_handle_t *) &stream->timer, finalize_maybe);
   uv_close((uv_handle_t *) &stream->refill_pacing_timer, finalize_maybe);
+  uv_close((uv_handle_t *) &stream->delivery_timer, finalize_maybe);
   uv_close((uv_handle_t *) &stream->pending_packet_prepare, finalize_maybe);
 
   if (udx->teardown && socket != NULL && socket->streams == NULL) {
@@ -827,7 +854,13 @@ _send_new_packet (udx_stream_t *stream, bool tlp) {
   udx__cirbuf_set(&stream->outgoing, (udx_cirbuf_val_t *) pkt);
   _send_packet(stream, pkt, false);
 
+  bool delivery_was_idle = stream->remote_acked == stream->seq;
   stream->seq++;
+
+  if (delivery_was_idle) {
+    stream->delivery_progress_ts = uv_now(stream->udx->loop);
+    update_delivery_timer(stream);
+  }
 
   if (inflight_queue_was_empty) {
     bbr_on_transmit_start(stream, uv_now(stream->udx->loop));
@@ -1685,6 +1718,8 @@ process_packet (udx_socket_t *socket, char *buf, ssize_t buf_len, struct sockadd
 
   if (ack_advanced) {
     stream->remote_acked = ack;
+    stream->delivery_progress_ts = uv_now(stream->udx->loop);
+    update_delivery_timer(stream);
   }
 
   if (ended) { // remote acked our end
@@ -2312,9 +2347,13 @@ udx_stream_init (udx_t *udx, udx_stream_t *stream, uint32_t local_id, udx_stream
   stream->rate_sample_is_app_limited = true;
 
   stream->rto = 1000;
+  stream->delivery_timeout_ms = UDX_DEFAULT_DELIVERY_TIMEOUT_MS;
 
   uv_timer_init(udx->loop, &stream->timer);
   stream->timer.data = stream;
+
+  uv_timer_init(udx->loop, &stream->delivery_timer);
+  stream->delivery_timer.data = stream;
 
   win_filter_reset(&stream->rtt_min, uv_now(udx->loop), ~0U);
 
@@ -2327,7 +2366,7 @@ udx_stream_init (udx_t *udx, udx_stream_t *stream, uint32_t local_id, udx_stream
   uv_timer_init(udx->loop, &stream->refill_pacing_timer);
   stream->refill_pacing_timer.data = stream;
 
-  stream->nrefs = 3; // timer, refill_pacing_timer, pending_packet_prepare
+  stream->nrefs = 4; // timer, delivery_timer, refill_pacing_timer, pending_packet_prepare
 
   udx__queue_init(&stream->inflight_queue);
   udx__queue_init(&stream->retransmit_queue);
@@ -2388,6 +2427,15 @@ udx_stream_set_keepalive (udx_stream_t *stream, uint32_t keepalive_timeout_ms) {
     stream_timer_start(stream, UDX_TIMER_KEEPALIVE, stream->keepalive_timeout_ms);
   }
 
+  return 0;
+}
+
+int
+udx_stream_set_delivery_timeout (udx_stream_t *stream, uint32_t delivery_timeout_ms) {
+  if (stream->status & UDX_STREAM_DEAD) return UV_EINVAL;
+
+  stream->delivery_timeout_ms = delivery_timeout_ms;
+  update_delivery_timer(stream);
   return 0;
 }
 
@@ -2606,6 +2654,7 @@ udx_stream_relay_to (udx_stream_t *stream, udx_stream_t *destination) {
 
   stream->relayed = true;
   stream->relay_to = destination;
+  uv_timer_stop(&stream->delivery_timer);
 
   udx__cirbuf_set(&(destination->relaying_streams), (udx_cirbuf_val_t *) stream);
 

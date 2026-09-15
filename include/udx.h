@@ -308,6 +308,8 @@ struct udx_stream_s {
   uint32_t rttvar;
   uint32_t rto;
   uint32_t keepalive_timeout_ms;
+  uint32_t delivery_timeout_ms;
+  uint64_t delivery_progress_ts;
 
   win_filter_t rtt_min;
 
@@ -371,9 +373,10 @@ struct udx_stream_s {
   bool tlp_permitted;   // if set, srtt has been updated since the last tlp
   uint32_t tlp_end_seq; // seq at time of tlp sent. invalid if tlp_inflight is not set
 
-  int nrefs;        // # of libuv handles open (2 timer, 1 prepare)
+  int nrefs;        // # of libuv handles open (3 timer, 1 prepare)
   uv_timer_t timer; // RTO, RACK_REO,TLP, ZWP and keepalive timer. stream.pending_timer tells which is currently set (if any)
   uv_timer_t refill_pacing_timer;
+  uv_timer_t delivery_timer; // independent deadline for cumulative ACK progress
 
   size_t inflight;
 
@@ -614,6 +617,11 @@ udx_stream_set_seq (udx_stream_t *stream, uint32_t seq);
 
 int
 udx_stream_set_keepalive (udx_stream_t *stream, uint32_t keepalive_timeout_ms);
+
+// Default: 60000 ms without cumulative ACK progress while sent data or END is
+// outstanding. Zero disables this deadline; the RTO retry limit still applies.
+int
+udx_stream_set_delivery_timeout (udx_stream_t *stream, uint32_t delivery_timeout_ms);
 
 int
 udx_stream_get_ack (udx_stream_t *stream, uint32_t *ack);
