@@ -32,6 +32,7 @@ list(APPEND tests
   stream-keepalive
   stream-rto
   stream-rto-sack-progress
+  stream-retransmit-refreshes-header
   stream-strict-sack
   stream-rack-tlp-example
 )

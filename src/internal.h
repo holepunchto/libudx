@@ -98,6 +98,9 @@ void
 bbr_init (udx_stream_t *stream);
 
 void
+bbr_save_cwnd (udx_stream_t *stream);
+
+void
 bbr_on_rto (udx_stream_t *stream);
 
 void
