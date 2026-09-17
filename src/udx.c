@@ -1324,10 +1324,14 @@ ack_packet (udx_stream_t *stream, uint32_t seq, int sack, udx_rate_sample_t *rs)
   udx__rate_pkt_delivered(stream, pkt, rs);
 
   const uint64_t time = uv_now(stream->udx->loop);
-  const uint32_t rtt = clamp_rtt(stream, time - pkt->time_sent);
+  uint32_t rtt = clamp_rtt(stream, time - pkt->time_sent);
   const uint32_t next = seq + 1;
 
   if (!pkt->retransmitted) {
+    // with a 1 ms clock a 0 ms sample means "under a millisecond", not "no sample":
+    // srtt == 0 is what schedule_loss_probe and clamp_rtt read as unknown
+    if (rtt == 0) rtt = 1;
+
     // rack 6.2 step 1 update rack.min_RTT
     win_filter_apply_min(&stream->rtt_min, UDX_RTT_MIN_WINDOW_MS, time, rtt);
 
