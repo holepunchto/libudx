@@ -43,6 +43,10 @@
 // transmission, thus being unable to use it to set rack_time_sent
 // and rack_next_seq, and preventing the fast recovery it is
 // meant to trigger in step 5a, 5b, and 5c.
+//
+// the delay must also exceed the rtt of the undelayed P0 ACK, which sets the
+// windowed minimum rtt: an ACK for a retransmission with rtt < rtt_min is
+// ambiguous and ignored (rack 6.2 step 2), so keep a wide margin for slow hosts.
 #if defined(_WIN32)
 void
 sleep_ms (long milliseconds) {
@@ -184,7 +188,7 @@ on_recv (udx_socket_t *handle, ssize_t read_len, const uv_buf_t *buf, const stru
     pkt.sack.start = udx__swap_uint32_if_be(3);
     pkt.sack.end = udx__swap_uint32_if_be(4);
 
-    sleep_ms(2);
+    sleep_ms(20);
 
     uv_buf_t buf = uv_buf_init((char *) &pkt, sizeof(pkt));
     udx_socket_send(&ack_req, &recv_sock, &buf, 1, (struct sockaddr *) &send_addr, on_ack_sent);
@@ -212,7 +216,7 @@ on_recv (udx_socket_t *handle, ssize_t read_len, const uv_buf_t *buf, const stru
       pkt.sack.start = udx__swap_uint32_if_be(2);
       pkt.sack.end = udx__swap_uint32_if_be(4);
 
-      sleep_ms(2);
+      sleep_ms(20);
       uv_buf_t buf = uv_buf_init((char *) &pkt, sizeof(pkt));
       udx_socket_send(&ack_req, &recv_sock, &buf, 1, (struct sockaddr *) &send_addr, on_ack_sent);
       printf("rack-tlp-test: event=6 time=%u Receive P2, SACK P2 & P3\n", time_ms);
@@ -228,7 +232,7 @@ on_recv (udx_socket_t *handle, ssize_t read_len, const uv_buf_t *buf, const stru
 
     pkt.ack = 4;
 
-    sleep_ms(2);
+    sleep_ms(2); // cumulative ACK, recovery is complete: no rtt rule applies here
     uv_buf_t buf = uv_buf_init((char *) &pkt, sizeof(pkt));
     udx_socket_send(&ack_req, &recv_sock, &buf, 1, (struct sockaddr *) &send_addr, on_ack_sent);
 
