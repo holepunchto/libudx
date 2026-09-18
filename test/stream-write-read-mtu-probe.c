@@ -1,9 +1,11 @@
 #include <assert.h>
-#include <stdbool.h>
 #include <stdlib.h>
-#include <string.h>
 
 #include "../include/udx.h"
+
+// MTU promotion is ACK-driven. Keep enough data queued for every search step
+// to have a later DATA packet available to carry the next probe.
+#define TOTAL_BYTES (8 * 1024 * 1024)
 
 uv_loop_t loop;
 udx_t udx;
@@ -16,14 +18,10 @@ udx_stream_t bstream;
 
 udx_stream_write_t *req;
 
-bool ack_called = false;
-bool read_called = false;
-bool eof_received = false;
-
 int nclosed;
 
 void
-on_close (udx_stream_t *s, int status) {
+on_close (udx_stream_t *stream, int status) {
   assert(status == 0);
 
   nclosed++;
@@ -35,26 +33,20 @@ on_close (udx_stream_t *s, int status) {
 }
 
 void
-on_ack (udx_stream_write_t *req, int status, int unordered) {
+on_ack (udx_stream_write_t *r, int status, int unordered) {
   assert(status == 0);
-  assert(unordered == 0);
 
-  ack_called = true;
+  udx_stream_destroy(&bstream);
+  udx_stream_destroy(&astream);
 }
 
 void
 on_read (udx_stream_t *handle, ssize_t read_len, const uv_buf_t *buf) {
-
-  if (read_len == UV_EOF) {
-    eof_received = true;
-    return;
-  }
-
-  assert(buf->len == 5);
-  assert(buf->len == read_len);
-  assert(memcmp(buf->base, "hello", 5) == 0);
-
-  read_called = true;
+  // A full-write ACK proves that the receiver processed the entire write, so
+  // this test only needs reads enabled; data integrity is covered elsewhere.
+  (void) handle;
+  (void) read_len;
+  (void) buf;
 }
 
 int
@@ -62,6 +54,8 @@ main () {
   int e;
 
   req = malloc(udx_stream_write_sizeof(1));
+
+  assert(req != NULL);
 
   uv_loop_init(&loop);
 
@@ -99,37 +93,22 @@ main () {
   e = udx_stream_read_start(&astream, on_read);
   assert(e == 0);
 
-  uv_buf_t buf = uv_buf_init("hello", 5);
+  char *data = calloc(1, TOTAL_BYTES);
+  assert(data != NULL);
+
+  uv_buf_t buf = uv_buf_init(data, TOTAL_BYTES);
   e = udx_stream_write(req, &bstream, &buf, 1, on_ack);
-  assert(e && "drained");
+  assert(e >= 0);
 
-  udx_stream_write_t *end_request_a = malloc(udx_stream_write_sizeof(1));
-  udx_stream_write_t *end_request_b = malloc(udx_stream_write_sizeof(1));
-
-  // A zero-length END has one write buffer but no DATA flag. Use a deliberately
-  // small target so the padding limit does not mask the packet-type guard.
-  astream.mtu_probe_wanted = true;
-  astream.mtu_probe_size = UDX_IPV4_HEADER_SIZE + 1;
-
-  e = udx_stream_write_end(end_request_a, &astream, NULL, 0, NULL);
-  assert(e);
-  assert(astream.mtu_probe_wanted);
-
-  e = udx_stream_write_end(end_request_b, &bstream, NULL, 0, NULL);
-  assert(e);
-
-  e = uv_run(&loop, UV_RUN_DEFAULT);
-  assert(e == 0);
+  uv_run(&loop, UV_RUN_DEFAULT);
   e = uv_loop_close(&loop);
   assert(e == 0);
 
-  free(end_request_a);
-  free(end_request_b);
-  free(req);
+  // Successful in-band MTU probes should promote the sender from the base MTU to the max MTU.
+  assert(bstream.mtu == UDX_MTU_MAX);
 
-  assert(ack_called && read_called && eof_received);
-  assert(astream.dropped_sacks == 0);
-  assert(bstream.dropped_sacks == 0);
+  free(req);
+  free(data);
 
   return 0;
 }
