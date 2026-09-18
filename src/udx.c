@@ -1175,6 +1175,7 @@ udx_rto_timeout (uv_timer_t *timer) {
   // exit fast recovery if we are in it
   stream->high_seq = stream->seq;
   stream->rto_count++;
+  stream->lifetime_rto_count++;
   stream->ca_state = UDX_CA_LOSS;
 
   // rack 7.1 TLP_init
@@ -1192,6 +1193,10 @@ udx_rto_timeout (uv_timer_t *timer) {
   uint64_t now = uv_now(timer->loop);
   uint32_t rack_reo_wnd = rack_update_reo_wnd(stream);
 
+  if (stream->rto_count > UDX_MAX_RTO_TIMEOUTS) {
+    close_stream(stream, UV_ETIMEDOUT);
+    return;
+  }
   // rack 6.3
 
   for (uint32_t seq = stream->remote_acked; seq != stream->seq; seq++) {
@@ -1206,13 +1211,7 @@ udx_rto_timeout (uv_timer_t *timer) {
     int64_t remaining = pkt->time_sent + stream->rack_rtt + rack_reo_wnd - now;
 
     if (pkt->seq == stream->remote_acked || remaining < 0) {
-      if (pkt->rto_timeouts >= UDX_MAX_RTO_TIMEOUTS) {
-        close_stream(stream, UV_ETIMEDOUT);
-        return;
-      }
-
       stream->lost++;
-      pkt->rto_timeouts++;
 
       if (pkt->is_mtu_probe) {
         mtu_unprobeify_packet(pkt, stream);
@@ -1693,6 +1692,7 @@ process_packet (udx_socket_t *socket, char *buf, ssize_t buf_len, struct sockadd
 
   if (ack_advanced) {
     stream->remote_acked = ack;
+    stream->rto_count = 0;
   }
 
   if (ended) { // remote acked our end

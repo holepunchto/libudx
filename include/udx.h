@@ -265,10 +265,11 @@ struct udx_stream_s {
   uint8_t ca_state;
   uint32_t high_seq; // seq at time of congestion, marks end of recovery
   bool hit_high_watermark;
-  uint16_t rto_count;
+  uint8_t rto_count; // stream closed if rto_count > UDX_MAX_RTO_TIMEOUTS, reset when ack is advanced.
   uint16_t zwp_count;
   uint16_t fast_recovery_count;
   uint16_t retransmit_count;
+  uint16_t lifetime_rto_count; // total rto expirations over the lifetime of the stream
   size_t writes_queued_bytes;
 
   uint16_t pkt_capacity;
@@ -441,7 +442,6 @@ struct udx_packet_s {
   bool lost;
   bool retransmitted;
   uint8_t transmits;
-  uint8_t rto_timeouts;
   bool is_mtu_probe;
   uint8_t ref_count; // 2 references - the uv_udp_send_t callback and the on_ack callback.
                      // when 0, packet has been acked and is not in flight. the packet may be free().
