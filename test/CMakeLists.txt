@@ -2,6 +2,7 @@ list(APPEND tests
   lookup
   lookup-invalid
   lookup-ipv6
+  sack
   socket-send-recv
   socket-send-recv-dualstack
   socket-send-recv-ipv6
@@ -35,6 +36,7 @@ list(APPEND tests
   stream-retransmit-refreshes-header
   stream-strict-sack
   stream-rack-tlp-example
+  stream-ooo-shuffle
 )
 
 list(APPEND skipped_tests
