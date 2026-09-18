@@ -992,6 +992,7 @@ udx_tlp_timeout (uv_timer_t *timer) {
     debug_printf("udx: making tlp from existing packet seq=%u\n", pkt->seq);
 
     udx__queue_unlink(&stream->inflight_queue, &pkt->queue); // retransmit will add it back
+    stream->inflight -= pkt->size;                           // re-incremented on retransmit
     retransmit_packet(stream, pkt);
 
     stream->tlp_is_retrans = true;
