@@ -117,7 +117,7 @@ bbr_set_pacing_rate (udx_stream_t *stream, double bw, double gain) {
   }
 }
 
-static void
+void
 bbr_save_cwnd (udx_stream_t *stream) {
   // save last known cwnd when entering recovery, we use it to restore
   // after completing recovery successfully
@@ -149,7 +149,7 @@ bbr_on_transmit_start (udx_stream_t *stream, uint64_t now_ms) {
 
 // calculate bdp based on min RTT and the estimated bottleneck bandwidth
 // bdp = bw * min_rtt * gain, unit is bytes
-// note: bw is in packets!
+// note: bdp is in packets!
 
 static uint32_t
 bbr_bdp (udx_stream_t *stream, double bw, double gain) {
@@ -158,7 +158,7 @@ bbr_bdp (udx_stream_t *stream, double bw, double gain) {
     return 10; // cap at initial cwnd
   }
 
-  return bw * stream->bbr.min_rtt_ms * gain;
+  return max_uint32(bw * stream->bbr.min_rtt_ms * gain, 1);
 }
 
 static uint32_t
@@ -243,6 +243,7 @@ bbr_set_cwnd (udx_stream_t *stream, udx_rate_sample_t *rs, uint32_t acked, doubl
   cwnd = max_uint32(cwnd, bbr_cwnd_min_target);
 done:
   stream->cwnd = cwnd;
+  assert(stream->cwnd > 0);
   if (stream->bbr.state == UDX_BBR_STATE_PROBE_RTT) {
     stream->cwnd = min_uint32(stream->cwnd, bbr_cwnd_min_target);
   }
@@ -424,8 +425,7 @@ bbr_check_drain (udx_stream_t *stream, udx_rate_sample_t *rs) {
 
     debug_throughput_printf(stream, "drain");
     stream->bbr.state = UDX_BBR_STATE_DRAIN; // drain hypothetical bottleneck queue
-    stream->ssthresh = bbr_inflight(stream, bbr_max_bw(stream), 1.0);
-    // debug_printf("bbr: rid=%u entering DRAIN cwnd=%u ssthresh=%u bbr_max_bw=%f time=%lu\n", stream->remote_id, stream->cwnd, stream->ssthresh, bbr_max_bw(stream), uv_now(stream->udx->loop));
+    // debug_printf("bbr: rid=%u entering DRAIN cwnd=%u bbr_max_bw=%f time=%lu\n", stream->remote_id, stream->cwnd, bbr_max_bw(stream), uv_now(stream->udx->loop));
   }
 
   if (stream->bbr.state == UDX_BBR_STATE_DRAIN && stream->inflight_queue.len <= bbr_inflight(stream, bbr_max_bw(stream), 1.0)) {
@@ -556,7 +556,6 @@ bbr_main (udx_stream_t *stream, udx_rate_sample_t *rs) {
 void
 bbr_init (udx_stream_t *stream) {
   stream->bbr.prior_cwnd = 0;
-  stream->ssthresh = 0xffff;
   stream->bbr.rtt_count = 0;
   stream->bbr.next_rtt_delivered = stream->delivered;
   stream->bbr.prev_ca_state = UDX_CA_OPEN;
@@ -587,21 +586,6 @@ bbr_init (udx_stream_t *stream) {
   stream->bbr.extra_acked_win_index = 0;
   stream->bbr.extra_acked[0] = 0;
   stream->bbr.extra_acked[1] = 0;
-}
-
-// Linux additionally adds these hooks which we may consider in the future
-// bbr_sndbuf_expand(socket)
-//   - unlikely to need, we limit ourselves only with cwnd and rwnd, but don't have a memory limit
-//     (besides of course the kernels send buffer)
-// bbr_undo_cwnd(socket)
-//   - used for cwnd reduction undo e.g. with DSACK
-// bbr_ssthresh(socket)
-//   - called when entering loss recovery, used to save cwnd for recovery
-
-uint32_t
-bbr_ssthresh (udx_stream_t *stream) {
-  bbr_save_cwnd(stream);
-  return stream->ssthresh;
 }
 
 int

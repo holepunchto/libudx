@@ -2,6 +2,7 @@ list(APPEND tests
   lookup
   lookup-invalid
   lookup-ipv6
+  sack
   socket-send-recv
   socket-send-recv-dualstack
   socket-send-recv-ipv6
@@ -18,10 +19,12 @@ list(APPEND tests
   stream-write-read
   stream-write-read-force-drop
   stream-write-read-and-drop-probes
+  stream-write-read-mtu-probe
   stream-write-read-multiple
   stream-write-read-ipv6
   stream-write-read-perf
   stream-change-remote
+  stream-change-remote-mtu
   stream-multiple
   stream-write-read-receive-window
   stream-write-read-receive-window-2
@@ -31,8 +34,11 @@ list(APPEND tests
   stream-combined-write
   stream-keepalive
   stream-rto
+  stream-rto-sack-progress
+  stream-retransmit-refreshes-header
   stream-strict-sack
   stream-rack-tlp-example
+  stream-ooo-shuffle
 )
 
 list(APPEND skipped_tests

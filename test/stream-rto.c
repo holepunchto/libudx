@@ -69,7 +69,7 @@ main () {
   assert(e);
   // hack to make the packet timeout after 1 RTO, obv. relies
   // on many internal details that are likely to change
-  stream.pkt->rto_timeouts = 6;
+  stream.rto_count = 6;
 
   e = uv_run(&loop, UV_RUN_DEFAULT);
   assert(e == 0);

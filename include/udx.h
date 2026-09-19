@@ -221,6 +221,34 @@ struct udx_socket_s {
 #define UDX_CA_RECOVERY 2
 #define UDX_CA_LOSS     3
 
+typedef struct udx_sack_block_s udx_sack_block_t;
+
+typedef struct {
+  udx_queue_node_t queue;
+  uint8_t type; // DATA or END
+  uint32_t len;
+  uint8_t data[];
+} udx_buf_t;
+
+struct udx_sack_block_s {
+  uint32_t start;
+  uint32_t end;
+
+  udx_sack_block_t *left;
+  udx_sack_block_t *right;
+  udx_sack_block_t *parent;
+
+  uint8_t color;
+
+  udx_queue_t packet_queue; // udx_buf_t
+};
+
+typedef struct {
+  udx_sack_block_t *root;
+  udx_sack_block_t *sentinel; // sentinel simplifies code over using NULL for empty leaf nodes
+  udx_sack_block_t _sentinel;
+} udx_sack_tree_t;
+
 typedef enum {
   UDX_TIMER_NONE,
   UDX_TIMER_RTO,
@@ -238,7 +266,6 @@ struct udx_stream_s {
   udx_stream_t *next;
 
   int status;
-  int out_of_order;
 
   // bytes_queued <= bytes_sent <= bytes_acked
   // bytes_inflight = bytes_sent - bytes_acked. idle when bytes_queued == bytes_acked
@@ -249,11 +276,12 @@ struct udx_stream_s {
   uint8_t ca_state;
   uint32_t high_seq; // seq at time of congestion, marks end of recovery
   bool hit_high_watermark;
-  uint16_t rto_count;
+  uint8_t rto_count; // stream closed if rto_count > UDX_MAX_RTO_TIMEOUTS, reset when ack is advanced.
   uint16_t zwp_count;
   uint16_t fast_recovery_count;
   uint16_t retransmit_count;
-  size_t writes_queued_bytes; // todo: redundant? just bytes_queued - bytes_sent
+  uint16_t lifetime_rto_count; // total rto expirations over the lifetime of the stream
+  size_t writes_queued_bytes;  // todo: redundant? just bytes_queued - bytes_sent
 
   uint16_t pkt_capacity;
   uint8_t pkt_header_flag;
@@ -370,8 +398,6 @@ struct udx_stream_s {
 
   uint32_t pacing_bytes_per_ms; // computed by bbr module. 'BBR.pacing_rate' in IETF draft
 
-  uint32_t pkts_buffered; // how many (data) packets received but not processed (out of order)?
-
   // pacing (tb = token bucket)
   uint32_t tb_available;
   uint64_t tb_last_refill_ms;
@@ -391,7 +417,6 @@ struct udx_stream_s {
 
   uint32_t sacks;
   uint32_t cwnd;          // packets
-  uint32_t ssthresh;      // packets
   uint32_t send_rwnd;     // remote advertised rwnd
   uint32_t recv_rwnd_max; // default: UDX_DEFAULT_RWND_MAX
 
@@ -401,7 +426,7 @@ struct udx_stream_s {
   udx_queue_t write_queue;
 
   udx_cirbuf_t outgoing;
-  udx_cirbuf_t incoming;
+  udx_sack_tree_t sack_tree;
 
   udx_queue_t retransmit_queue; // udx_packet_t
   udx_queue_t inflight_queue;   // udx_packet_t
@@ -429,17 +454,16 @@ struct udx_packet_s {
   bool lost;
   bool retransmitted;
   uint8_t transmits;
-  uint8_t rto_timeouts;
   bool is_mtu_probe;
   uint8_t ref_count; // 2 references - the uv_udp_send_t callback and the on_ack callback.
                      // when 0, packet has been acked and is not in flight. the packet may be free().
   uint16_t payload_size;
 
-  // we store remote_addr for each packet instead of using stream->remote_addr
-  // because we want any retransmits to go to the original host even if the user
-  // calls udx_stream_change_remote().
+  // Store the remote identity per packet so partially constructed packets and
+  // retransmits keep going to the original host after udx_stream_change_remote().
   struct sockaddr_storage remote_addr;
   int remote_addr_len;
+  uint32_t remote_id;
 
   uint64_t time_sent;
 
