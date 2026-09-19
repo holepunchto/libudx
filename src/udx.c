@@ -82,7 +82,9 @@ addr_to_v4 (struct sockaddr_in6 *addr) {
 
 uint32_t
 udx__max_payload (udx_stream_t *stream) {
-  return stream->mtu - (stream->remote_addr.ss_family == AF_INET ? UDX_IPV4_HEADER_SIZE : UDX_IPV6_HEADER_SIZE);
+  size_t stream_header_size = stream->remote_addr.ss_family == AF_INET ? UDX_IPV4_HEADER_SIZE : UDX_IPV6_HEADER_SIZE;
+  assert(stream->mtu > stream_header_size);
+  return stream->mtu - stream_header_size;
 }
 
 static inline uint32_t
