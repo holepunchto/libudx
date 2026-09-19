@@ -234,9 +234,11 @@ main () {
     "zero-window state displaced loss recovery"
   );
 
-  assert(
-    bytes_read == FIRST_DATA_SIZE + SECOND_DATA_SIZE
-  );
+  assert(bytes_read == FIRST_DATA_SIZE + SECOND_DATA_SIZE);
+
+  assert(send_stream.bytes_queued == FIRST_DATA_SIZE + SECOND_DATA_SIZE);
+  assert(send_stream.bytes_sent == FIRST_DATA_SIZE + SECOND_DATA_SIZE);
+  assert(send_stream.bytes_acked == FIRST_DATA_SIZE + SECOND_DATA_SIZE);
 
   assert(writes_acked == 2);
 

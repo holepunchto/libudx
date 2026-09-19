@@ -118,6 +118,10 @@ main () {
     printf("%d: send_hash=%lx receive_hash=%lx sent_bytes=%d recv_bytes=%lu\n", i, sender[i].write_hash, receiver[i].read_hash, NBYTES_TO_SEND, receiver[i].nbytes_read);
     assert(sender[i].write_hash == receiver[i].read_hash);
     assert(receiver[i].nbytes_read == NBYTES_TO_SEND);
+
+    assert(sender[i].stream.bytes_sent == NBYTES_TO_SEND);
+    assert(sender[i].stream.bytes_queued == NBYTES_TO_SEND);
+    assert(sender[i].stream.bytes_acked == NBYTES_TO_SEND);
   }
 
   return 0;

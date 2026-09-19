@@ -159,5 +159,9 @@ main () {
 
   assert(bstream.mtu == UDX_MTU_BASE);
 
+  assert(bstream.bytes_queued == options.size_bytes);
+  assert(bstream.bytes_sent == options.size_bytes);
+  assert(bstream.bytes_acked == options.size_bytes);
+
   return 0;
 }

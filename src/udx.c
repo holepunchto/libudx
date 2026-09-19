@@ -82,8 +82,9 @@ addr_to_v4 (struct sockaddr_in6 *addr) {
 
 uint32_t
 udx__max_payload (udx_stream_t *stream) {
-  assert(stream->mtu > (AF_INET ? UDX_IPV4_HEADER_SIZE : UDX_IPV6_HEADER_SIZE));
-  return stream->mtu - (stream->remote_addr.ss_family == AF_INET ? UDX_IPV4_HEADER_SIZE : UDX_IPV6_HEADER_SIZE);
+  size_t stream_header_size = stream->remote_addr.ss_family == AF_INET ? UDX_IPV4_HEADER_SIZE : UDX_IPV6_HEADER_SIZE;
+  assert(stream->mtu > stream_header_size);
+  return stream->mtu - stream_header_size;
 }
 
 static inline uint32_t
@@ -166,6 +167,7 @@ udx_stream_write_sizeof (int nwbufs) {
 
 static void
 on_bytes_acked (udx_stream_write_buf_t *wbuf, size_t bytes, bool cancelled) {
+
   udx_stream_write_t *write = wbuf->write;
   udx_stream_t *stream = write->stream;
 
@@ -298,25 +300,57 @@ udx_write_header (uint8_t header[20], udx_stream_t *stream, int type, uint32_t r
   *(i++) = udx__swap_uint32_if_be(stream->ack);
 }
 
+static int
+udx__packet_overhead (udx_packet_t *pkt) {
+  int family = pkt->remote_addr.ss_family;
+  assert(family == AF_INET || family == AF_INET6);
+
+  return family == AF_INET ? UDX_IPV4_HEADER_SIZE : UDX_IPV6_HEADER_SIZE;
+}
+
+static int
+packet_wire_size (udx_packet_t *pkt) {
+  int overhead = udx__packet_overhead(pkt); // includes header size
+  int size = overhead;
+
+  assert(pkt->bufs[0].len == 20);
+
+  for (int i = 0; i < pkt->nwbufs; i++) {
+    size += pkt->bufs[i + 1].len;
+  }
+
+  size += pkt->header[3];
+
+  if (pkt->header[2] & UDX_HEADER_DATA) {
+    assert(size == overhead + pkt->header[3] + pkt->payload_size);
+  }
+
+  return size;
+}
+
 // returns 1 on success, zero if packet can't be promoted to a probe packet
 static int
-mtu_probeify_packet (udx_packet_t *pkt, int wanted_size) {
+mtu_probeify_packet (udx_packet_t *pkt, int wanted_size /* wire size */) {
   // Only DATA packets can carry an in-band MTU probe, and a packet that
   // already has an extension cannot be padded again.
   if (!(pkt->header[2] & UDX_HEADER_DATA) || pkt->header[3] != 0) {
     return 0;
   }
 
-  const int family = pkt->remote_addr.ss_family;
-  assert(family == AF_INET || family == AF_INET6);
-
-  const int ip_udp_overhead = (family == AF_INET ? UDX_IPV4_HEADER_SIZE : UDX_IPV6_HEADER_SIZE) - UDX_HEADER_SIZE;
-  const int ip_packet_size = pkt->size + ip_udp_overhead;
-  const int padding_size = wanted_size - ip_packet_size;
-  if (padding_size < 0 || padding_size > 255) {
+  if (pkt->nwbufs < 1) {
     return 0;
   }
-  debug_printf("mtu: probeify rid=%u seq=%u size=%d wanted=%d padding=%d\n", udx__swap_uint32_if_be(((unsigned int *) pkt->header)[1]), pkt->seq, ip_packet_size, wanted_size, padding_size);
+  int wire_size = packet_wire_size(pkt);
+
+  if (wanted_size < wire_size) {
+    return 0;
+  }
+
+  int padding_size = wanted_size - wire_size;
+  if (padding_size > 255) {
+    return 0;
+  }
+  debug_printf("mtu: probeify rid=%u seq=%u wire_size=%d wanted=%d padding=%d\n", udx__swap_uint32_if_be(((unsigned int *) pkt->header)[1]), pkt->seq, wire_size, wanted_size, padding_size);
 
   pkt->header[3] = padding_size;
   pkt->is_mtu_probe = true;
@@ -678,7 +712,7 @@ _send_packet (udx_stream_t *stream, udx_packet_t *pkt, bool is_retransmit) {
   }
 
   udx__queue_tail(&stream->inflight_queue, &pkt->queue);
-  stream->inflight += pkt->size;
+  stream->inflight += pkt->payload_size;
 
   uv_buf_t *bufs = pkt->bufs;
   int nbufs = pkt->nwbufs + 1; // udx header
@@ -732,16 +766,18 @@ _send_packet (udx_stream_t *stream, udx_packet_t *pkt, bool is_retransmit) {
   udx_socket_t *socket = stream->socket;
   udx_t *udx = stream->udx;
 
+  uint32_t wire_size = packet_wire_size(pkt);
+
   stream->packets_tx++;
-  stream->bytes_tx += pkt->size;
+  stream->bytes_tx += wire_size;
 
   socket->packets_tx++;
-  socket->bytes_tx += pkt->size;
+  socket->bytes_tx += wire_size;
 
   udx->packets_tx++;
-  udx->bytes_tx += pkt->size;
+  udx->bytes_tx += wire_size;
 
-  stream->tb_available = pkt->size > stream->tb_available ? 0 : stream->tb_available - pkt->size;
+  stream->tb_available = wire_size > stream->tb_available ? 0 : stream->tb_available - wire_size;
 
   if (stream->tb_available == 0) {
     uv_timer_start(&stream->refill_pacing_timer, pacing_timer_timeout, 1, 0);
@@ -763,9 +799,10 @@ reset_next_packet (udx_stream_t *stream) {
   pkt->ref_count = 1;
   pkt->bufs = &pkt->buf_sml[0];
   pkt->wbufs = &pkt->wbuf_sml[0];
-  pkt->size = 20;
+  pkt->payload_size = 0;
   pkt->nwbufs_capacity = UDX_ARRAY_SIZE(pkt->wbuf_sml);
   pkt->nwbufs = 0;
+  pkt->stream_offset = stream->bytes_sent;
 
   uv_prepare_stop(&stream->pending_packet_prepare);
 }
@@ -825,7 +862,13 @@ _send_new_packet (udx_stream_t *stream, bool tlp) {
 
   arm_stream_timers(stream, !tlp); // arm TLP timer unless this packet itself was a TLP
 
-  assert(pkt->size > 0 && pkt->size < 1500);
+  if (pkt->header[2] & UDX_HEADER_DATA) {
+    assert(pkt->payload_size > 0);
+  }
+  if (!stream->remote_changing) {
+    assert(pkt->payload_size <= udx__max_payload(stream));
+  }
+  assert(packet_wire_size(pkt) <= UDX_MTU_MAX);
 
   reset_next_packet(stream);
 }
@@ -836,10 +879,12 @@ on_pending_packet_prepare (uv_prepare_t *check) {
   _send_new_packet(stream, false); // tlp always false here, as we never delay tlp packets
 }
 
-// called by send_packets and when a tlp or zwp is needed.
+// called by send_packets and when a tlp is needed.
 // return true  when successfully queueing a packet,
 //        false when stream window is full or no data is available
 // if probe is set (tlp or zwp) we can ignore the window for this packet
+// from the moment the packet is created, the bytes written to it are moved from 'queued' to 'sent'
+// and the sequence number is considered in flight
 static bool
 send_new_packet (udx_stream_t *stream, bool tlp) {
   if (stream->write_queue.len == 0) return false;
@@ -858,7 +903,8 @@ send_new_packet (udx_stream_t *stream, bool tlp) {
     uv_buf_t partial = uv_buf_init(wbuf->buf.base + wbuf->bytes_acked + wbuf->bytes_inflight, len);
     wbuf->bytes_inflight += len;
     stream->pkt_capacity -= len;
-    pkt->size += len;
+    stream->bytes_sent += len;
+    pkt->payload_size += len;
 
     if (pkt->nwbufs == pkt->nwbufs_capacity) {
       pkt->nwbufs_capacity *= 2;
@@ -992,7 +1038,7 @@ udx_tlp_timeout (uv_timer_t *timer) {
     debug_printf("udx: making tlp from existing packet seq=%u\n", pkt->seq);
 
     udx__queue_unlink(&stream->inflight_queue, &pkt->queue); // retransmit will add it back
-    stream->inflight -= pkt->size;                           // re-incremented on retransmit
+    stream->inflight -= pkt->payload_size;                   // re-incremented on retransmit
     retransmit_packet(stream, pkt);
 
     stream->tlp_is_retrans = true;
@@ -1078,8 +1124,8 @@ rack_detect_loss (udx_stream_t *stream) {
         pkt->lost = true;
         stream->lost++;
 
-        assert(pkt->size > 0 && pkt->size < 1500);
-        stream->inflight -= pkt->size;
+        assert(pkt->payload_size > 0 && pkt->payload_size <= UDX_MTU_MAX);
+        stream->inflight -= pkt->payload_size;
 
         udx__queue_unlink(&stream->inflight_queue, &pkt->queue);
         udx__queue_tail(&stream->retransmit_queue, &pkt->queue);
@@ -1224,7 +1270,7 @@ udx_rto_timeout (uv_timer_t *timer) {
       udx__queue_unlink(&stream->inflight_queue, &pkt->queue);
       udx__queue_tail(&stream->retransmit_queue, &pkt->queue);
 
-      stream->inflight -= pkt->size;
+      stream->inflight -= pkt->payload_size;
     }
   }
 
@@ -1296,7 +1342,7 @@ ack_packet (udx_stream_t *stream, uint32_t seq, int sack, udx_rate_sample_t *rs)
     udx__queue_unlink(&stream->retransmit_queue, &pkt->queue);
   } else {
     udx__queue_unlink(&stream->inflight_queue, &pkt->queue);
-    stream->inflight -= pkt->size;
+    stream->inflight -= pkt->payload_size;
   }
 
   udx__rate_pkt_delivered(stream, pkt, rs);
@@ -1362,6 +1408,8 @@ ack_packet (udx_stream_t *stream, uint32_t seq, int sack, udx_rate_sample_t *rs)
   for (int i = 0; i < pkt->nwbufs; i++) {
     size_t pkt_len = bufs[i + 1].len;
     udx_stream_write_buf_t *wbuf = wbufs[i];
+
+    stream->bytes_acked += pkt_len;
 
     on_bytes_acked(wbuf, pkt_len, false);
     if (stream->status & UDX_STREAM_DEAD) {
@@ -1664,8 +1712,8 @@ process_packet (udx_socket_t *socket, char *buf, ssize_t buf_len, struct sockadd
     }
   }
 
-  if (stream->remote_changing && seq_diff(ack, stream->seq_on_remote_changed) >= 0) {
-    debug_printf("remote_change: packets to old remote acked. ack=%u, last=%u, seq_diff=%d\n", ack, stream->seq_on_remote_changed, seq_diff(ack, stream->seq_on_remote_changed));
+  if (stream->remote_changing && seq_diff(stream->remote_acked, stream->seq_on_remote_changed) >= 0) {
+    debug_printf("remote_change: packets to old remote acked. ack=%u, last=%u, seq_diff=%d\n", ack, stream->seq_on_remote_changed, seq_diff(stream->remote_acked, stream->seq_on_remote_changed));
     stream->remote_changing = false;
     if (stream->on_remote_changed) {
       stream->on_remote_changed(stream);
@@ -2707,6 +2755,7 @@ _udx_stream_write (udx_stream_write_t *write, udx_stream_t *stream, const uv_buf
     wbuf->is_write_end = false;
 
     write->size += bufs[i].len;
+    stream->bytes_queued += bufs[i].len;
     stream->writes_queued_bytes += bufs[i].len;
 
     if (is_write_end && i == bufs_len - 1) {

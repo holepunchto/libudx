@@ -87,5 +87,9 @@ main () {
 
   free(req);
 
+  assert(bstream.bytes_queued == buf.len);
+  assert(bstream.bytes_sent == buf.len);
+  assert(bstream.bytes_acked == buf.len);
+
   return 0;
 }

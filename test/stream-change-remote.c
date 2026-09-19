@@ -181,5 +181,9 @@ main () {
   free(req);
   free(data);
 
+  assert(dstream.bytes_queued == buf.len);
+  assert(dstream.bytes_sent == buf.len);
+  assert(dstream.bytes_acked == buf.len);
+
   return 0;
 }

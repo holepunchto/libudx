@@ -12,8 +12,13 @@ extern "C" {
 #include <uv.h>
 
 #define UDX_HEADER_SIZE      20
-#define UDX_IPV4_HEADER_SIZE (20 + 8 + UDX_HEADER_SIZE)
-#define UDX_IPV6_HEADER_SIZE (40 + 8 + UDX_HEADER_SIZE)
+#define IPV4_HEADER_SIZE     20
+#define IPV6_HEADER_SIZE     40
+#define UDP_HEADER_SIZE      8
+#define UDX_IPV4_OVERHEAD    (IPV4_HEADER_SIZE + UDP_HEADER_SIZE)
+#define UDX_IPV6_OVERHEAD    (IPV6_HEADER_SIZE + UDP_HEADER_SIZE)
+#define UDX_IPV4_HEADER_SIZE (IPV4_HEADER_SIZE + UDP_HEADER_SIZE + UDX_HEADER_SIZE)
+#define UDX_IPV6_HEADER_SIZE (IPV6_HEADER_SIZE + UDP_HEADER_SIZE + UDX_HEADER_SIZE)
 
 // MTU constants TODO: move into udx.c or internal.h?
 #define UDX_MTU_BASE       1200
@@ -262,6 +267,12 @@ struct udx_stream_s {
 
   int status;
 
+  // bytes_queued <= bytes_sent <= bytes_acked
+  // bytes_inflight = bytes_sent - bytes_acked. idle when bytes_queued == bytes_acked
+  uint64_t bytes_queued; // total bytes written to stream
+  uint64_t bytes_sent;   // total bytes written and sent by stream
+  uint64_t bytes_acked;  // total bytes written, sent, and acked by stream
+
   uint8_t ca_state;
   uint32_t high_seq; // seq at time of congestion, marks end of recovery
   bool hit_high_watermark;
@@ -270,7 +281,7 @@ struct udx_stream_s {
   uint16_t fast_recovery_count;
   uint16_t retransmit_count;
   uint16_t lifetime_rto_count; // total rto expirations over the lifetime of the stream
-  size_t writes_queued_bytes;
+  size_t writes_queued_bytes;  // todo: redundant? just bytes_queued - bytes_sent
 
   uint16_t pkt_capacity;
   uint8_t pkt_header_flag;
@@ -311,8 +322,8 @@ struct udx_stream_s {
   int mtu_state; // MTU_STATE_*
   bool mtu_probe_wanted;
   int mtu_probe_count;
-  int mtu_probe_size; // size of the outstanding probe
-  int mtu_max;        // min(UDX_MTU_MAX, get_link_mtu(remote_addr))
+  int mtu_probe_size; // size of the outstanding probe. includes UDX and IP headers
+  int mtu_max;        // min(UDX_MTU_MAX, get_link_mtu(remote_addr)). includes UDX and IP headers
   uint16_t mtu;
 
   uint32_t seq;          // tcp snd.nxt
@@ -401,7 +412,8 @@ struct udx_stream_s {
   uv_timer_t timer; // RTO, RACK_REO,TLP, ZWP and keepalive timer. stream.pending_timer tells which is currently set (if any)
   uv_timer_t refill_pacing_timer;
 
-  size_t inflight;
+  size_t inflight; // bytes sent that have not yet been acked, and are not currently lost.
+                   // todo: expose bytes_sent - bytes_acked instead
 
   uint32_t sacks;
   uint32_t cwnd;          // packets
@@ -445,7 +457,7 @@ struct udx_packet_s {
   bool is_mtu_probe;
   uint8_t ref_count; // 2 references - the uv_udp_send_t callback and the on_ack callback.
                      // when 0, packet has been acked and is not in flight. the packet may be free().
-  uint16_t size;
+  uint16_t payload_size;
 
   // Store the remote identity per packet so partially constructed packets and
   // retransmits keep going to the original host after udx_stream_change_remote().
@@ -454,6 +466,8 @@ struct udx_packet_s {
   uint32_t remote_id;
 
   uint64_t time_sent;
+
+  uint64_t stream_offset; // bytes_sent at time of packet
 
   // rate sampling state
   uint64_t first_sent_ts; // not the same as pkt->time_sent! this is the time sent of the most recently acked packet, used for the start interval of a rate sample
