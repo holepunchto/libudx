@@ -151,10 +151,7 @@ on_recv (udx_socket_t *handle, ssize_t read_len, const uv_buf_t *buf, const stru
   pkt.rwnd = 0xffffffffu;
 
   if (event == 1) {
-    if (transmits[0] == 1 &&
-        transmits[1] == 1 &&
-        transmits[2] == 1 &&
-        transmits[3] == 1) {
+    if (transmits[0] == 1 && transmits[1] == 1 && transmits[2] == 1 && transmits[3] == 1) {
       // once we've received all 4 packets, pretend to
       // have lost 1,2,3 and ack p0
       pkt.ack = udx__swap_uint32_if_be(1);
@@ -306,6 +303,10 @@ main (int argc, char **argv) {
 
   free(req);
   free(data);
+
+  assert(stream.bytes_queued == buf.len);
+  assert(stream.bytes_packetized == buf.len);
+  assert(stream.bytes_acked == buf.len);
 
   return 0;
 }

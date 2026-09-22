@@ -131,5 +131,9 @@ main () {
   assert(astream.dropped_sacks == 0);
   assert(bstream.dropped_sacks == 0);
 
+  assert(astream.bytes_packetized == astream.bytes_acked);
+  assert(bstream.bytes_packetized == buf.len);
+  assert(bstream.bytes_acked == buf.len);
+
   return 0;
 }

@@ -766,6 +766,7 @@ reset_next_packet (udx_stream_t *stream) {
   pkt->size = 20;
   pkt->nwbufs_capacity = UDX_ARRAY_SIZE(pkt->wbuf_sml);
   pkt->nwbufs = 0;
+  pkt->stream_offset = stream->bytes_packetized;
 
   uv_prepare_stop(&stream->pending_packet_prepare);
 }
@@ -858,6 +859,7 @@ send_new_packet (udx_stream_t *stream, bool tlp) {
     uv_buf_t partial = uv_buf_init(wbuf->buf.base + wbuf->bytes_acked + wbuf->bytes_inflight, len);
     wbuf->bytes_inflight += len;
     stream->pkt_capacity -= len;
+    stream->bytes_packetized += len;
     pkt->size += len;
 
     if (pkt->nwbufs == pkt->nwbufs_capacity) {
@@ -1362,6 +1364,8 @@ ack_packet (udx_stream_t *stream, uint32_t seq, int sack, udx_rate_sample_t *rs)
   for (int i = 0; i < pkt->nwbufs; i++) {
     size_t pkt_len = bufs[i + 1].len;
     udx_stream_write_buf_t *wbuf = wbufs[i];
+
+    stream->bytes_acked += pkt_len;
 
     on_bytes_acked(wbuf, pkt_len, false);
     if (stream->status & UDX_STREAM_DEAD) {
@@ -2707,6 +2711,7 @@ _udx_stream_write (udx_stream_write_t *write, udx_stream_t *stream, const uv_buf
     wbuf->is_write_end = false;
 
     write->size += bufs[i].len;
+    stream->bytes_queued += bufs[i].len;
     stream->writes_queued_bytes += bufs[i].len;
 
     if (is_write_end && i == bufs_len - 1) {
