@@ -39,6 +39,7 @@ list(APPEND tests
   stream-strict-sack
   stream-rack-tlp-example
   stream-ooo-shuffle
+  stream-timewait
 )
 
 list(APPEND skipped_tests

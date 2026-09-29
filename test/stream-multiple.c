@@ -45,7 +45,7 @@ all_acked () {
 void
 on_ack (udx_stream_write_t *r, int status, int unordered) {
 
-  struct sender *s = &sender[r->stream->local_id];
+  struct sender *s = &sender[r->stream->entry.local_id];
   s->ack = true;
 
   if (all_acked()) {
@@ -55,7 +55,7 @@ on_ack (udx_stream_write_t *r, int status, int unordered) {
 
 void
 on_read (udx_stream_t *handle, ssize_t read_len, const uv_buf_t *buf) {
-  struct receiver *r = &receiver[handle->local_id - NSTREAMS];
+  struct receiver *r = &receiver[handle->entry.local_id - NSTREAMS];
 
   r->nbytes_read += read_len;
   r->read_hash = hash(r->read_hash, (uint8_t *) buf->base, read_len);
