@@ -1744,7 +1744,6 @@ process_packet (udx_socket_t *socket, char *buf, ssize_t buf_len, struct sockadd
   }
 
   delivered = stream->delivered - delivered;
-  lost = stream->lost - lost;
 
   bool arm_rto_or_tlp = ack_advanced && data_inflight;
 
@@ -1784,6 +1783,7 @@ process_packet (udx_socket_t *socket, char *buf, ssize_t buf_len, struct sockadd
     }
   }
 
+  lost = stream->lost - lost;
   if (data_inflight) {
     // don't generate rates / do congestion control if nothing was in flight, and thus nothing could be acked and no new samples are generated
     udx__rate_gen(stream, delivered, lost, &rs);
