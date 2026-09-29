@@ -45,6 +45,8 @@
 #define UDX_RTT_MIN_WINDOW_MS 300000            // 300 seconds, same as Linux default
 #define UDX_DEFAULT_RWND_MAX  (4 * 1024 * 1024) // arbitrary, ~175 1500 mtu packets, @20ms latency = 416 mbits/sec
 
+#define UDX_STREAM_TIMEWAIT_TIMEOUT_MS 5000
+
 #define UDX_HIGH_WATERMARK 262144
 
 #define UDX_TLP_MAX_ACK_DELAY 2
@@ -123,10 +125,6 @@ ref_dec (udx_t *udx) {
   udx->refs--;
 
   if (udx->refs) return;
-
-  if (udx->has_streams) {
-    udx->has_streams = false;
-  }
 
   if (udx->on_idle != NULL) {
     udx->on_idle(udx);
@@ -414,6 +412,9 @@ close_stream_internal (udx_stream_t *stream, int err);
 
 void
 close_stream (udx_stream_t *stream, int err) {
+  if (err) {
+    stream->status &= ~UDX_STREAM_TIMEWAIT_WANTED;
+  }
   if (stream->status & UDX_STREAM_DESTROYING) {
     return;
   }
@@ -449,7 +450,7 @@ stream_timewait (udx_t *udx, udx_stream_t *stream) {
   timewait->remote_addr = stream->remote_addr;
   udx_write_header(timewait->header, stream, 0, stream->remote_id);
   udx__queue_tail(&stream->socket->timewait_queue, &timewait->queue);
-  uv_timer_start(&timewait->timer, timewait_timeout, 5000, 0);
+  uv_timer_start(&timewait->timer, timewait_timeout, UDX_STREAM_TIMEWAIT_TIMEOUT_MS, 0);
 }
 
 void
@@ -483,8 +484,6 @@ close_stream_internal (udx_stream_t *stream, int err) {
 
   clear_outgoing_packets(stream);
   clear_incoming_packets(stream);
-
-  // TODO: move the instance to a TIME_WAIT state, so we can handle retransmits
 
   if (stream->status & UDX_STREAM_READING) {
     udx_stream_read_stop(stream);
@@ -1550,8 +1549,11 @@ udx_sack_is_valid (udx_stream_t *stream, uint32_t start_seq, uint32_t end_seq) {
   return true;
 }
 
-void
-process_timewait (udx_timewait_t *timewait) {
+static void
+process_timewait (udx_timewait_t *timewait, int type) {
+  if ((type & UDX_HEADER_DATA_OR_END) == 0) {
+    return;
+  }
   udx_socket_t *socket = timewait->socket;
 
   uv_buf_t buf = uv_buf_init((char *) timewait->header, sizeof(timewait->header));
@@ -1572,7 +1574,7 @@ process_packet (udx_socket_t *socket, char *buf, ssize_t buf_len, struct sockadd
   udx->bytes_rx += buf_len;
   udx->packets_rx += 1;
 
-  if (!(udx->has_streams) || buf_len < UDX_HEADER_SIZE) return 0;
+  if (buf_len < UDX_HEADER_SIZE) return 0;
 
   uint8_t *b = (uint8_t *) buf;
 
@@ -1597,17 +1599,17 @@ process_packet (udx_socket_t *socket, char *buf, ssize_t buf_len, struct sockadd
     nsack_blocks = header_len / (2 * sizeof(*sacks));
   }
 
-  udx_stream_entry_t *p = udx_stream_entry_get(udx, local_id);
-  if (p == NULL) {
+  udx_stream_entry_t *entry = udx_stream_entry_get(udx, local_id);
+  if (entry == NULL) {
     return 0;
   }
-  assert(p->entry_type != UDX_ENTRY_UNUSED);
-  if (p->entry_type == UDX_ENTRY_TIMEWAIT) {
-    process_timewait((udx_timewait_t *) p);
+  assert(entry->entry_type != UDX_ENTRY_UNUSED);
+  if (entry->entry_type == UDX_ENTRY_TIMEWAIT) {
+    process_timewait((udx_timewait_t *) entry, type);
     return 1;
   }
 
-  udx_stream_t *stream = (udx_stream_t *) p;
+  udx_stream_t *stream = (udx_stream_t *) entry;
   if (stream->status & UDX_STREAM_DEAD) return 0;
 
   stream->bytes_rx += buf_len;
@@ -1952,24 +1954,12 @@ on_uv_udp_recv (uv_udp_t *handle, ssize_t nread, const uv_buf_t *buf, const stru
 
 int
 udx_init (uv_loop_t *loop, udx_t *udx, udx_idle_cb on_idle) {
-  udx->refs = 0;
-  udx->teardown = false;
-  udx->has_streams = false;
+  memset(udx, 0, sizeof(*udx));
+
   udx->on_idle = on_idle;
-
-  udx->sockets = NULL;
-  udx->streams = NULL;
-  udx->listeners = NULL;
-
-  udx->bytes_rx = 0;
-  udx->bytes_tx = 0;
-  udx->packets_rx = 0;
-  udx->packets_tx = 0;
 
   udx->packets_dropped_by_kernel = -1;
   udx->loop = loop;
-
-  udx->debug_flags = 0;
 
   return 0;
 }
@@ -2374,10 +2364,6 @@ udx_stream_init (udx_t *udx, udx_stream_t *stream, uint32_t local_id, udx_stream
 
   udx->refs++;
 
-  if (!(udx->has_streams)) {
-    udx->has_streams = true;
-  }
-
   udx__link_add(udx->streams, stream);
 
   stream->entry.local_id = local_id;
@@ -2430,7 +2416,16 @@ udx_stream_init (udx_t *udx, udx_stream_t *stream, uint32_t local_id, udx_stream
   udx__queue_init(&stream->retransmit_queue);
 
   // Add the socket to the active set
-  udx_stream_entry_set(udx, &stream->entry);
+  udx_stream_entry_t *entry = udx_stream_entry_set(udx, &stream->entry);
+
+  // it is ok to replace a timewait entry with a new stream, but it
+  // needs clean up
+  if (entry && entry->entry_type == UDX_ENTRY_TIMEWAIT) {
+    udx_timewait_t *timewait = (udx_timewait_t *) entry;
+    uv_timer_stop(&timewait->timer);
+    udx__queue_unlink(&timewait->socket->timewait_queue, &timewait->queue);
+    uv_close((uv_handle_t *) &timewait->timer, timewait_close);
+  }
 
   debug_throughput_init(stream);
   reset_next_packet(stream);
@@ -2880,6 +2875,8 @@ udx_stream_destroy (udx_stream_t *stream) {
     debug_printf("udx: closing already closed stream %u\n", stream->entry.local_id);
     return 0;
   }
+
+  stream->status &= ~UDX_STREAM_TIMEWAIT_WANTED;
 
   if ((stream->status & UDX_STREAM_CONNECTED) == 0) {
     close_stream(stream, 0);

@@ -7,31 +7,18 @@
 
 // timewait state
 // 1. sender (real) send stream writes END packet. since it has not received an END already it is the active closer.
-// 1. receiver (emulated) stream replies END packet and ACKs END packet. the sender will enter TIME-WAIT
-// receiver (emulated) stream receives ACK of END packet, but pretends it didn't receive it.
-// receiver (emulated) stream retransmits END+ACK packet
-// the real stream, which is in TIME-WAIT, retransmits the final END packet
-
-// #if defined(_WIN32)
-// void
-// sleep_ms (long milliseconds) {
-//   Sleep(milliseconds);
-// }
-// #else
-// #include <time.h>
-// void
-// sleep_ms (long milliseconds) {
-//   struct timespec ts;
-//   ts.tv_sec = milliseconds / 1000;
-//   ts.tv_nsec = (milliseconds % 1000) * 1000000L;
-//   nanosleep(&ts, NULL);
-// }
-// #endif
+//    receiver (emulated) stream replies END packet and ACKs END packet. the sender will enter TIME-WAIT
+// 2. receiver (emulated) stream receives ACK of END packet, but pretends it didn't receive it.
+//    receiver (emulated) stream retransmits END+ACK packet
+// 3. the real stream, which is in TIME-WAIT, retransmits the final ACK packet
+//    receiver (emulated) receives the retransmit of the final ACK
 
 uint64_t t0;
 int event;
 
 bool stream_closed;
+bool write_acked;
+bool ack_retransmitted;
 
 uv_loop_t loop;
 udx_t udx;
@@ -87,7 +74,7 @@ on_recv (udx_socket_t *handle, ssize_t read_len, const uv_buf_t *buf, const stru
   uint32_t rwnd = *i++;
   uint32_t seq = *i++;
   uint32_t ack = *i++;
-  printf("timewait test: event=%d time=%d seq=%u len=%d stream.status=%x\n", event, time_ms, seq, (int) buf->len, stream.status);
+  printf("timewait test: event=%d time=%d seq=%u ack=%u type=%x len=%d stream.status=%x\n", event, time_ms, seq, ack, type, (int) buf->len, stream.status);
 
   struct {
     uint8_t magic;
@@ -121,6 +108,8 @@ on_recv (udx_socket_t *handle, ssize_t read_len, const uv_buf_t *buf, const stru
     break;
 
   case 1:
+    assert(write_acked);
+    assert(stream_closed);
     // we receive an ACK to our end packet
     // instead of ending we retransmit the END packet
     pkt.type |= UDX_HEADER_END;
@@ -133,13 +122,15 @@ on_recv (udx_socket_t *handle, ssize_t read_len, const uv_buf_t *buf, const stru
     // the remote in time-wait state retransmits the final ack
     printf("we receive another ACK from the remote in time-wait state\n");
 
+    ack_retransmitted = true;
+
     udx_socket_close(&send_sock);
     udx_socket_close(&recv_sock);
 
     break;
 
   default:
-    __builtin_trap();
+    assert(false);
   }
 
   event++;
@@ -147,7 +138,7 @@ on_recv (udx_socket_t *handle, ssize_t read_len, const uv_buf_t *buf, const stru
 
 static void
 on_ack (udx_stream_write_t *req, int status, int unordered) {
-  printf("on_ack!\n");
+  write_acked = true;
 }
 
 int
@@ -187,6 +178,8 @@ main (int argc, char **argv) {
 
   e = uv_run(&loop, UV_RUN_DEFAULT);
   assert(e == 0);
+
+  assert(ack_retransmitted);
 
   e = uv_loop_close(&loop);
   assert(e == 0);
