@@ -271,7 +271,7 @@ struct udx_stream_s {
   uint8_t ca_state;
   uint32_t high_seq; // seq at time of congestion, marks end of recovery
   bool hit_high_watermark;
-  uint8_t rto_count; // stream closed if rto_count > UDX_MAX_RTO_TIMEOUTS, reset when ack is advanced.
+  uint8_t rto_count; // consecutive rto expirations, reset when ack is advanced. the close rule is the delivery budget, see progress_ts
   uint16_t zwp_count;
   uint16_t fast_recovery_count;
   uint16_t retransmit_count;
@@ -342,6 +342,8 @@ struct udx_stream_s {
   uint32_t rttvar;
   uint32_t rto;
   uint32_t keepalive_timeout_ms;
+  uint32_t delivery_timeout_ms; // 0: default budget (the 13-RTO detection time), see udx_stream_set_delivery_timeout
+  uint64_t progress_ts;         // first send from idle or last cumulative ack advance, start of the delivery budget
 
   win_filter_t rtt_min;
 
@@ -646,6 +648,14 @@ udx_stream_set_seq (udx_stream_t *stream, uint32_t seq);
 
 int
 udx_stream_set_keepalive (udx_stream_t *stream, uint32_t keepalive_timeout_ms);
+
+// Close the stream with UV_ETIMEDOUT when sent data (or END) has been
+// outstanding for this long without cumulative ACK progress, like
+// TCP_USER_TIMEOUT. 0 restores the default budget, which keeps the detection
+// time of the old 7-RTO limit at every RTT. Values below three RTOs are raised
+// to three RTOs.
+int
+udx_stream_set_delivery_timeout (udx_stream_t *stream, uint32_t delivery_timeout_ms);
 
 int
 udx_stream_get_ack (udx_stream_t *stream, uint32_t *ack);
