@@ -40,6 +40,7 @@ list(APPEND tests
   stream-rack-tlp-example
   stream-ooo-shuffle
   stream-timewait
+  stream-timewait-replace-by-new-stream-id
 )
 
 list(APPEND skipped_tests
