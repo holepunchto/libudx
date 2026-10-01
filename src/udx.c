@@ -655,16 +655,25 @@ on_stream_data_write (uv_udp_send_t *send, int status) {
   deref_packet(pkt);
 }
 
+// if sent_packet, compute next_send_ts based on current rate.
+// else, recompute based on new rate.
 static void
-advance_next_send_ts (udx_stream_t *stream) {
+advance_next_send_ts (udx_stream_t *stream, bool sent_packet) {
+  uint64_t now_ms = uv_now(stream->udx->loop);
+
+  if (sent_packet) {
+    // save in case we need to recompute with a new rate later
+    stream->last_send_ts = stream->next_send_ts;
+    stream->last_send_ts_fraction = stream->next_send_ts_fraction;
+  }
+
   // we just sent a packet. adjust next_send_ts
+
   double inter_packet_spacing_ms = 1.0 / stream->pacing_packets_per_ms;
 
   double whole = 0;
-  stream->next_send_ts_fraction = modf(stream->next_send_ts_fraction + inter_packet_spacing_ms, &whole);
-  stream->next_send_ts += whole;
-
-  uint64_t now_ms = uv_now(stream->udx->loop);
+  stream->next_send_ts_fraction = modf(stream->last_send_ts_fraction + inter_packet_spacing_ms, &whole);
+  stream->next_send_ts = stream->last_send_ts + whole;
 
   if (stream->next_send_ts > now_ms) {
     uv_timer_start(&stream->pacing_timer, pacing_timer_timeout, stream->next_send_ts - now_ms, 0);
@@ -753,7 +762,7 @@ _send_packet (udx_stream_t *stream, udx_packet_t *pkt, bool is_retransmit) {
   udx->packets_tx++;
   udx->bytes_tx += pkt->size;
 
-  advance_next_send_ts(stream);
+  advance_next_send_ts(stream, true);
 }
 
 static void
@@ -1795,7 +1804,13 @@ process_packet (udx_socket_t *socket, char *buf, ssize_t buf_len, struct sockadd
   if (data_inflight) {
     // don't generate rates / do congestion control if nothing was in flight, and thus nothing could be acked and no new samples are generated
     udx__rate_gen(stream, delivered, lost, &rs);
+    double pacing_rate = stream->pacing_packets_per_ms;
     bbr_main(stream, &rs);
+
+    if (stream->pacing_packets_per_ms != pacing_rate) {
+      // pacing rate changed - compute new next_send_ts
+      advance_next_send_ts(stream, false);
+    }
   }
 
   send_packets(stream);
@@ -2326,6 +2341,7 @@ udx_stream_init (udx_t *udx, udx_stream_t *stream, uint32_t local_id, udx_stream
   win_filter_reset(&stream->rtt_min, uv_now(udx->loop), ~0U);
 
   stream->next_send_ts = uv_now(udx->loop);
+  stream->last_send_ts = uv_now(udx->loop);
   stream->pacing_packets_per_ms = 1.0; // 9.6 mbit/s, adjusted by bbr on ACK.
 
   uv_prepare_init(udx->loop, &stream->pending_packet_prepare);
@@ -2714,6 +2730,9 @@ _udx_stream_write (udx_stream_write_t *write, udx_stream_t *stream, const uv_buf
     // todo: maybe budget 1ms of burst?
     stream->next_send_ts = uv_now(stream->udx->loop);
     stream->next_send_ts_fraction = 0.0;
+
+    stream->last_send_ts = uv_now(stream->udx->loop);
+    stream->last_send_ts_fraction = 0.0;
   }
 
   // if an idle, zero window stream has data queued, send a zero-window probe immediately

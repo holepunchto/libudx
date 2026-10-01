@@ -388,6 +388,8 @@ struct udx_stream_s {
   // pacing
   uint64_t next_send_ts;        // time to send next packet, may be now, future or past
   double next_send_ts_fraction; // [0.0-1.0)
+  uint64_t last_send_ts;        // last time a paced packet was sent. used to recompute next_send_ts
+  double last_send_ts_fraction; // [0.0-1.0). used to recompute next_send_ts
   double pacing_packets_per_ms; // only used to compute interpacket spacing (ie 1/pacing_packets_per_ms)
 
   // tlp
