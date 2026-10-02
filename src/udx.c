@@ -555,6 +555,7 @@ send_probe (udx_stream_t *stream) {
     int err = uv_udp_send(req, &stream->socket->uv_udp, &buf, 1, (struct sockaddr *) &stream->remote_addr, on_packet_send_slow);
     if (err) {
       debug_printf("uv_udp_send error: %s\n", uv_strerror(err));
+      free(req);
     }
   }
 
@@ -644,6 +645,7 @@ send_ack (udx_stream_t *stream) {
     int err = uv_udp_send(req, &stream->socket->uv_udp, &buf, 1, (struct sockaddr *) &stream->remote_addr, on_packet_send_slow);
     if (err) {
       debug_printf("uv_udp_send: err=%s\n", uv_strerror(err));
+      free(req);
     }
   }
 
@@ -1518,6 +1520,9 @@ relay_packet (udx_stream_t *stream, char *buf, ssize_t buf_len, int type, uint32
       b = uv_buf_init(data, b.len);
 
       err = uv_udp_send(req, &relay->socket->uv_udp, &b, 1, (struct sockaddr *) &relay->remote_addr, on_packet_send_slow);
+      if (err) {
+        free(req);
+      }
     }
   }
 
@@ -1559,7 +1564,19 @@ process_timewait (udx_timewait_t *timewait, int type) {
   uv_buf_t buf = uv_buf_init((char *) timewait->header, sizeof(timewait->header));
   int err = uv_udp_try_send(&socket->uv_udp, &buf, 1, (struct sockaddr *) &timewait->remote_addr);
 
-  if (err < 0) {
+  if (err == UV_EAGAIN) {
+    // slow path
+    uv_udp_send_t *req = malloc(sizeof(uv_udp_send_t) + buf.len);
+    char *data = (char *) (req + 1);
+    memcpy(data, buf.base, buf.len);
+    buf.base = data;
+    req->data = NULL;
+    int err = uv_udp_send(req, &socket->uv_udp, &buf, 1, (struct sockaddr *) &timewait->remote_addr, on_packet_send_slow);
+    if (err) {
+      debug_printf("uv_udp_send error: %s\n", uv_strerror(err));
+      free(req);
+    }
+  } else if (err < 0) {
     debug_printf("udx: failed to ack in timewait\n");
   }
 }
