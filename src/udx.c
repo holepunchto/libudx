@@ -2820,7 +2820,7 @@ udx_stream_write_end (udx_stream_write_t *req, udx_stream_t *stream, const uv_bu
     return UV_EPIPE;
   }
 
-  if (!(stream->status & UDX_STREAM_ENDING_REMOTE)) {
+  if (!(stream->status & UDX_STREAM_ENDED_REMOTE)) {
     stream->status |= UDX_STREAM_TIMEWAIT_WANTED;
   }
 
