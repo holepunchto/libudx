@@ -262,6 +262,12 @@ struct udx_stream_s {
 
   int status;
 
+  // bytes_queued >= bytes_packetized >= bytes_acked
+  // bytes_out = bytes_packetized - bytes_acked. idle when bytes_queued == bytes_acked
+  uint64_t bytes_queued;     // total bytes written to stream
+  uint64_t bytes_packetized; // total bytes written and packetized by stream
+  uint64_t bytes_acked;      // total bytes written, sent, and acked
+
   uint8_t ca_state;
   uint32_t high_seq; // seq at time of congestion, marks end of recovery
   bool hit_high_watermark;
@@ -270,7 +276,7 @@ struct udx_stream_s {
   uint16_t fast_recovery_count;
   uint16_t retransmit_count;
   uint16_t lifetime_rto_count; // total rto expirations over the lifetime of the stream
-  size_t writes_queued_bytes;
+  size_t writes_queued_bytes;  // todo: redundant? just bytes_queued - bytes_sent
 
   uint16_t pkt_capacity;
   uint8_t pkt_header_flag;
@@ -454,6 +460,8 @@ struct udx_packet_s {
   uint32_t remote_id;
 
   uint64_t time_sent;
+
+  uint64_t stream_offset; // bytes_packetized at time of packet
 
   // rate sampling state
   uint64_t first_sent_ts; // not the same as pkt->time_sent! this is the time sent of the most recently acked packet, used for the start interval of a rate sample
