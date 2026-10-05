@@ -38,6 +38,7 @@ list(APPEND tests
   stream-delivery-budget
   stream-delivery-timeout-explicit
   stream-delivery-late-timer
+  stream-delivery-late-timer-bound
   stream-retransmit-refreshes-header
   stream-strict-sack
   stream-rack-tlp-example

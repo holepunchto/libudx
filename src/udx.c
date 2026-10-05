@@ -406,12 +406,16 @@ clamp_rto_to_deadline (udx_stream_t *stream, uint32_t wait) {
 // a retransmission timer firing more than one base RTO after the RTO was due
 // means the loop did not run (stall, suspend). do not charge that time to the
 // delivery budget: shift the budget by the lateness, and never leave less than
-// one base RTO for the ACK of the probe sent now. returns true if late.
+// one base RTO for the ACK of the probe sent now. at most UDX_MAX_RTO_TIMEOUTS
+// late firings are absorbed per cumulative ack advance, so a loop that is late
+// on every firing still detects a dead peer. returns true if absorbed.
 static bool
 absorb_late_timer (udx_stream_t *stream, uint64_t now) {
   uint32_t base = base_rto(stream);
 
   if (now <= stream->next_rto_ts + base) return false;
+  if (stream->late_rto_count >= UDX_MAX_RTO_TIMEOUTS) return false;
+  stream->late_rto_count++;
 
   uint64_t budget = delivery_budget(stream);
   uint64_t until = now + base;
@@ -1253,8 +1257,9 @@ udx_rto_timeout (uv_timer_t *timer) {
 
   uint64_t now = uv_now(timer->loop);
 
-  // close when the delivery budget is spent, unless this firing is late (the
-  // loop was stalled or the process suspended): then probe once more first.
+  // close when the delivery budget is spent, unless this firing is late and
+  // absorbed (the loop was stalled or the process suspended): then probe once
+  // more first.
   if (!absorb_late_timer(stream, now) && now >= stream->progress_ts + delivery_budget(stream)) {
     close_stream(stream, UV_ETIMEDOUT);
     return;
@@ -1771,6 +1776,7 @@ process_packet (udx_socket_t *socket, char *buf, ssize_t buf_len, struct sockadd
   if (ack_advanced) {
     stream->remote_acked = ack;
     stream->rto_count = 0;
+    stream->late_rto_count = 0;
     stream->progress_ts = uv_now(stream->udx->loop);
   }
 

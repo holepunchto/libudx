@@ -335,6 +335,7 @@ struct udx_stream_s {
   uint32_t rate_delivered;         // saved rate sample: packets delivered
   uint32_t rate_interval_ms;       // saved rate sample: time elapsed
   bool rate_sample_is_app_limited; // saved rate sample: app limited?
+  uint8_t late_rto_count;          // late retransmission timer firings absorbed since the last cumulative ack advance
 
   udx_stream_timer_type_t pending_timer;
   uint64_t next_rto_ts; // todo: remove this, calculate from oldest packet (head) in rtx queue
