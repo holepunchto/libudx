@@ -2851,7 +2851,6 @@ udx_stream_destroy (udx_stream_t *stream) {
     req->data = stream;
     err = uv_udp_send(req, &stream->socket->uv_udp, &buf, 1, (struct sockaddr *) &stream->remote_addr, _stream_on_destroy_send);
     if (err < 0) {
-      debug_printf("uv_udp_send: error=%s\n", uv_strerror(err));
       free(req);
       stream_on_destroy_send(stream);
     }
