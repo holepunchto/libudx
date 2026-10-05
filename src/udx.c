@@ -1223,10 +1223,18 @@ udx_rto_timeout (uv_timer_t *timer) {
   stream->tlp_is_retrans = false;
 
   uint64_t now = uv_now(timer->loop);
+  uint64_t deadline = stream->progress_ts + delivery_budget(stream);
 
-  if (now >= stream->progress_ts + delivery_budget(stream)) {
-    close_stream(stream, UV_ETIMEDOUT);
-    return;
+  if (now >= deadline) {
+    uint32_t base = base_rto(stream);
+
+    // fired late, the loop did not run (sleep, stall): probe and wait 3 rtos before giving up
+    if (now <= stream->next_rto_ts + base || stream->rto_count > UDX_MAX_RTO_TIMEOUTS) {
+      close_stream(stream, UV_ETIMEDOUT);
+      return;
+    }
+
+    stream->progress_ts += now - deadline + 3 * base;
   }
 
   assert(!(stream->status & UDX_STREAM_CLOSED));
