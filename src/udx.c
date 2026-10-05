@@ -2486,6 +2486,17 @@ udx_stream_set_keepalive (udx_stream_t *stream, uint32_t keepalive_timeout_ms) {
 int
 udx_stream_set_delivery_timeout (udx_stream_t *stream, uint32_t delivery_timeout_ms) {
   stream->delivery_timeout_ms = delivery_timeout_ms;
+
+  // re-arm a pending RTO with its remaining wait, so that the clamp to the new
+  // deadline applies now. an RTO that is already due is left alone, it checks
+  // the budget when it fires and keeps next_rto_ts for absorb_late_timer. a
+  // pending TLP or RACK timer re-arms the RTO through stream_timer_start, which
+  // applies the clamp then.
+  if (stream->pending_timer == UDX_TIMER_RTO && (stream->status & UDX_STREAM_CONNECTED)) {
+    uint64_t now = uv_now(stream->udx->loop);
+    if (stream->next_rto_ts > now) stream_timer_start(stream, UDX_TIMER_RTO, (uint32_t) (stream->next_rto_ts - now));
+  }
+
   return 0;
 }
 

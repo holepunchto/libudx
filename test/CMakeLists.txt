@@ -37,6 +37,7 @@ list(APPEND tests
   stream-rto-sack-progress
   stream-delivery-budget
   stream-delivery-timeout-explicit
+  stream-delivery-timeout-set-pending
   stream-delivery-late-timer
   stream-delivery-late-timer-bound
   stream-retransmit-refreshes-header

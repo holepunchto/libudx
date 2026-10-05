@@ -654,7 +654,9 @@ udx_stream_set_keepalive (udx_stream_t *stream, uint32_t keepalive_timeout_ms);
 // outstanding for this long without cumulative ACK progress, like
 // TCP_USER_TIMEOUT. 0 restores the default budget, which keeps the detection
 // time of the old 7-RTO limit at every RTT. Values below three RTOs are raised
-// to three RTOs.
+// to three RTOs. Takes effect immediately, also while data is outstanding: the
+// time is counted from the first send from idle or the last ACK advance, not
+// from this call.
 int
 udx_stream_set_delivery_timeout (udx_stream_t *stream, uint32_t delivery_timeout_ms);
 
