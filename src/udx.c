@@ -1097,6 +1097,9 @@ rack_detect_loss (udx_stream_t *stream) {
     }
   }
 
+  // an isolated MTU probe loss signals the path MTU, not congestion (RFC 4821)
+  if (resending == mtu_probes_lost) stream->lost -= mtu_probes_lost;
+
   if (resending > mtu_probes_lost && stream->ca_state == UDX_CA_OPEN) {
     // debug_printf("rack: rid=%u lost=%d mtu_probe_lost=%d\n", stream->remote_id, resending, mtu_probes_lost);
     // debug_print_outgoing(stream);
