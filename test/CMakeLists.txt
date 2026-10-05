@@ -35,9 +35,7 @@ list(APPEND tests
   stream-keepalive
   stream-rto
   stream-rto-sack-progress
-  stream-delivery-budget
-  stream-delivery-timeout-explicit
-  stream-delivery-timeout-set-pending
+  stream-delivery-timeout
   stream-delivery-late-timer
   stream-delivery-late-timer-bound
   stream-retransmit-refreshes-header
@@ -78,7 +76,7 @@ foreach(test IN LISTS tests)
     TIMEOUT 30
   )
 
-  if(${test} STREQUAL stream-write-read-force-drop OR ${test} STREQUAL stream-delivery-budget)
+  if(${test} STREQUAL stream-write-read-force-drop)
     set_tests_properties(
       ${test}
       PROPERTIES

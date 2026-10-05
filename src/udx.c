@@ -366,17 +366,14 @@ udx_zwp_timeout (uv_timer_t *timer);
 static void
 udx_keepalive_timeout (uv_timer_t *timer);
 
-// the RTO formula without backoff: the delivery budget is expressed in these,
-// so that the default dead-peer detection time does not depend on backoff.
+// rto without backoff, so backoff does not stretch the delivery budget
 static uint32_t
 base_rto (udx_stream_t *stream) {
   if (stream->srtt == 0) return 1000;
   return min_uint32(max_uint32(stream->srtt + 4 * stream->rttvar, 1000), UDX_RTO_MAX_MS);
 }
 
-// time allowed without cumulative ack progress while data is outstanding.
-// default: one TLP plus the first RTO and UDX_MAX_RTO_TIMEOUTS doubled retries,
-// i.e. the time at which the old 'rto_count > UDX_MAX_RTO_TIMEOUTS' rule closed.
+// default: the time the old limit of UDX_MAX_RTO_TIMEOUTS doubled rtos took (tlp + 13 rto)
 static uint64_t
 delivery_budget (udx_stream_t *stream) {
   uint32_t base = base_rto(stream);
@@ -389,8 +386,7 @@ delivery_budget (udx_stream_t *stream) {
   return (uint64_t) (2 * UDX_MAX_RTO_TIMEOUTS + 1) * base + tlp;
 }
 
-// clamp an RTO wait to the delivery deadline, leaving one base RTO for the ACK
-// of the last retransmission (like linux tcp_clamp_rto_to_user_timeout).
+// leave one rto before the deadline for the ack of the last retransmit (like tcp_clamp_rto_to_user_timeout)
 static uint32_t
 clamp_rto_to_deadline (udx_stream_t *stream, uint32_t wait) {
   uint64_t now = uv_now(stream->udx->loop);
@@ -403,12 +399,7 @@ clamp_rto_to_deadline (udx_stream_t *stream, uint32_t wait) {
   return wait;
 }
 
-// a retransmission timer firing more than one base RTO after the RTO was due
-// means the loop did not run (stall, suspend). do not charge that time to the
-// delivery budget: shift the budget by the lateness, and never leave less than
-// one base RTO for the ACK of the probe sent now. at most UDX_MAX_RTO_TIMEOUTS
-// late firings are absorbed per cumulative ack advance, so a loop that is late
-// on every firing still detects a dead peer. returns true if absorbed.
+// a timer firing late means the loop did not run (stall, suspend), don't charge that to the budget
 static bool
 absorb_late_timer (udx_stream_t *stream, uint64_t now) {
   uint32_t base = base_rto(stream);
@@ -422,8 +413,6 @@ absorb_late_timer (udx_stream_t *stream, uint64_t now) {
 
   stream->progress_ts += now - stream->next_rto_ts;
   if (stream->progress_ts + budget < until) stream->progress_ts = until - budget;
-
-  debug_printf("rto: timer fired %" PRIu64 " ms late, delivery budget shifted rid=%u\n", now - stream->next_rto_ts, stream->remote_id);
 
   return true;
 }
@@ -854,7 +843,7 @@ _send_new_packet (udx_stream_t *stream, bool tlp) {
   udx_packet_t *pkt = stream->pkt;
 
   if (stream->remote_acked == stream->seq) {
-    stream->progress_ts = uv_now(stream->udx->loop); // first send from idle starts the delivery budget
+    stream->progress_ts = uv_now(stream->udx->loop);
     stream->late_timer_count = 0;
   }
 
@@ -1258,9 +1247,6 @@ udx_rto_timeout (uv_timer_t *timer) {
 
   uint64_t now = uv_now(timer->loop);
 
-  // close when the delivery budget is spent, unless this firing is late and
-  // absorbed (the loop was stalled or the process suspended): then probe once
-  // more first.
   if (!absorb_late_timer(stream, now) && now >= stream->progress_ts + delivery_budget(stream)) {
     close_stream(stream, UV_ETIMEDOUT);
     return;
@@ -2488,12 +2474,7 @@ int
 udx_stream_set_delivery_timeout (udx_stream_t *stream, uint32_t delivery_timeout_ms) {
   stream->delivery_timeout_ms = delivery_timeout_ms;
 
-  // re-arm a pending RTO with its remaining wait, so that the clamp to the new
-  // deadline applies now. the remaining wait is read from the timer itself,
-  // next_rto_ts can be ahead of it after sack-only progress. an RTO that is
-  // already due is left alone, it checks the budget when it fires. a pending
-  // TLP or RACK timer re-arms the RTO through stream_timer_start, which applies
-  // the clamp then.
+  // apply the new deadline to a pending rto
   if (stream->pending_timer == UDX_TIMER_RTO && (stream->status & UDX_STREAM_CONNECTED)) {
     uint64_t due_in = uv_timer_get_due_in(&stream->timer);
     if (due_in > 0) stream_timer_start(stream, UDX_TIMER_RTO, (uint32_t) due_in);

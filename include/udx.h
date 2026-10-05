@@ -271,7 +271,7 @@ struct udx_stream_s {
   uint8_t ca_state;
   uint32_t high_seq; // seq at time of congestion, marks end of recovery
   bool hit_high_watermark;
-  uint8_t rto_count; // consecutive rto expirations, reset when ack is advanced. the close rule is the delivery budget, see progress_ts
+  uint8_t rto_count; // consecutive rto expirations, reset when ack is advanced.
   uint16_t zwp_count;
   uint16_t fast_recovery_count;
   uint16_t retransmit_count;
@@ -335,7 +335,7 @@ struct udx_stream_s {
   uint32_t rate_delivered;         // saved rate sample: packets delivered
   uint32_t rate_interval_ms;       // saved rate sample: time elapsed
   bool rate_sample_is_app_limited; // saved rate sample: app limited?
-  uint8_t late_timer_count;        // late retransmission timer firings absorbed since the last cumulative ack advance
+  uint8_t late_timer_count;        // late timer firings not charged to the delivery budget
 
   udx_stream_timer_type_t pending_timer;
   uint64_t next_rto_ts; // todo: remove this, calculate from oldest packet (head) in rtx queue
@@ -343,8 +343,8 @@ struct udx_stream_s {
   uint32_t rttvar;
   uint32_t rto;
   uint32_t keepalive_timeout_ms;
-  uint32_t delivery_timeout_ms; // 0: default budget (the 13-RTO detection time), see udx_stream_set_delivery_timeout
-  uint64_t progress_ts;         // first send from idle or last cumulative ack advance, start of the delivery budget
+  uint32_t delivery_timeout_ms;
+  uint64_t progress_ts; // first send from idle or last ack advance
 
   win_filter_t rtt_min;
 
@@ -650,14 +650,8 @@ udx_stream_set_seq (udx_stream_t *stream, uint32_t seq);
 int
 udx_stream_set_keepalive (udx_stream_t *stream, uint32_t keepalive_timeout_ms);
 
-// Close the stream with UV_ETIMEDOUT when sent data (or END) has been
-// outstanding for this long without cumulative ACK progress, like
-// TCP_USER_TIMEOUT. 0 restores the default budget, which keeps the detection
-// time of the old 7-RTO limit at every RTT. Values below three RTOs are raised
-// to three RTOs. Also applies while data is outstanding: the time is counted
-// from the first send from idle or the last ACK advance, not from this call. A
-// pending RTO is rescheduled at once, a pending TLP or RACK timer applies the
-// new value when it fires.
+// close with UV_ETIMEDOUT when data is unacked for this long, like TCP_USER_TIMEOUT.
+// 0 is the default (13 rtos), values below 3 rtos are raised to 3 rtos.
 int
 udx_stream_set_delivery_timeout (udx_stream_t *stream, uint32_t delivery_timeout_ms);
 
