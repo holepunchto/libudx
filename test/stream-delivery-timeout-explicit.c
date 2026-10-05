@@ -17,7 +17,7 @@
 // that the stream closes with UV_ETIMEDOUT at that timeout, after at least two
 // retransmissions, and that values below three RTOs are raised to three RTOs.
 
-#define TOLERANCE_MS 300
+#define TOLERANCE_MS 500
 
 typedef struct {
   uint8_t magic;

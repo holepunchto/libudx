@@ -20,8 +20,10 @@ the close happens at the deadline.
 
 `udx_stream_set_delivery_timeout(stream, timeout_ms)` sets a different budget
 for a stream, like `TCP_USER_TIMEOUT`. Values below three RTOs are raised to
-three RTOs, and `0` restores the default. A new value applies at once, also to
-a stream that is already waiting for an ACK, and counts from the same start.
+three RTOs, and `0` restores the default. A new value also applies to a stream
+that is already waiting for an ACK and counts from the same start: a pending
+retransmission timeout is rescheduled at once, a pending tail loss probe or RACK
+reorder timer applies it when it fires.
 
 If a retransmission timer fires more than one RTO late, because the event loop
 was blocked or the process was suspended, the time the loop did not run is not

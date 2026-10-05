@@ -414,8 +414,8 @@ absorb_late_timer (udx_stream_t *stream, uint64_t now) {
   uint32_t base = base_rto(stream);
 
   if (now <= stream->next_rto_ts + base) return false;
-  if (stream->late_rto_count >= UDX_MAX_RTO_TIMEOUTS) return false;
-  stream->late_rto_count++;
+  if (stream->late_timer_count >= UDX_MAX_RTO_TIMEOUTS) return false;
+  stream->late_timer_count++;
 
   uint64_t budget = delivery_budget(stream);
   uint64_t until = now + base;
@@ -855,6 +855,7 @@ _send_new_packet (udx_stream_t *stream, bool tlp) {
 
   if (stream->remote_acked == stream->seq) {
     stream->progress_ts = uv_now(stream->udx->loop); // first send from idle starts the delivery budget
+    stream->late_timer_count = 0;
   }
 
   if (pkt->remote_addr_len == 0) {
@@ -1776,7 +1777,7 @@ process_packet (udx_socket_t *socket, char *buf, ssize_t buf_len, struct sockadd
   if (ack_advanced) {
     stream->remote_acked = ack;
     stream->rto_count = 0;
-    stream->late_rto_count = 0;
+    stream->late_timer_count = 0;
     stream->progress_ts = uv_now(stream->udx->loop);
   }
 
@@ -2488,13 +2489,14 @@ udx_stream_set_delivery_timeout (udx_stream_t *stream, uint32_t delivery_timeout
   stream->delivery_timeout_ms = delivery_timeout_ms;
 
   // re-arm a pending RTO with its remaining wait, so that the clamp to the new
-  // deadline applies now. an RTO that is already due is left alone, it checks
-  // the budget when it fires and keeps next_rto_ts for absorb_late_timer. a
-  // pending TLP or RACK timer re-arms the RTO through stream_timer_start, which
-  // applies the clamp then.
+  // deadline applies now. the remaining wait is read from the timer itself,
+  // next_rto_ts can be ahead of it after sack-only progress. an RTO that is
+  // already due is left alone, it checks the budget when it fires. a pending
+  // TLP or RACK timer re-arms the RTO through stream_timer_start, which applies
+  // the clamp then.
   if (stream->pending_timer == UDX_TIMER_RTO && (stream->status & UDX_STREAM_CONNECTED)) {
-    uint64_t now = uv_now(stream->udx->loop);
-    if (stream->next_rto_ts > now) stream_timer_start(stream, UDX_TIMER_RTO, (uint32_t) (stream->next_rto_ts - now));
+    uint64_t due_in = uv_timer_get_due_in(&stream->timer);
+    if (due_in > 0) stream_timer_start(stream, UDX_TIMER_RTO, (uint32_t) due_in);
   }
 
   return 0;

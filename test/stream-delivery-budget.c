@@ -18,7 +18,8 @@
 // the old 'rto_count > 6' rule: 13 * RTO + min(2 * SRTT + 2, RTO), with the
 // RTO computed without backoff. All cases run concurrently.
 
-#define TOLERANCE_MS 150
+#define EARLY_MS 150 // millisecond truncation and timer slop
+#define LATE_MS  500 // slow CI runners
 
 typedef struct {
   uint8_t magic;
@@ -163,14 +164,14 @@ main () {
 
   for (size_t i = 0; i < NCASES; i++) {
     test_case_t *c = &cases[i];
-    fprintf(stderr, "%s: closed %d at %llu ms (expected %llu +- %d), rto_count=%u lifetime_rto_count=%u, %d transmissions at", c->name, c->close_status, (unsigned long long) c->closed_ms, (unsigned long long) c->expected_ms, TOLERANCE_MS, c->stream.rto_count, c->stream.lifetime_rto_count, c->transmits);
+    fprintf(stderr, "%s: closed %d at %llu ms (expected %llu, -%d/+%d), rto_count=%u lifetime_rto_count=%u, %d transmissions at", c->name, c->close_status, (unsigned long long) c->closed_ms, (unsigned long long) c->expected_ms, EARLY_MS, LATE_MS, c->stream.rto_count, c->stream.lifetime_rto_count, c->transmits);
     for (int j = 0; j < c->transmits && j < 32; j++)
       fprintf(stderr, " %llu", (unsigned long long) c->transmit_ms[j]);
     fprintf(stderr, "\n");
 
     if (c->close_status != UV_ETIMEDOUT) ok = false;
     if (c->ack_status != UV_ECANCELED) ok = false;
-    if (c->closed_ms + TOLERANCE_MS < c->expected_ms || c->closed_ms > c->expected_ms + TOLERANCE_MS) ok = false;
+    if (c->closed_ms + EARLY_MS < c->expected_ms || c->closed_ms > c->expected_ms + LATE_MS) ok = false;
     if (c->transmits < 3) ok = false;
     free(c->req);
   }

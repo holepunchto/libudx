@@ -335,7 +335,7 @@ struct udx_stream_s {
   uint32_t rate_delivered;         // saved rate sample: packets delivered
   uint32_t rate_interval_ms;       // saved rate sample: time elapsed
   bool rate_sample_is_app_limited; // saved rate sample: app limited?
-  uint8_t late_rto_count;          // late retransmission timer firings absorbed since the last cumulative ack advance
+  uint8_t late_timer_count;        // late retransmission timer firings absorbed since the last cumulative ack advance
 
   udx_stream_timer_type_t pending_timer;
   uint64_t next_rto_ts; // todo: remove this, calculate from oldest packet (head) in rtx queue
@@ -654,9 +654,10 @@ udx_stream_set_keepalive (udx_stream_t *stream, uint32_t keepalive_timeout_ms);
 // outstanding for this long without cumulative ACK progress, like
 // TCP_USER_TIMEOUT. 0 restores the default budget, which keeps the detection
 // time of the old 7-RTO limit at every RTT. Values below three RTOs are raised
-// to three RTOs. Takes effect immediately, also while data is outstanding: the
-// time is counted from the first send from idle or the last ACK advance, not
-// from this call.
+// to three RTOs. Also applies while data is outstanding: the time is counted
+// from the first send from idle or the last ACK advance, not from this call. A
+// pending RTO is rescheduled at once, a pending TLP or RACK timer applies the
+// new value when it fires.
 int
 udx_stream_set_delivery_timeout (udx_stream_t *stream, uint32_t delivery_timeout_ms);
 

@@ -71,9 +71,9 @@ on_close (udx_stream_t *stream, int status) {
   closed_ms = elapsed_ms();
   close_status = status;
 
-  fprintf(stderr, "closed %d at %llu ms after %d stalls, late_rto_count=%u lifetime_rto_count=%u retransmit_count=%u\n", status, (unsigned long long) closed_ms, lags, stream->late_rto_count, stream->lifetime_rto_count, stream->retransmit_count);
+  fprintf(stderr, "closed %d at %llu ms after %d stalls, late_timer_count=%u lifetime_rto_count=%u retransmit_count=%u\n", status, (unsigned long long) closed_ms, lags, stream->late_timer_count, stream->lifetime_rto_count, stream->retransmit_count);
 
-  assert(stream->late_rto_count == MAX_LATE_FIRINGS);
+  assert(stream->late_timer_count == MAX_LATE_FIRINGS);
 
   uv_close((uv_handle_t *) &lag_timer, NULL);
   udx_socket_close(&sock);
@@ -85,7 +85,7 @@ on_lag (uv_timer_t *timer) {
   (void) timer;
 
   if (lags == MAX_STALLS) {
-    fprintf(stderr, "not closed at %llu ms after %d stalls, late_rto_count=%u lifetime_rto_count=%u retransmit_count=%u\n", (unsigned long long) elapsed_ms(), lags, stream.late_rto_count, stream.lifetime_rto_count, stream.retransmit_count);
+    fprintf(stderr, "not closed at %llu ms after %d stalls, late_timer_count=%u lifetime_rto_count=%u retransmit_count=%u\n", (unsigned long long) elapsed_ms(), lags, stream.late_timer_count, stream.lifetime_rto_count, stream.retransmit_count);
     abort();
   }
 

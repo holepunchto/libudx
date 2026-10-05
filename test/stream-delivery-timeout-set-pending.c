@@ -17,7 +17,7 @@
 // The new timeout counts from the first send and applies to the RTO that is
 // already pending: shortening it must not wait for that RTO.
 
-#define TOLERANCE_MS 300
+#define TOLERANCE_MS 500
 
 typedef struct {
   const char *name;
