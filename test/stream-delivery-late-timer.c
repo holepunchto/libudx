@@ -267,7 +267,8 @@ main () {
   assert(stall_end_ms >= STALL_AT_MS + STALL_MS);
   assert(a_ack_status == 0 && b_ack_status == 0);
   assert(a_read == PAYLOAD && b_read == PAYLOAD);
-  for (int i = 0; i < 4; i++) assert(close_statuses[i] == 0);
+  for (int i = 0; i < 4; i++)
+    assert(close_statuses[i] == 0);
 
   free(a_req);
   free(b_req);

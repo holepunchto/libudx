@@ -163,7 +163,8 @@ main () {
   for (size_t i = 0; i < NCASES; i++) {
     test_case_t *c = &cases[i];
     fprintf(stderr, "%s: closed %d at %llu ms (expected %llu, max +%d), rto_count=%u lifetime_rto_count=%u, retransmit_count=%u, %d transmissions at", c->name, c->close_status, (unsigned long long) c->closed_ms, (unsigned long long) c->expected_ms, TOLERANCE_MS, c->stream.rto_count, c->stream.lifetime_rto_count, c->stream.retransmit_count, c->transmits);
-    for (int j = 0; j < c->transmits && j < 32; j++) fprintf(stderr, " %llu", (unsigned long long) c->transmit_ms[j]);
+    for (int j = 0; j < c->transmits && j < 32; j++)
+      fprintf(stderr, " %llu", (unsigned long long) c->transmit_ms[j]);
     fprintf(stderr, "\n");
 
     if (c->close_status != UV_ETIMEDOUT) ok = false;
