@@ -366,7 +366,7 @@ udx_zwp_timeout (uv_timer_t *timer);
 static void
 udx_keepalive_timeout (uv_timer_t *timer);
 
-// default: the time the old limit of UDX_MAX_RTO_TIMEOUTS doubled rtos took (13 rto)
+// default 13 x rto: the first rto plus UDX_MAX_RTO_TIMEOUTS retries at 2 x rto
 static uint64_t
 delivery_budget (udx_stream_t *stream) {
   if (stream->delivery_timeout_ms) {
@@ -376,7 +376,7 @@ delivery_budget (udx_stream_t *stream) {
   return (uint64_t) (2 * UDX_MAX_RTO_TIMEOUTS + 1) * stream->rto;
 }
 
-// leave one rto before the deadline for the ack of the last retransmit (like tcp_clamp_rto_to_user_timeout)
+// clamp rto waits to the deadline, leaving one rto for the ack of the last retransmit (like tcp_clamp_rto_to_user_timeout)
 static uint32_t
 clamp_rto_to_deadline (udx_stream_t *stream, uint32_t wait) {
   uint64_t now = uv_now(stream->udx->loop);
@@ -1216,7 +1216,8 @@ udx_rto_timeout (uv_timer_t *timer) {
   uint64_t deadline = stream->progress_ts + delivery_budget(stream);
 
   if (now >= deadline) {
-    // fired late, the loop did not run (sleep, stall): probe and wait 3 rtos before giving up
+    // time out, unless this firing is late because the loop did not run (sleep, stall): then
+    // retransmit and allow 3 x rto more, bounded by UDX_MAX_RTO_TIMEOUTS consecutive rtos
     if (now <= stream->next_rto_ts + stream->rto || stream->rto_count > UDX_MAX_RTO_TIMEOUTS) {
       close_stream(stream, UV_ETIMEDOUT);
       return;

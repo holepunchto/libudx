@@ -75,7 +75,7 @@ main () {
   assert(e);
   // hack to make the packet timeout after 1 RTO, obv. relies
   // on many internal details that are likely to change
-  // (the default delivery budget is 13 RTOs)
+  // (pretend the write went out 12 x RTO ago, the default delivery budget is 13 x RTO)
   stream.progress_ts -= 12 * stream.rto;
 
   e = uv_run(&loop, UV_RUN_DEFAULT);

@@ -5,7 +5,7 @@
 #include "../include/udx.h"
 
 // write to a socket that never acks:
-// a: delivery timeout 100 ms, raised to 3 rtos, closes at 3000 ms
+// a: delivery timeout 100 ms, raised to 3 x rto, closes at 3000 ms
 // b: default budget, set to 4000 ms at 3500 ms, the rto pending for 5000 ms is pulled in
 
 uv_loop_t loop;
