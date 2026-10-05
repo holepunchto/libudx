@@ -373,7 +373,7 @@ base_rto (udx_stream_t *stream) {
   return min_uint32(max_uint32(stream->srtt + 4 * stream->rttvar, 1000), UDX_RTO_MAX_MS);
 }
 
-// default: the time the old limit of UDX_MAX_RTO_TIMEOUTS doubled rtos took (tlp + 13 rto)
+// default: the time the old limit of UDX_MAX_RTO_TIMEOUTS doubled rtos took (13 rto)
 static uint64_t
 delivery_budget (udx_stream_t *stream) {
   uint32_t base = base_rto(stream);
@@ -382,8 +382,7 @@ delivery_budget (udx_stream_t *stream) {
     return max_uint32(stream->delivery_timeout_ms, 3 * base);
   }
 
-  uint32_t tlp = stream->srtt ? min_uint32(2 * stream->srtt + UDX_TLP_MAX_ACK_DELAY, base) : 0;
-  return (uint64_t) (2 * UDX_MAX_RTO_TIMEOUTS + 1) * base + tlp;
+  return (uint64_t) (2 * UDX_MAX_RTO_TIMEOUTS + 1) * base;
 }
 
 // leave one rto before the deadline for the ack of the last retransmit (like tcp_clamp_rto_to_user_timeout)
@@ -397,24 +396,6 @@ clamp_rto_to_deadline (udx_stream_t *stream, uint32_t wait) {
   if (left <= base) return (uint32_t) left;
   if (wait > left - base) return (uint32_t) (left - base);
   return wait;
-}
-
-// a timer firing late means the loop did not run (stall, suspend), don't charge that to the budget
-static bool
-absorb_late_timer (udx_stream_t *stream, uint64_t now) {
-  uint32_t base = base_rto(stream);
-
-  if (now <= stream->next_rto_ts + base) return false;
-  if (stream->late_timer_count >= UDX_MAX_RTO_TIMEOUTS) return false;
-  stream->late_timer_count++;
-
-  uint64_t budget = delivery_budget(stream);
-  uint64_t until = now + base;
-
-  stream->progress_ts += now - stream->next_rto_ts;
-  if (stream->progress_ts + budget < until) stream->progress_ts = until - budget;
-
-  return true;
 }
 
 static void
@@ -844,7 +825,6 @@ _send_new_packet (udx_stream_t *stream, bool tlp) {
 
   if (stream->remote_acked == stream->seq) {
     stream->progress_ts = uv_now(stream->udx->loop);
-    stream->late_timer_count = 0;
   }
 
   if (pkt->remote_addr_len == 0) {
@@ -1033,8 +1013,6 @@ udx_tlp_timeout (uv_timer_t *timer) {
     return;
   }
 
-  absorb_late_timer(stream, uv_now(timer->loop));
-
   if (stream->tlp_in_flight || !stream->tlp_permitted) {
     rearm_rto(stream, false);
     return;
@@ -1196,7 +1174,6 @@ rack_detect_loss_and_arm_timer (udx_stream_t *stream) {
 static void
 udx_rack_reo_timeout (uv_timer_t *timer) {
   udx_stream_t *stream = timer->data;
-  absorb_late_timer(stream, uv_now(timer->loop));
   rack_detect_loss(stream);
 
   bool from_now = !(stream->pending_timer == UDX_TIMER_RACK_REO || stream->pending_timer == UDX_TIMER_TLP);
@@ -1247,7 +1224,7 @@ udx_rto_timeout (uv_timer_t *timer) {
 
   uint64_t now = uv_now(timer->loop);
 
-  if (!absorb_late_timer(stream, now) && now >= stream->progress_ts + delivery_budget(stream)) {
+  if (now >= stream->progress_ts + delivery_budget(stream)) {
     close_stream(stream, UV_ETIMEDOUT);
     return;
   }
@@ -1763,7 +1740,6 @@ process_packet (udx_socket_t *socket, char *buf, ssize_t buf_len, struct sockadd
   if (ack_advanced) {
     stream->remote_acked = ack;
     stream->rto_count = 0;
-    stream->late_timer_count = 0;
     stream->progress_ts = uv_now(stream->udx->loop);
   }
 

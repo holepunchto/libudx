@@ -36,8 +36,6 @@ list(APPEND tests
   stream-rto
   stream-rto-sack-progress
   stream-delivery-timeout
-  stream-delivery-late-timer
-  stream-delivery-late-timer-bound
   stream-retransmit-refreshes-header
   stream-strict-sack
   stream-rack-tlp-example
