@@ -366,23 +366,14 @@ udx_zwp_timeout (uv_timer_t *timer);
 static void
 udx_keepalive_timeout (uv_timer_t *timer);
 
-// rto without backoff, so backoff does not stretch the delivery budget
-static uint32_t
-base_rto (udx_stream_t *stream) {
-  if (stream->srtt == 0) return 1000;
-  return min_uint32(max_uint32(stream->srtt + 4 * stream->rttvar, 1000), UDX_RTO_MAX_MS);
-}
-
 // default: the time the old limit of UDX_MAX_RTO_TIMEOUTS doubled rtos took (13 rto)
 static uint64_t
 delivery_budget (udx_stream_t *stream) {
-  uint32_t base = base_rto(stream);
-
   if (stream->delivery_timeout_ms) {
-    return max_uint32(stream->delivery_timeout_ms, 3 * base);
+    return max_uint32(stream->delivery_timeout_ms, 3 * stream->rto);
   }
 
-  return (uint64_t) (2 * UDX_MAX_RTO_TIMEOUTS + 1) * base;
+  return (uint64_t) (2 * UDX_MAX_RTO_TIMEOUTS + 1) * stream->rto;
 }
 
 // leave one rto before the deadline for the ack of the last retransmit (like tcp_clamp_rto_to_user_timeout)
@@ -391,10 +382,9 @@ clamp_rto_to_deadline (udx_stream_t *stream, uint32_t wait) {
   uint64_t now = uv_now(stream->udx->loop);
   uint64_t deadline = stream->progress_ts + delivery_budget(stream);
   uint64_t left = deadline > now ? deadline - now : 1;
-  uint32_t base = base_rto(stream);
 
-  if (left <= base) return (uint32_t) left;
-  if (wait > left - base) return (uint32_t) (left - base);
+  if (left <= stream->rto) return (uint32_t) left;
+  if (wait > left - stream->rto) return (uint32_t) (left - stream->rto);
   return wait;
 }
 
@@ -1226,15 +1216,13 @@ udx_rto_timeout (uv_timer_t *timer) {
   uint64_t deadline = stream->progress_ts + delivery_budget(stream);
 
   if (now >= deadline) {
-    uint32_t base = base_rto(stream);
-
     // fired late, the loop did not run (sleep, stall): probe and wait 3 rtos before giving up
-    if (now <= stream->next_rto_ts + base || stream->rto_count > UDX_MAX_RTO_TIMEOUTS) {
+    if (now <= stream->next_rto_ts + stream->rto || stream->rto_count > UDX_MAX_RTO_TIMEOUTS) {
       close_stream(stream, UV_ETIMEDOUT);
       return;
     }
 
-    stream->progress_ts += now - deadline + 3 * base;
+    stream->progress_ts += now - deadline + 3 * stream->rto;
   }
 
   assert(!(stream->status & UDX_STREAM_CLOSED));
