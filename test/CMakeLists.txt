@@ -42,6 +42,7 @@ list(APPEND tests
   stream-delivery-timeout-stall
   stream-delivery-timeout-stall-bound
   stream-delivery-timeout-ack
+  stream-delivery-timeout-backoff
   stream-retransmit-refreshes-header
   stream-strict-sack
   stream-rack-tlp-example

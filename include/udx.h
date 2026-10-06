@@ -664,7 +664,7 @@ int
 udx_stream_set_keepalive (udx_stream_t *stream, uint32_t keepalive_timeout_ms);
 
 // close with UV_ETIMEDOUT when sent data gets no ack for this long, like TCP_USER_TIMEOUT.
-// 0 (the default) means 13 x rto, values below 3 x rto are raised to 3 x rto.
+// 0 (the default) means 13 x rto without backoff, values below 3 x rto are raised to 3 x rto.
 int
 udx_stream_set_delivery_timeout (udx_stream_t *stream, uint32_t delivery_timeout_ms);
 
