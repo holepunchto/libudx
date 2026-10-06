@@ -41,6 +41,7 @@ list(APPEND tests
   stream-ooo-shuffle
   stream-timewait
   stream-timewait-replace-by-new-stream-id
+  stream-timewait-ooo-end
 )
 
 list(APPEND skipped_tests
