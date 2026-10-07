@@ -62,9 +62,9 @@ udx__udp_set_dontfrag (uv_os_sock_t fd, bool is_ipv6) {
   int rc;
   int val = IP_PMTUDISC_PROBE;
   if (is_ipv6) {
-    rc = setsockopt(fd, IPPROTO_IPV6, IPV6_MTU_DISCOVER, &val, sizeof(val));
+    rc = setsockopt(fd, IPPROTO_IPV6, IPV6_MTU_DISCOVER, (const char *) &val, sizeof(val));
   } else {
-    rc = setsockopt(fd, IPPROTO_IP, IP_MTU_DISCOVER, &val, sizeof(val));
+    rc = setsockopt(fd, IPPROTO_IP, IP_MTU_DISCOVER, (const char *) &val, sizeof(val));
   }
 
   return rc;

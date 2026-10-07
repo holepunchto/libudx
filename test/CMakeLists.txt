@@ -8,6 +8,7 @@ list(APPEND tests
   socket-send-recv-ipv6
   stream-destroy
   stream-destroy-slowpath
+  stream-destroy-teardown
   stream-destroy-before-connect
   stream-preconnect
   stream-preconnect-same-socket
@@ -31,6 +32,7 @@ list(APPEND tests
   stream-no-zwp-with-data-in-flight
   win-filter
   stream-bbr-state
+  stream-bbr-recovery-loss
   stream-combined-write
   stream-keepalive
   stream-rto
@@ -43,6 +45,9 @@ list(APPEND tests
   stream-strict-sack
   stream-rack-tlp-example
   stream-ooo-shuffle
+  stream-timewait
+  stream-timewait-replace-by-new-stream-id
+  stream-timewait-ooo-end
 )
 
 list(APPEND skipped_tests

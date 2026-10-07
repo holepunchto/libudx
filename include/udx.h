@@ -37,15 +37,16 @@ extern "C" {
 #define UDX_SOCKET_BOUND     0b0010
 #define UDX_SOCKET_CLOSED    0b0100
 
-#define UDX_STREAM_CONNECTED     0b000000001
-#define UDX_STREAM_RECEIVING     0b000000010
-#define UDX_STREAM_READING       0b000000100
-#define UDX_STREAM_ENDING        0b000001000
-#define UDX_STREAM_ENDING_REMOTE 0b000010000
-#define UDX_STREAM_ENDED         0b000100000
-#define UDX_STREAM_ENDED_REMOTE  0b001000000
-#define UDX_STREAM_DESTROYING    0b010000000
-#define UDX_STREAM_CLOSED        0b100000000
+#define UDX_STREAM_CONNECTED       0b0000000001
+#define UDX_STREAM_RECEIVING       0b0000000010
+#define UDX_STREAM_READING         0b0000000100
+#define UDX_STREAM_ENDING          0b0000001000
+#define UDX_STREAM_ENDING_REMOTE   0b0000010000
+#define UDX_STREAM_ENDED           0b0000100000
+#define UDX_STREAM_ENDED_REMOTE    0b0001000000
+#define UDX_STREAM_DESTROYING      0b0010000000
+#define UDX_STREAM_CLOSED          0b0100000000
+#define UDX_STREAM_TIMEWAIT_WANTED 0b1000000000
 
 #define UDX_BBR_STATE_STARTUP   0
 #define UDX_BBR_STATE_DRAIN     1
@@ -84,6 +85,19 @@ typedef struct udx_socket_send_s udx_socket_send_t;
 typedef struct udx_stream_send_s udx_stream_send_t;
 typedef struct udx_stream_write_s udx_stream_write_t;
 typedef struct udx_stream_write_buf_s udx_stream_write_buf_t;
+typedef struct udx_stream_entry_s udx_stream_entry_t;
+
+typedef enum {
+  UDX_ENTRY_UNUSED, // sentinel
+  UDX_ENTRY_STREAM,
+  UDX_ENTRY_TIMEWAIT,
+} udx_stream_entry_type_t;
+
+struct udx_stream_entry_s {
+  uint32_t local_id; // must be first for compatibility with udx_cirbuf_val_t
+  udx_stream_entry_t *hash_next;
+  udx_stream_entry_type_t entry_type;
+};
 
 typedef struct {
   uint64_t t;
@@ -141,7 +155,6 @@ struct udx_s {
 
   int refs;
   bool teardown;
-  bool has_streams;
 
   udx_idle_cb on_idle;
 
@@ -149,7 +162,7 @@ struct udx_s {
   udx_stream_t *streams;
   udx_interface_event_t *listeners;
 
-  udx_cirbuf_t streams_by_id;
+  udx_stream_entry_t *stream_table[1024];
 
   uint64_t bytes_rx;
   uint64_t bytes_tx;
@@ -187,9 +200,9 @@ struct udx_socket_s {
   udx_socket_t *next;
 
   udx_stream_t *streams;
+  udx_queue_t timewait_queue;
 
   udx_t *udx;
-  udx_cirbuf_t *streams_by_id; // for convenience
 
   int family;
   int status;
@@ -254,7 +267,7 @@ typedef enum {
 } udx_stream_timer_type_t;
 
 struct udx_stream_s {
-  uint32_t local_id; // must be first entry, so its compat with the cirbuf
+  udx_stream_entry_t entry; // hash-entry super type
   uint32_t remote_id;
 
   udx_stream_t *prev;
