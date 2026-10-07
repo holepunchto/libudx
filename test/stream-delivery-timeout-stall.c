@@ -6,8 +6,7 @@
 #include "../include/udx.h"
 
 // block the loop for longer than the delivery timeout while an rto is pending,
-// the stalled time must not count, so the stream retransmits after the stall
-// instead of timing out. the receiver only appears right before the stall
+// the stream must retransmit after the stall instead of timing out
 
 uv_loop_t loop;
 udx_t udx;
@@ -103,7 +102,6 @@ main () {
   e = udx_stream_write(req, &send_stream, &buf, 1, on_ack);
   assert(e);
 
-  // the rto fires at 1000 ms, the next one is due at 2000 ms, during the stall
   uv_timer_init(&loop, &stall_timer);
   uv_timer_start(&stall_timer, on_stall, 1500, 0);
 

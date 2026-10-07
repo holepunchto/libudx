@@ -7,8 +7,7 @@
 #include "../src/endian.h"
 #include "../src/internal.h"
 
-// an ack that advances restarts the delivery timeout: the peer acks the first of
-// two packets at 100 ms and nothing after, so the stream times out 3000 ms after that ack
+// an ack that advances restarts the delivery timeout
 
 uv_loop_t loop;
 udx_t udx;

@@ -5,9 +5,7 @@
 
 #include "../include/udx.h"
 
-// a loop that blocks for more than two rtos on every iteration makes every
-// timer late. the stalled time is not counted, but only until 6 rtos fired,
-// so the stream must still time out when the peer is dead
+// a loop that is late on every timer must still time out when the peer is dead
 
 uv_loop_t loop;
 udx_t udx;
@@ -93,7 +91,7 @@ main () {
   e = uv_run(&loop, UV_RUN_DEFAULT);
   assert(e == 0);
   assert(closed);
-  assert(lags > 4); // the stalled time was skipped a few times before it timed out
+  assert(lags > 4);
 
   return 0;
 }

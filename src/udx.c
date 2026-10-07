@@ -366,7 +366,7 @@ udx_zwp_timeout (uv_timer_t *timer);
 static void
 udx_keepalive_timeout (uv_timer_t *timer);
 
-// default 13 x rto: the first rto plus UDX_MAX_RTO_TIMEOUTS retries at 2 x rto
+// default 13 x rto
 static uint64_t
 delivery_budget (udx_stream_t *stream) {
   if (stream->delivery_timeout_ms) {
@@ -376,8 +376,7 @@ delivery_budget (udx_stream_t *stream) {
   return (uint64_t) (2 * UDX_MAX_RTO_TIMEOUTS + 1) * stream->rto;
 }
 
-// a loss timer firing more than an rto late means the loop did not run (sleep, stall): that time
-// is not charged to the delivery budget, which keeps at least one rto, until UDX_MAX_RTO_TIMEOUTS rtos
+// a loss timer more than an rto late means the loop did not run (sleep, stall), don't charge that time
 static void
 skip_stall (udx_stream_t *stream, uint64_t now) {
   if (now <= stream->timer_ts + stream->rto || stream->rto_count > UDX_MAX_RTO_TIMEOUTS) return;
@@ -388,7 +387,7 @@ skip_stall (udx_stream_t *stream, uint64_t now) {
   if (stream->progress_ts + budget < now + stream->rto) stream->progress_ts = now + stream->rto - budget;
 }
 
-// clamp rto waits to the deadline, leaving one rto for the ack of the last retransmit (like tcp_clamp_rto_to_user_timeout)
+// leave one rto before the deadline for the ack of the last retransmit
 static uint32_t
 clamp_rto_to_deadline (udx_stream_t *stream, uint32_t wait) {
   uint64_t now = uv_now(stream->udx->loop);
@@ -404,7 +403,7 @@ static void
 stream_timer_start (udx_stream_t *stream, udx_stream_timer_type_t timer, uint32_t time_wait_ms) {
   uint64_t now = uv_now(stream->udx->loop);
 
-  // a loss timer replaced while overdue (e.g. by a write after a stall) did not run in time either
+  // an overdue loss timer can be replaced before it fires, e.g. by a write after a stall
   if (stream->pending_timer == UDX_TIMER_RTO || stream->pending_timer == UDX_TIMER_TLP || stream->pending_timer == UDX_TIMER_RACK_REO) {
     skip_stall(stream, now);
   }
@@ -2462,7 +2461,6 @@ int
 udx_stream_set_delivery_timeout (udx_stream_t *stream, uint32_t delivery_timeout_ms) {
   stream->delivery_timeout_ms = delivery_timeout_ms;
 
-  // apply the new deadline to a pending rto
   if (stream->pending_timer == UDX_TIMER_RTO && (stream->status & UDX_STREAM_CONNECTED)) {
     uint64_t due_in = uv_timer_get_due_in(&stream->timer);
     if (due_in > 0) stream_timer_start(stream, UDX_TIMER_RTO, (uint32_t) due_in);
