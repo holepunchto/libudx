@@ -338,6 +338,7 @@ struct udx_stream_s {
 
   udx_stream_timer_type_t pending_timer;
   uint64_t next_rto_ts; // todo: remove this, calculate from oldest packet (head) in rtx queue
+  uint64_t timer_ts;    // when the pending timer is due
   uint32_t srtt;
   uint32_t rttvar;
   uint32_t rto;

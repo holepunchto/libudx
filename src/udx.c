@@ -376,11 +376,16 @@ delivery_budget (udx_stream_t *stream) {
   return (uint64_t) (2 * UDX_MAX_RTO_TIMEOUTS + 1) * stream->rto;
 }
 
-// an rto overdue by more than an rto means the loop did not run (sleep, stall), so
-// it gets 3 x rto past the deadline, until UDX_MAX_RTO_TIMEOUTS consecutive rtos fired
-static bool
-rto_overdue (udx_stream_t *stream, uint64_t now) {
-  return now > stream->next_rto_ts + stream->rto && stream->rto_count <= UDX_MAX_RTO_TIMEOUTS;
+// a loss timer firing more than an rto late means the loop did not run (sleep, stall): that time
+// is not charged to the delivery budget, which keeps at least one rto, until UDX_MAX_RTO_TIMEOUTS rtos
+static void
+skip_stall (udx_stream_t *stream, uint64_t now) {
+  if (now <= stream->timer_ts + stream->rto || stream->rto_count > UDX_MAX_RTO_TIMEOUTS) return;
+
+  uint64_t budget = delivery_budget(stream);
+
+  stream->progress_ts += now - stream->timer_ts;
+  if (stream->progress_ts + budget < now + stream->rto) stream->progress_ts = now + stream->rto - budget;
 }
 
 // clamp rto waits to the deadline, leaving one rto for the ack of the last retransmit (like tcp_clamp_rto_to_user_timeout)
@@ -388,12 +393,6 @@ static uint32_t
 clamp_rto_to_deadline (udx_stream_t *stream, uint32_t wait) {
   uint64_t now = uv_now(stream->udx->loop);
   uint64_t deadline = stream->progress_ts + delivery_budget(stream);
-
-  if (now >= deadline && rto_overdue(stream, now)) {
-    stream->progress_ts += now - deadline + 3 * stream->rto;
-    deadline = now + 3 * stream->rto;
-  }
-
   uint64_t left = deadline > now ? deadline - now : 1;
 
   if (left <= stream->rto) return wait < left ? wait : (uint32_t) left;
@@ -403,13 +402,21 @@ clamp_rto_to_deadline (udx_stream_t *stream, uint32_t wait) {
 
 static void
 stream_timer_start (udx_stream_t *stream, udx_stream_timer_type_t timer, uint32_t time_wait_ms) {
+  uint64_t now = uv_now(stream->udx->loop);
+
+  // a loss timer replaced while overdue (e.g. by a write after a stall) did not run in time either
+  if (stream->pending_timer == UDX_TIMER_RTO || stream->pending_timer == UDX_TIMER_TLP || stream->pending_timer == UDX_TIMER_RACK_REO) {
+    skip_stall(stream, now);
+  }
+
   // as a special case, save the next_rto_ts so that it can be restored if necessary
   if (timer == UDX_TIMER_RTO) {
     time_wait_ms = clamp_rto_to_deadline(stream, time_wait_ms);
-    stream->next_rto_ts = uv_now(stream->udx->loop) + time_wait_ms;
+    stream->next_rto_ts = now + time_wait_ms;
   }
 
   stream->pending_timer = timer;
+  stream->timer_ts = now + time_wait_ms;
 
   // important: order must match order in the udx_stream_timer_type_t enum
   static uv_timer_cb timer_to_callback[] = {
@@ -1227,7 +1234,9 @@ udx_rto_timeout (uv_timer_t *timer) {
 
   uint64_t now = uv_now(timer->loop);
 
-  if (now >= stream->progress_ts + delivery_budget(stream) && !rto_overdue(stream, now)) {
+  skip_stall(stream, now);
+
+  if (now >= stream->progress_ts + delivery_budget(stream)) {
     close_stream(stream, UV_ETIMEDOUT);
     return;
   }

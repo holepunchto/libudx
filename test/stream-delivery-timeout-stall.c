@@ -6,8 +6,8 @@
 #include "../include/udx.h"
 
 // block the loop for longer than the delivery timeout while an rto is pending,
-// the stream must probe after the stall instead of timing out. the receiver
-// only appears right before the stall, so the data is unacked when it starts
+// the stalled time must not count, so the stream retransmits after the stall
+// instead of timing out. the receiver only appears right before the stall
 
 uv_loop_t loop;
 udx_t udx;
@@ -60,6 +60,7 @@ on_stall (uv_timer_t *timer) {
   assert(e == 0);
 
   uv_sleep(4500);
+  uv_update_time(&loop);
 }
 
 void
