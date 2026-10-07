@@ -8,6 +8,7 @@ list(APPEND tests
   socket-send-recv-ipv6
   stream-destroy
   stream-destroy-slowpath
+  stream-destroy-teardown
   stream-destroy-before-connect
   stream-preconnect
   stream-preconnect-same-socket

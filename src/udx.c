@@ -2901,6 +2901,9 @@ udx_stream_destroy (udx_stream_t *stream) {
     return 0;
   }
 
+  if (stream->status & UDX_STREAM_DESTROYING) {
+    return 0;
+  }
   stream->status &= ~UDX_STREAM_TIMEWAIT_WANTED;
 
   if ((stream->status & UDX_STREAM_CONNECTED) == 0) {
@@ -2933,6 +2936,10 @@ udx_stream_destroy (udx_stream_t *stream) {
     buf.base = data;
     req->data = stream;
     err = uv_udp_send(req, &stream->socket->uv_udp, &buf, 1, (struct sockaddr *) &stream->remote_addr, _stream_on_destroy_send);
+    if (err < 0) {
+      free(req);
+      stream_on_destroy_send(stream);
+    }
   } else {
     if (err < 0) debug_printf("uv_udp_send: error=%s\n", uv_strerror(err));
     stream_on_destroy_send(stream);
