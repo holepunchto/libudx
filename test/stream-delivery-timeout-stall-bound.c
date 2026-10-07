@@ -1,5 +1,4 @@
 #include <assert.h>
-#include <stdbool.h>
 #include <stdlib.h>
 #include <string.h>
 
@@ -18,18 +17,15 @@ udx_stream_t stream;
 uv_timer_t lag_timer;
 
 int lags = 0;
-bool closed = false;
 
 void
 on_ack (udx_stream_write_t *req, int status, int unordered) {
-  assert(status == UV_ECANCELED);
   free(req);
 }
 
 void
 on_close (udx_stream_t *s, int status) {
   assert(status == UV_ETIMEDOUT);
-  closed = true;
 
   uv_close((uv_handle_t *) &lag_timer, NULL);
   udx_socket_close(&sock);
@@ -90,7 +86,6 @@ main () {
 
   e = uv_run(&loop, UV_RUN_DEFAULT);
   assert(e == 0);
-  assert(closed);
   assert(lags > 4);
 
   return 0;

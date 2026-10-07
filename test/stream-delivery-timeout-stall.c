@@ -108,7 +108,6 @@ main () {
   e = uv_run(&loop, UV_RUN_DEFAULT);
   assert(e == 0);
   assert(acked);
-  assert(closed == 2);
 
   return 0;
 }

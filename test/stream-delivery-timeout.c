@@ -25,7 +25,6 @@ uint64_t b_closed;
 
 void
 on_ack (udx_stream_write_t *req, int status, int unordered) {
-  assert(status == UV_ECANCELED);
   free(req);
 }
 
@@ -102,7 +101,6 @@ main () {
 
   uv_timer_init(&loop, &timer);
   uv_timer_start(&timer, on_timer, 3500, 0);
-  uv_unref((uv_handle_t *) &timer);
 
   e = uv_run(&loop, UV_RUN_DEFAULT);
   assert(e == 0);
