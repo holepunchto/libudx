@@ -40,7 +40,7 @@
 
 #define UDX_MAX_RTO_TIMEOUTS 6
 
-#define UDX_RTO_MAX_MS        30000
+#define UDX_RTO_MAX_MS        29000 // Leave a margin below 30s UDP NAT timeouts.
 #define UDX_RTT_MAX_MS        30000
 #define UDX_RTT_MIN_WINDOW_MS 300000            // 300 seconds, same as Linux default
 #define UDX_DEFAULT_RWND_MAX  (4 * 1024 * 1024) // arbitrary, ~175 1500 mtu packets, @20ms latency = 416 mbits/sec
@@ -373,25 +373,36 @@ udx_zwp_timeout (uv_timer_t *timer);
 static void
 udx_keepalive_timeout (uv_timer_t *timer);
 
-// default 13 x rto
+// rto without backoff, so backoff does not stretch the delivery budget
+static uint32_t
+base_rto (udx_stream_t *stream) {
+  if (stream->srtt == 0) return 1000;
+  return min_uint32(max_uint32(stream->srtt + 4 * stream->rttvar, 1000), UDX_RTO_MAX_MS);
+}
+
+// default 13 x base rto
 static uint64_t
 delivery_budget (udx_stream_t *stream) {
+  uint32_t base = base_rto(stream);
+
   if (stream->delivery_timeout_ms) {
-    return max_uint32(stream->delivery_timeout_ms, 3 * stream->rto);
+    return max_uint32(stream->delivery_timeout_ms, 3 * base);
   }
 
-  return (uint64_t) (2 * UDX_MAX_RTO_TIMEOUTS + 1) * stream->rto;
+  return (uint64_t) (2 * UDX_MAX_RTO_TIMEOUTS + 1) * base;
 }
 
 // a loss timer more than an rto late means the loop did not run (sleep, stall), don't charge that time
 static void
 skip_stall (udx_stream_t *stream, uint64_t now) {
-  if (now <= stream->timer_ts + stream->rto || stream->rto_count > UDX_MAX_RTO_TIMEOUTS) return;
+  uint32_t base = base_rto(stream);
+
+  if (now <= stream->timer_ts + base || stream->rto_count > UDX_MAX_RTO_TIMEOUTS) return;
 
   uint64_t budget = delivery_budget(stream);
 
   stream->progress_ts += now - stream->timer_ts;
-  if (stream->progress_ts + budget < now + stream->rto) stream->progress_ts = now + stream->rto - budget;
+  if (stream->progress_ts + budget < now + base) stream->progress_ts = now + base - budget;
 }
 
 // leave one rto before the deadline for the ack of the last retransmit
@@ -400,9 +411,10 @@ clamp_rto_to_deadline (udx_stream_t *stream, uint32_t wait) {
   uint64_t now = uv_now(stream->udx->loop);
   uint64_t deadline = stream->progress_ts + delivery_budget(stream);
   uint64_t left = deadline > now ? deadline - now : 1;
+  uint32_t base = base_rto(stream);
 
-  if (left <= stream->rto) return wait < left ? wait : (uint32_t) left;
-  if (wait > left - stream->rto) return (uint32_t) (left - stream->rto);
+  if (left <= base) return wait < left ? wait : (uint32_t) left;
+  if (wait > left - base) return (uint32_t) (left - base);
   return wait;
 }
 
@@ -1286,7 +1298,8 @@ udx_rto_timeout (uv_timer_t *timer) {
   }
 
   assert(!(stream->status & UDX_STREAM_CLOSED));
-  stream_timer_start(stream, UDX_TIMER_RTO, stream->rto * 2);
+  stream->rto = min_uint32(stream->rto * 2, UDX_RTO_MAX_MS);
+  stream_timer_start(stream, UDX_TIMER_RTO, stream->rto);
 
   // zero retransmit queue
   udx__queue_init(&stream->retransmit_queue);
