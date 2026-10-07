@@ -373,14 +373,56 @@ udx_zwp_timeout (uv_timer_t *timer);
 static void
 udx_keepalive_timeout (uv_timer_t *timer);
 
+// default 13 x rto
+static uint64_t
+delivery_budget (udx_stream_t *stream) {
+  if (stream->delivery_timeout_ms) {
+    return max_uint32(stream->delivery_timeout_ms, 3 * stream->rto);
+  }
+
+  return (uint64_t) (2 * UDX_MAX_RTO_TIMEOUTS + 1) * stream->rto;
+}
+
+// a loss timer more than an rto late means the loop did not run (sleep, stall), don't charge that time
+static void
+skip_stall (udx_stream_t *stream, uint64_t now) {
+  if (now <= stream->timer_ts + stream->rto || stream->rto_count > UDX_MAX_RTO_TIMEOUTS) return;
+
+  uint64_t budget = delivery_budget(stream);
+
+  stream->progress_ts += now - stream->timer_ts;
+  if (stream->progress_ts + budget < now + stream->rto) stream->progress_ts = now + stream->rto - budget;
+}
+
+// leave one rto before the deadline for the ack of the last retransmit
+static uint32_t
+clamp_rto_to_deadline (udx_stream_t *stream, uint32_t wait) {
+  uint64_t now = uv_now(stream->udx->loop);
+  uint64_t deadline = stream->progress_ts + delivery_budget(stream);
+  uint64_t left = deadline > now ? deadline - now : 1;
+
+  if (left <= stream->rto) return wait < left ? wait : (uint32_t) left;
+  if (wait > left - stream->rto) return (uint32_t) (left - stream->rto);
+  return wait;
+}
+
 static void
 stream_timer_start (udx_stream_t *stream, udx_stream_timer_type_t timer, uint32_t time_wait_ms) {
+  uint64_t now = uv_now(stream->udx->loop);
+
+  // an overdue loss timer can be replaced before it fires, e.g. by a write after a stall
+  if (stream->pending_timer == UDX_TIMER_RTO || stream->pending_timer == UDX_TIMER_TLP || stream->pending_timer == UDX_TIMER_RACK_REO) {
+    skip_stall(stream, now);
+  }
+
   // as a special case, save the next_rto_ts so that it can be restored if necessary
   if (timer == UDX_TIMER_RTO) {
-    stream->next_rto_ts = uv_now(stream->udx->loop) + time_wait_ms;
+    time_wait_ms = clamp_rto_to_deadline(stream, time_wait_ms);
+    stream->next_rto_ts = now + time_wait_ms;
   }
 
   stream->pending_timer = timer;
+  stream->timer_ts = now + time_wait_ms;
 
   // important: order must match order in the udx_stream_timer_type_t enum
   static uv_timer_cb timer_to_callback[] = {
@@ -832,6 +874,10 @@ _send_new_packet (udx_stream_t *stream, bool tlp) {
 
   udx_packet_t *pkt = stream->pkt;
 
+  if (stream->remote_acked == stream->seq) {
+    stream->progress_ts = uv_now(stream->udx->loop);
+  }
+
   if (pkt->remote_addr_len == 0) {
     bind_packet_remote(pkt, stream);
   }
@@ -1222,13 +1268,22 @@ udx_rto_timeout (uv_timer_t *timer) {
 
   // exit fast recovery if we are in it
   stream->high_seq = stream->seq;
-  stream->rto_count++;
+  if (stream->rto_count < UINT8_MAX) stream->rto_count++;
   stream->lifetime_rto_count++;
   stream->ca_state = UDX_CA_LOSS;
 
   // rack 7.1 TLP_init
   stream->tlp_in_flight = false;
   stream->tlp_is_retrans = false;
+
+  uint64_t now = uv_now(timer->loop);
+
+  skip_stall(stream, now);
+
+  if (now >= stream->progress_ts + delivery_budget(stream)) {
+    close_stream(stream, UV_ETIMEDOUT);
+    return;
+  }
 
   assert(!(stream->status & UDX_STREAM_CLOSED));
   stream_timer_start(stream, UDX_TIMER_RTO, stream->rto * 2);
@@ -1238,13 +1293,7 @@ udx_rto_timeout (uv_timer_t *timer) {
 
   debug_printf("rto: lost rid=%u [%u:%u] inflight=%zu cwnd=%u srtt=%u\n", stream->remote_id, stream->remote_acked, stream->seq, stream->inflight, stream->cwnd, stream->srtt);
 
-  uint64_t now = uv_now(timer->loop);
   uint32_t rack_reo_wnd = rack_update_reo_wnd(stream);
-
-  if (stream->rto_count > UDX_MAX_RTO_TIMEOUTS) {
-    close_stream(stream, UV_ETIMEDOUT);
-    return;
-  }
   // rack 6.3
 
   for (uint32_t seq = stream->remote_acked; seq != stream->seq; seq++) {
@@ -1785,6 +1834,7 @@ process_packet (udx_socket_t *socket, char *buf, ssize_t buf_len, struct sockadd
   if (ack_advanced) {
     stream->remote_acked = ack;
     stream->rto_count = 0;
+    stream->progress_ts = uv_now(stream->udx->loop);
   }
 
   if (ended) { // remote acked our end
@@ -2483,6 +2533,18 @@ udx_stream_set_keepalive (udx_stream_t *stream, uint32_t keepalive_timeout_ms) {
 
   if (stream->remote_acked == stream->seq && keepalive_timeout_ms && stream->status & UDX_STREAM_CONNECTED) {
     stream_timer_start(stream, UDX_TIMER_KEEPALIVE, stream->keepalive_timeout_ms);
+  }
+
+  return 0;
+}
+
+int
+udx_stream_set_delivery_timeout (udx_stream_t *stream, uint32_t delivery_timeout_ms) {
+  stream->delivery_timeout_ms = delivery_timeout_ms;
+
+  if (stream->pending_timer == UDX_TIMER_RTO && (stream->status & UDX_STREAM_CONNECTED)) {
+    uint64_t due_in = uv_timer_get_due_in(&stream->timer);
+    if (due_in > 0) stream_timer_start(stream, UDX_TIMER_RTO, (uint32_t) due_in);
   }
 
   return 0;

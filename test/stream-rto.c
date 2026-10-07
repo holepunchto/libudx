@@ -17,9 +17,12 @@ udx_stream_write_t *req;
 
 bool ack_called = false;
 
+uint64_t start;
+
 void
 on_close (udx_stream_t *s, int status) {
   assert(status == UV_ETIMEDOUT);
+  assert(uv_now(&loop) - start < 1500);
   udx_socket_close(&sock);
 }
 
@@ -64,12 +67,15 @@ main () {
   snprintf(data, 2000, "hello");
   uv_buf_t buf = uv_buf_init(data, 2000);
 
+  uv_update_time(&loop);
+  start = uv_now(&loop);
+
   e = udx_stream_write(req, &stream, &buf, 1, on_ack);
 
   assert(e);
   // hack to make the packet timeout after 1 RTO, obv. relies
   // on many internal details that are likely to change
-  stream.rto_count = 6;
+  stream.progress_ts -= 12 * stream.rto;
 
   e = uv_run(&loop, UV_RUN_DEFAULT);
   assert(e == 0);
