@@ -376,14 +376,27 @@ delivery_budget (udx_stream_t *stream) {
   return (uint64_t) (2 * UDX_MAX_RTO_TIMEOUTS + 1) * stream->rto;
 }
 
+// an rto overdue by more than an rto means the loop did not run (sleep, stall), so
+// it gets 3 x rto past the deadline, until UDX_MAX_RTO_TIMEOUTS consecutive rtos fired
+static bool
+rto_overdue (udx_stream_t *stream, uint64_t now) {
+  return now > stream->next_rto_ts + stream->rto && stream->rto_count <= UDX_MAX_RTO_TIMEOUTS;
+}
+
 // clamp rto waits to the deadline, leaving one rto for the ack of the last retransmit (like tcp_clamp_rto_to_user_timeout)
 static uint32_t
 clamp_rto_to_deadline (udx_stream_t *stream, uint32_t wait) {
   uint64_t now = uv_now(stream->udx->loop);
   uint64_t deadline = stream->progress_ts + delivery_budget(stream);
+
+  if (now >= deadline && rto_overdue(stream, now)) {
+    stream->progress_ts += now - deadline + 3 * stream->rto;
+    deadline = now + 3 * stream->rto;
+  }
+
   uint64_t left = deadline > now ? deadline - now : 1;
 
-  if (left <= stream->rto) return (uint32_t) left;
+  if (left <= stream->rto) return wait < left ? wait : (uint32_t) left;
   if (wait > left - stream->rto) return (uint32_t) (left - stream->rto);
   return wait;
 }
@@ -1204,7 +1217,7 @@ udx_rto_timeout (uv_timer_t *timer) {
 
   // exit fast recovery if we are in it
   stream->high_seq = stream->seq;
-  stream->rto_count++;
+  if (stream->rto_count < UINT8_MAX) stream->rto_count++;
   stream->lifetime_rto_count++;
   stream->ca_state = UDX_CA_LOSS;
 
@@ -1213,17 +1226,10 @@ udx_rto_timeout (uv_timer_t *timer) {
   stream->tlp_is_retrans = false;
 
   uint64_t now = uv_now(timer->loop);
-  uint64_t deadline = stream->progress_ts + delivery_budget(stream);
 
-  if (now >= deadline) {
-    // time out, unless this firing is late because the loop did not run (sleep, stall): then
-    // retransmit and allow 3 x rto more, bounded by UDX_MAX_RTO_TIMEOUTS consecutive rtos
-    if (now <= stream->next_rto_ts + stream->rto || stream->rto_count > UDX_MAX_RTO_TIMEOUTS) {
-      close_stream(stream, UV_ETIMEDOUT);
-      return;
-    }
-
-    stream->progress_ts += now - deadline + 3 * stream->rto;
+  if (now >= stream->progress_ts + delivery_budget(stream) && !rto_overdue(stream, now)) {
+    close_stream(stream, UV_ETIMEDOUT);
+    return;
   }
 
   assert(!(stream->status & UDX_STREAM_CLOSED));

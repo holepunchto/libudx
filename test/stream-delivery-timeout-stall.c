@@ -102,7 +102,7 @@ main () {
   e = udx_stream_write(req, &send_stream, &buf, 1, on_ack);
   assert(e);
 
-  // the rto fires at 1000 ms, the next one is due at 3000 ms, during the stall
+  // the rto fires at 1000 ms, the next one is due at 2000 ms, during the stall
   uv_timer_init(&loop, &stall_timer);
   uv_timer_start(&stall_timer, on_stall, 1500, 0);
 
