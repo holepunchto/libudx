@@ -1141,6 +1141,9 @@ rack_detect_loss (udx_stream_t *stream) {
     }
   }
 
+  // an isolated MTU probe loss signals the path MTU, not congestion (RFC 4821)
+  if (resending == mtu_probes_lost) stream->lost -= mtu_probes_lost;
+
   if (resending > mtu_probes_lost && stream->ca_state == UDX_CA_OPEN) {
     // debug_printf("rack: rid=%u lost=%d mtu_probe_lost=%d\n", stream->remote_id, resending, mtu_probes_lost);
     // debug_print_outgoing(stream);
@@ -1828,7 +1831,6 @@ process_packet (udx_socket_t *socket, char *buf, ssize_t buf_len, struct sockadd
   }
 
   delivered = stream->delivered - delivered;
-  lost = stream->lost - lost;
 
   bool arm_rto_or_tlp = ack_advanced && data_inflight;
 
@@ -1868,6 +1870,7 @@ process_packet (udx_socket_t *socket, char *buf, ssize_t buf_len, struct sockadd
     }
   }
 
+  lost = stream->lost - lost;
   if (data_inflight) {
     // don't generate rates / do congestion control if nothing was in flight, and thus nothing could be acked and no new samples are generated
     udx__rate_gen(stream, delivered, lost, &rs);

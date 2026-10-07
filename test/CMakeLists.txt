@@ -31,6 +31,7 @@ list(APPEND tests
   stream-no-zwp-with-data-in-flight
   win-filter
   stream-bbr-state
+  stream-bbr-recovery-loss
   stream-combined-write
   stream-keepalive
   stream-rto
