@@ -17,6 +17,7 @@
 #include "link.h"
 #include "queue.h"
 #include "udx_sack_tree.h"
+#include "udx_stream_table.h"
 #include "win_filter.h"
 
 #define UDX_STREAM_ALL_ENDED (UDX_STREAM_ENDED | UDX_STREAM_ENDED_REMOTE)
@@ -44,11 +45,22 @@
 #define UDX_RTT_MIN_WINDOW_MS 300000            // 300 seconds, same as Linux default
 #define UDX_DEFAULT_RWND_MAX  (4 * 1024 * 1024) // arbitrary, ~175 1500 mtu packets, @20ms latency = 416 mbits/sec
 
+#define UDX_STREAM_TIMEWAIT_TIMEOUT_MS 5000
+
 #define UDX_HIGH_WATERMARK 262144
 
 #define UDX_TLP_MAX_ACK_DELAY 2
 
 #define UDX_ARRAY_SIZE(a) (sizeof(a) / sizeof((a)[0]))
+
+typedef struct {
+  udx_stream_entry_t entry;
+  uv_timer_t timer;
+  struct sockaddr_storage remote_addr;
+  udx_queue_node_t queue;        // linked through the socket so that the timewait can be force closed on socket close
+  udx_socket_t *socket;          // stream->socket at time of timewait
+  alignas(4) uint8_t header[20]; // holds the final ACK packet
+} udx_timewait_t;
 
 static void
 arm_stream_timers (udx_stream_t *stream, bool arm_tlp);
@@ -113,11 +125,6 @@ ref_dec (udx_t *udx) {
   udx->refs--;
 
   if (udx->refs) return;
-
-  if (udx->has_streams) {
-    udx__cirbuf_destroy(&(udx->streams_by_id));
-    udx->has_streams = false;
-  }
 
   if (udx->on_idle != NULL) {
     udx->on_idle(udx);
@@ -405,10 +412,45 @@ close_stream_internal (udx_stream_t *stream, int err);
 
 void
 close_stream (udx_stream_t *stream, int err) {
+  if (err) {
+    stream->status &= ~UDX_STREAM_TIMEWAIT_WANTED;
+  }
   if (stream->status & UDX_STREAM_DESTROYING) {
     return;
   }
   close_stream_internal(stream, err);
+}
+
+static void
+timewait_close (uv_handle_t *timer) {
+  udx_timewait_t *timewait = timer->data;
+  free(timewait);
+}
+
+static void
+timewait_timeout (uv_timer_t *timer) {
+  udx_timewait_t *timewait = timer->data;
+  udx_socket_t *socket = timewait->socket;
+  udx_t *udx = socket->udx;
+  udx_stream_entry_t *entry = udx_stream_entry_remove(udx, timewait->entry.local_id);
+  assert((void *) entry == (void *) timewait);
+  udx__queue_unlink(&socket->timewait_queue, &timewait->queue);
+  uv_close((uv_handle_t *) &timewait->timer, timewait_close);
+}
+
+static void
+stream_timewait (udx_t *udx, udx_stream_t *stream) {
+  udx_timewait_t *timewait = calloc(1, sizeof(udx_timewait_t));
+  timewait->socket = stream->socket;
+  timewait->entry.local_id = stream->entry.local_id;
+  timewait->entry.entry_type = UDX_ENTRY_TIMEWAIT;
+  udx_stream_entry_set(stream->udx, &timewait->entry);
+  uv_timer_init(udx->loop, &timewait->timer);
+  timewait->timer.data = timewait;
+  timewait->remote_addr = stream->remote_addr;
+  udx_write_header(timewait->header, stream, 0, stream->remote_id);
+  udx__queue_tail(&stream->socket->timewait_queue, &timewait->queue);
+  uv_timer_start(&timewait->timer, timewait_timeout, UDX_STREAM_TIMEWAIT_TIMEOUT_MS, 0);
 }
 
 void
@@ -426,7 +468,11 @@ close_stream_internal (udx_stream_t *stream, int err) {
     udx__link_remove(udx->streams, stream);
   }
 
-  udx__cirbuf_remove(&(udx->streams_by_id), stream->local_id);
+  if (stream->status & UDX_STREAM_TIMEWAIT_WANTED) {
+    stream_timewait(udx, stream);
+  } else {
+    udx_stream_entry_remove(udx, stream->entry.local_id);
+  }
 
   // stream on_close called before acks are cancelled!
   // this is to prevent on_ack / on_send reentry while
@@ -439,8 +485,6 @@ close_stream_internal (udx_stream_t *stream, int err) {
   clear_outgoing_packets(stream);
   clear_incoming_packets(stream);
 
-  // TODO: move the instance to a TIME_WAIT state, so we can handle retransmits
-
   if (stream->status & UDX_STREAM_READING) {
     udx_stream_read_stop(stream);
   }
@@ -448,7 +492,7 @@ close_stream_internal (udx_stream_t *stream, int err) {
   udx_stream_t *relay = stream->relay_to;
 
   if (relay) {
-    udx__cirbuf_remove(&(relay->relaying_streams), stream->local_id);
+    udx__cirbuf_remove(&(relay->relaying_streams), stream->entry.local_id);
   }
 
   udx_cirbuf_t relaying = stream->relaying_streams;
@@ -481,7 +525,6 @@ close_stream_internal (udx_stream_t *stream, int err) {
 // stream-write, stream-send and stream-destroy packets have their own callbacks
 void
 on_packet_send_slow (uv_udp_send_t *req, int status) {
-
   UDX_UNUSED(status);
   free(req);
 }
@@ -512,6 +555,7 @@ send_probe (udx_stream_t *stream) {
     int err = uv_udp_send(req, &stream->socket->uv_udp, &buf, 1, (struct sockaddr *) &stream->remote_addr, on_packet_send_slow);
     if (err) {
       debug_printf("uv_udp_send error: %s\n", uv_strerror(err));
+      free(req);
     }
   }
 
@@ -601,6 +645,7 @@ send_ack (udx_stream_t *stream) {
     int err = uv_udp_send(req, &stream->socket->uv_udp, &buf, 1, (struct sockaddr *) &stream->remote_addr, on_packet_send_slow);
     if (err) {
       debug_printf("uv_udp_send: err=%s\n", uv_strerror(err));
+      free(req);
     }
   }
 
@@ -662,7 +707,6 @@ on_stream_data_write (uv_udp_send_t *send, int status) {
 // called by send_new_packet() and retransmit_packet()
 static void
 _send_packet (udx_stream_t *stream, udx_packet_t *pkt, bool is_retransmit) {
-
   udx__rate_check_app_limited(stream);
 
   if (pkt->transmits < 255) pkt->transmits++;
@@ -750,7 +794,6 @@ _send_packet (udx_stream_t *stream, udx_packet_t *pkt, bool is_retransmit) {
 
 static void
 reset_next_packet (udx_stream_t *stream) {
-
   stream->pkt_capacity = udx__max_payload(stream);
   stream->pkt_header_flag = 0;
   stream->pkt = NULL;
@@ -783,7 +826,6 @@ bind_packet_remote (udx_packet_t *pkt, udx_stream_t *stream) {
 // sends stream->pkt
 static void
 _send_new_packet (udx_stream_t *stream, bool tlp) {
-
   assert((stream->pkt_header_flag & ~(UDX_HEADER_DATA_OR_END)) == 0);
 
   bool inflight_queue_was_empty = stream->inflight_queue.len == 0;
@@ -1453,7 +1495,6 @@ process_data_packet (udx_stream_t *stream, int type, uint32_t seq, char *data, s
 
 static int
 relay_packet (udx_stream_t *stream, char *buf, ssize_t buf_len, int type, uint32_t seq) {
-
   stream->seq = seq_max(stream->seq, seq);
 
   udx_stream_t *relay = stream->relay_to;
@@ -1483,6 +1524,9 @@ relay_packet (udx_stream_t *stream, char *buf, ssize_t buf_len, int type, uint32
       b = uv_buf_init(data, b.len);
 
       err = uv_udp_send(req, &relay->socket->uv_udp, &b, 1, (struct sockaddr *) &relay->remote_addr, on_packet_send_slow);
+      if (err) {
+        free(req);
+      }
     }
   }
 
@@ -1514,6 +1558,33 @@ udx_sack_is_valid (udx_stream_t *stream, uint32_t start_seq, uint32_t end_seq) {
   return true;
 }
 
+static void
+process_timewait (udx_timewait_t *timewait, int type) {
+  if ((type & UDX_HEADER_DATA_OR_END) == 0) {
+    return;
+  }
+  udx_socket_t *socket = timewait->socket;
+
+  uv_buf_t buf = uv_buf_init((char *) timewait->header, sizeof(timewait->header));
+  int err = uv_udp_try_send(&socket->uv_udp, &buf, 1, (struct sockaddr *) &timewait->remote_addr);
+
+  if (err == UV_EAGAIN) {
+    // slow path
+    uv_udp_send_t *req = malloc(sizeof(uv_udp_send_t) + buf.len);
+    char *data = (char *) (req + 1);
+    memcpy(data, buf.base, buf.len);
+    buf.base = data;
+    req->data = NULL;
+    int err = uv_udp_send(req, &socket->uv_udp, &buf, 1, (struct sockaddr *) &timewait->remote_addr, on_packet_send_slow);
+    if (err) {
+      debug_printf("uv_udp_send error: %s\n", uv_strerror(err));
+      free(req);
+    }
+  } else if (err < 0) {
+    debug_printf("udx: failed to ack in timewait\n");
+  }
+}
+
 static int
 process_packet (udx_socket_t *socket, char *buf, ssize_t buf_len, struct sockaddr *addr) {
   udx_t *udx = socket->udx;
@@ -1524,7 +1595,7 @@ process_packet (udx_socket_t *socket, char *buf, ssize_t buf_len, struct sockadd
   udx->bytes_rx += buf_len;
   udx->packets_rx += 1;
 
-  if (!(udx->has_streams) || buf_len < UDX_HEADER_SIZE) return 0;
+  if (buf_len < UDX_HEADER_SIZE) return 0;
 
   uint8_t *b = (uint8_t *) buf;
 
@@ -1549,9 +1620,18 @@ process_packet (udx_socket_t *socket, char *buf, ssize_t buf_len, struct sockadd
     nsack_blocks = header_len / (2 * sizeof(*sacks));
   }
 
-  udx_stream_t *stream = (udx_stream_t *) udx__cirbuf_get(socket->streams_by_id, local_id);
+  udx_stream_entry_t *entry = udx_stream_entry_get(udx, local_id);
+  if (entry == NULL) {
+    return 0;
+  }
+  assert(entry->entry_type != UDX_ENTRY_UNUSED);
+  if (entry->entry_type == UDX_ENTRY_TIMEWAIT) {
+    process_timewait((udx_timewait_t *) entry, type);
+    return 1;
+  }
 
-  if (stream == NULL || stream->status & UDX_STREAM_DEAD) return 0;
+  udx_stream_t *stream = (udx_stream_t *) entry;
+  if (stream->status & UDX_STREAM_DEAD) return 0;
 
   stream->bytes_rx += buf_len;
   stream->packets_rx += 1;
@@ -1895,24 +1975,12 @@ on_uv_udp_recv (uv_udp_t *handle, ssize_t nread, const uv_buf_t *buf, const stru
 
 int
 udx_init (uv_loop_t *loop, udx_t *udx, udx_idle_cb on_idle) {
-  udx->refs = 0;
-  udx->teardown = false;
-  udx->has_streams = false;
+  memset(udx, 0, sizeof(*udx));
+
   udx->on_idle = on_idle;
-
-  udx->sockets = NULL;
-  udx->streams = NULL;
-  udx->listeners = NULL;
-
-  udx->bytes_rx = 0;
-  udx->bytes_tx = 0;
-  udx->packets_rx = 0;
-  udx->packets_tx = 0;
 
   udx->packets_dropped_by_kernel = -1;
   udx->loop = loop;
-
-  udx->debug_flags = 0;
 
   return 0;
 }
@@ -1961,9 +2029,9 @@ udx_socket_init (udx_t *udx, udx_socket_t *socket, udx_socket_close_cb cb) {
 
   socket->ttl = UDX_DEFAULT_TTL;
   udx__queue_init(&socket->specific_ttl_send_queue);
+  udx__queue_init(&socket->timewait_queue);
 
   socket->udx = udx;
-  socket->streams_by_id = &(udx->streams_by_id);
 
   socket->on_recv = NULL;
   socket->on_close = cb;
@@ -2278,6 +2346,12 @@ udx_socket_close (udx_socket_t *socket) {
   uv_timer_stop(&socket->ttl_check_timer);
   uv_close((uv_handle_t *) &socket->ttl_check_timer, on_udx_socket_handle_close);
 
+  while (socket->timewait_queue.len > 0) {
+    udx_timewait_t *timewait = udx__queue_data(udx__queue_peek(&socket->timewait_queue), udx_timewait_t, queue);
+    uv_timer_stop(&timewait->timer);
+    timewait_timeout(&timewait->timer);
+  }
+
   while (socket->specific_ttl_send_queue.len > 0) {
     udx_socket_send_t *req = udx__queue_data(udx__queue_shift(&socket->specific_ttl_send_queue), udx_socket_send_t, queue);
     if (req->on_send) {
@@ -2311,14 +2385,10 @@ udx_stream_init (udx_t *udx, udx_stream_t *stream, uint32_t local_id, udx_stream
 
   udx->refs++;
 
-  if (!(udx->has_streams)) {
-    udx__cirbuf_init(&(udx->streams_by_id), 16);
-    udx->has_streams = true;
-  }
-
   udx__link_add(udx->streams, stream);
 
-  stream->local_id = local_id;
+  stream->entry.local_id = local_id;
+  stream->entry.entry_type = UDX_ENTRY_STREAM;
   stream->ca_state = UDX_CA_OPEN;
   stream->udx = udx;
   reset_mtu_state_machine(stream);
@@ -2367,7 +2437,16 @@ udx_stream_init (udx_t *udx, udx_stream_t *stream, uint32_t local_id, udx_stream
   udx__queue_init(&stream->retransmit_queue);
 
   // Add the socket to the active set
-  udx__cirbuf_set(&(udx->streams_by_id), (udx_cirbuf_val_t *) stream);
+  udx_stream_entry_t *entry = udx_stream_entry_set(udx, &stream->entry);
+
+  // it is ok to replace a timewait entry with a new stream, but it
+  // needs clean up
+  if (entry && entry->entry_type == UDX_ENTRY_TIMEWAIT) {
+    udx_timewait_t *timewait = (udx_timewait_t *) entry;
+    uv_timer_stop(&timewait->timer);
+    udx__queue_unlink(&timewait->socket->timewait_queue, &timewait->queue);
+    uv_close((uv_handle_t *) &timewait->timer, timewait_close);
+  }
 
   debug_throughput_init(stream);
   reset_next_packet(stream);
@@ -2397,7 +2476,6 @@ udx_stream_set_seq (udx_stream_t *stream, uint32_t seq) {
 
 int
 udx_stream_set_keepalive (udx_stream_t *stream, uint32_t keepalive_timeout_ms) {
-
   stream->keepalive_timeout_ms = keepalive_timeout_ms;
 
   if (stream->remote_acked == stream->seq && keepalive_timeout_ms && stream->status & UDX_STREAM_CONNECTED) {
@@ -2541,12 +2619,12 @@ udx_stream_change_remote (udx_stream_t *stream, udx_socket_t *socket, uint32_t r
 
   bool defer_change = seq_of_change != stream->remote_acked;
   if (defer_change) {
-    debug_printf("change_remote: id=%u RA=%u Seq Of Change=%u\n", stream->local_id, stream->remote_acked, stream->seq);
+    debug_printf("change_remote: id=%u RA=%u Seq Of Change=%u\n", stream->entry.local_id, stream->remote_acked, stream->seq);
     stream->remote_changing = true;
     stream->seq_on_remote_changed = seq_of_change;
     stream->on_remote_changed = on_remote_changed;
   } else {
-    debug_printf("change_remote: id=%u RA=%u Seq=%u, acting now!\n", stream->local_id, stream->remote_acked, stream->seq);
+    debug_printf("change_remote: id=%u RA=%u Seq=%u, acting now!\n", stream->entry.local_id, stream->remote_acked, stream->seq);
   }
 
   reset_mtu_state_machine(stream);
@@ -2764,6 +2842,10 @@ udx_stream_write_end (udx_stream_write_t *req, udx_stream_t *stream, const uv_bu
     return UV_EPIPE;
   }
 
+  if (!(stream->status & UDX_STREAM_ENDED_REMOTE)) {
+    stream->status |= UDX_STREAM_TIMEWAIT_WANTED;
+  }
+
   stream->status |= UDX_STREAM_ENDING;
 
   if (bufs_len > 0) {
@@ -2812,13 +2894,14 @@ _stream_on_destroy_send (uv_udp_send_t *req, int status) {
 int
 udx_stream_destroy (udx_stream_t *stream) {
   if (stream->status & UDX_STREAM_CLOSED) {
-    debug_printf("udx: closing already closed stream %u\n", stream->local_id);
+    debug_printf("udx: closing already closed stream %u\n", stream->entry.local_id);
     return 0;
   }
 
   if (stream->status & UDX_STREAM_DESTROYING) {
     return 0;
   }
+  stream->status &= ~UDX_STREAM_TIMEWAIT_WANTED;
 
   if ((stream->status & UDX_STREAM_CONNECTED) == 0) {
     close_stream(stream, 0);
