@@ -375,10 +375,17 @@ udx_keepalive_timeout (uv_timer_t *timer);
 static void
 udx_delivery_timeout (uv_timer_t *timer);
 
+// rto without backoff, so backoff does not raise the delivery timeout floor
+static uint32_t
+base_rto (udx_stream_t *stream) {
+  if (stream->srtt == 0) return 1000;
+  return min_uint32(max_uint32(stream->srtt + 4 * stream->rttvar, 1000), UDX_RTO_MAX_MS);
+}
+
 static uint64_t
 delivery_budget (udx_stream_t *stream) {
   uint32_t timeout = stream->delivery_timeout_ms ? stream->delivery_timeout_ms : UDX_DEFAULT_DELIVERY_TIMEOUT_MS;
-  return max_uint32(timeout, 3 * stream->rto);
+  return max_uint32(timeout, 3 * base_rto(stream));
 }
 
 static void

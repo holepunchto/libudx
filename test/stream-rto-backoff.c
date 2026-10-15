@@ -162,17 +162,19 @@ main () {
   assert(err > 0);
 
   // Let ACK processing finish before starting a subsequent write.
-  while (writes_acked == 0) uv_run(&loop, UV_RUN_ONCE);
+  while (writes_acked == 0)
+    uv_run(&loop, UV_RUN_ONCE);
 
   // A real RTO occurred. Karn's rule excludes this ACK as an RTT sample,
   // so the backed-off RTO must carry over to the next write.
-  assert(stream.rto_count == 1);
+  assert(stream.lifetime_rto_count == 1);
   assert(stream.srtt == 0);
   assert(stream.rto == 2 * INITIAL_RTO_MS);
 
   err = udx_stream_write(write_req, &stream, &buf, 1, on_write_acked);
   assert(err > 0);
-  while (writes_acked == 1) uv_run(&loop, UV_RUN_ONCE);
+  while (writes_acked == 1)
+    uv_run(&loop, UV_RUN_ONCE);
 
   // The delayed ACK now provides a clean sample instead of another timeout.
   assert(writes_acked == 2);
