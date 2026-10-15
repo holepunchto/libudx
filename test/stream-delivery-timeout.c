@@ -6,7 +6,7 @@
 
 // write to a socket that never acks:
 // a: delivery timeout 100 ms, raised to 3 x rto, closes at 3000 ms
-// b: default budget, set to 4000 ms at 3500 ms, the rto pending for 5000 ms is pulled in
+// b: default timeout, set to 4000 ms at 3500 ms, closes at 4000 ms
 
 uv_loop_t loop;
 udx_t udx;

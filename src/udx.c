@@ -38,7 +38,7 @@
 #define UDX_INIT_PACING_RATE    25000 // 25MB/s, 200mbit. updated by bbr_init
 #define UDX_DEFAULT_SNDBUF_SIZE 212992
 
-#define UDX_MAX_RTO_TIMEOUTS 6
+#define UDX_DEFAULT_DELIVERY_TIMEOUT_MS 13000
 
 #define UDX_RTO_MAX_MS        30000
 #define UDX_RTT_MAX_MS        30000
@@ -372,57 +372,24 @@ static void
 udx_zwp_timeout (uv_timer_t *timer);
 static void
 udx_keepalive_timeout (uv_timer_t *timer);
+static void
+udx_delivery_timeout (uv_timer_t *timer);
 
-// default 13 x rto
+// 13 s by default, and never less than 3 rtos
 static uint64_t
 delivery_budget (udx_stream_t *stream) {
-  if (stream->delivery_timeout_ms) {
-    return max_uint32(stream->delivery_timeout_ms, 3 * stream->rto);
-  }
-
-  return (uint64_t) (2 * UDX_MAX_RTO_TIMEOUTS + 1) * stream->rto;
-}
-
-// a loss timer more than an rto late means the loop did not run (sleep, stall), don't charge that time
-static void
-skip_stall (udx_stream_t *stream, uint64_t now) {
-  if (now <= stream->timer_ts + stream->rto || stream->rto_count > UDX_MAX_RTO_TIMEOUTS) return;
-
-  uint64_t budget = delivery_budget(stream);
-
-  stream->progress_ts += now - stream->timer_ts;
-  if (stream->progress_ts + budget < now + stream->rto) stream->progress_ts = now + stream->rto - budget;
-}
-
-// leave one rto before the deadline for the ack of the last retransmit
-static uint32_t
-clamp_rto_to_deadline (udx_stream_t *stream, uint32_t wait) {
-  uint64_t now = uv_now(stream->udx->loop);
-  uint64_t deadline = stream->progress_ts + delivery_budget(stream);
-  uint64_t left = deadline > now ? deadline - now : 1;
-
-  if (left <= stream->rto) return wait < left ? wait : (uint32_t) left;
-  if (wait > left - stream->rto) return (uint32_t) (left - stream->rto);
-  return wait;
+  uint32_t timeout = stream->delivery_timeout_ms ? stream->delivery_timeout_ms : UDX_DEFAULT_DELIVERY_TIMEOUT_MS;
+  return max_uint32(timeout, 3 * stream->rto);
 }
 
 static void
 stream_timer_start (udx_stream_t *stream, udx_stream_timer_type_t timer, uint32_t time_wait_ms) {
-  uint64_t now = uv_now(stream->udx->loop);
-
-  // an overdue loss timer can be replaced before it fires, e.g. by a write after a stall
-  if (stream->pending_timer == UDX_TIMER_RTO || stream->pending_timer == UDX_TIMER_TLP || stream->pending_timer == UDX_TIMER_RACK_REO) {
-    skip_stall(stream, now);
-  }
-
   // as a special case, save the next_rto_ts so that it can be restored if necessary
   if (timer == UDX_TIMER_RTO) {
-    time_wait_ms = clamp_rto_to_deadline(stream, time_wait_ms);
-    stream->next_rto_ts = now + time_wait_ms;
+    stream->next_rto_ts = uv_now(stream->udx->loop) + time_wait_ms;
   }
 
   stream->pending_timer = timer;
-  stream->timer_ts = now + time_wait_ms;
 
   // important: order must match order in the udx_stream_timer_type_t enum
   static uv_timer_cb timer_to_callback[] = {
@@ -553,9 +520,11 @@ close_stream_internal (udx_stream_t *stream, int err) {
 
   uv_timer_stop(&stream->timer);
   uv_timer_stop(&stream->refill_pacing_timer);
+  uv_timer_stop(&stream->delivery_timer);
 
   uv_close((uv_handle_t *) &stream->timer, finalize_maybe);
   uv_close((uv_handle_t *) &stream->refill_pacing_timer, finalize_maybe);
+  uv_close((uv_handle_t *) &stream->delivery_timer, finalize_maybe);
   uv_close((uv_handle_t *) &stream->pending_packet_prepare, finalize_maybe);
 
   if (udx->teardown && socket != NULL && socket->streams == NULL) {
@@ -876,6 +845,10 @@ _send_new_packet (udx_stream_t *stream, bool tlp) {
 
   if (stream->remote_acked == stream->seq) {
     stream->progress_ts = uv_now(stream->udx->loop);
+
+    if (!uv_is_active((uv_handle_t *) &stream->delivery_timer)) {
+      uv_timer_start(&stream->delivery_timer, udx_delivery_timeout, delivery_budget(stream), 0);
+    }
   }
 
   if (pkt->remote_addr_len == 0) {
@@ -1253,6 +1226,23 @@ udx_zwp_timeout (uv_timer_t *timer) {
 }
 
 static void
+udx_delivery_timeout (uv_timer_t *timer) {
+  udx_stream_t *stream = timer->data;
+
+  if (stream->remote_acked == stream->seq) return;
+
+  uint64_t now = uv_now(timer->loop);
+  uint64_t deadline = stream->progress_ts + delivery_budget(stream);
+
+  if (now >= deadline) {
+    close_stream(stream, UV_ETIMEDOUT);
+    return;
+  }
+
+  uv_timer_start(&stream->delivery_timer, udx_delivery_timeout, deadline - now, 0);
+}
+
+static void
 udx_rto_timeout (uv_timer_t *timer) {
   udx_stream_t *stream = timer->data;
   stream->pending_timer = UDX_TIMER_NONE;
@@ -1276,15 +1266,6 @@ udx_rto_timeout (uv_timer_t *timer) {
   stream->tlp_in_flight = false;
   stream->tlp_is_retrans = false;
 
-  uint64_t now = uv_now(timer->loop);
-
-  skip_stall(stream, now);
-
-  if (now >= stream->progress_ts + delivery_budget(stream)) {
-    close_stream(stream, UV_ETIMEDOUT);
-    return;
-  }
-
   assert(!(stream->status & UDX_STREAM_CLOSED));
   stream_timer_start(stream, UDX_TIMER_RTO, stream->rto * 2);
 
@@ -1293,6 +1274,7 @@ udx_rto_timeout (uv_timer_t *timer) {
 
   debug_printf("rto: lost rid=%u [%u:%u] inflight=%zu cwnd=%u srtt=%u\n", stream->remote_id, stream->remote_acked, stream->seq, stream->inflight, stream->cwnd, stream->srtt);
 
+  uint64_t now = uv_now(timer->loop);
   uint32_t rack_reo_wnd = rack_update_reo_wnd(stream);
   // rack 6.3
 
@@ -1888,6 +1870,7 @@ process_packet (udx_socket_t *socket, char *buf, ssize_t buf_len, struct sockadd
     if (stream->remote_acked == stream->seq) {
       arm_rto_or_tlp = false;
       assert(stream->inflight_queue.len == 0 && stream->retransmit_queue.len == 0);
+      uv_timer_stop(&stream->delivery_timer);
       bool end_queued = (stream->status & (UDX_STREAM_ENDING | UDX_STREAM_ENDED)) == UDX_STREAM_ENDING;
 
       if (stream->send_rwnd == 0 && (stream->writes_queued_bytes > 0 || end_queued)) {
@@ -2467,7 +2450,10 @@ udx_stream_init (udx_t *udx, udx_stream_t *stream, uint32_t local_id, udx_stream
   uv_timer_init(udx->loop, &stream->refill_pacing_timer);
   stream->refill_pacing_timer.data = stream;
 
-  stream->nrefs = 3; // timer, refill_pacing_timer, pending_packet_prepare
+  uv_timer_init(udx->loop, &stream->delivery_timer);
+  stream->delivery_timer.data = stream;
+
+  stream->nrefs = 4; // timer, refill_pacing_timer, delivery_timer, pending_packet_prepare
 
   udx__queue_init(&stream->inflight_queue);
   udx__queue_init(&stream->retransmit_queue);
@@ -2542,9 +2528,10 @@ int
 udx_stream_set_delivery_timeout (udx_stream_t *stream, uint32_t delivery_timeout_ms) {
   stream->delivery_timeout_ms = delivery_timeout_ms;
 
-  if (stream->pending_timer == UDX_TIMER_RTO && (stream->status & UDX_STREAM_CONNECTED)) {
-    uint64_t due_in = uv_timer_get_due_in(&stream->timer);
-    if (due_in > 0) stream_timer_start(stream, UDX_TIMER_RTO, (uint32_t) due_in);
+  if (uv_is_active((uv_handle_t *) &stream->delivery_timer)) {
+    uint64_t now = uv_now(stream->udx->loop);
+    uint64_t deadline = stream->progress_ts + delivery_budget(stream);
+    uv_timer_start(&stream->delivery_timer, udx_delivery_timeout, deadline > now ? deadline - now : 0, 0);
   }
 
   return 0;

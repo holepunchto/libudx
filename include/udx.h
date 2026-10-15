@@ -351,7 +351,6 @@ struct udx_stream_s {
 
   udx_stream_timer_type_t pending_timer;
   uint64_t next_rto_ts; // todo: remove this, calculate from oldest packet (head) in rtx queue
-  uint64_t timer_ts;    // when the pending timer is due
   uint32_t srtt;
   uint32_t rttvar;
   uint32_t rto;
@@ -419,9 +418,10 @@ struct udx_stream_s {
   bool tlp_permitted;   // if set, srtt has been updated since the last tlp
   uint32_t tlp_end_seq; // seq at time of tlp sent. invalid if tlp_inflight is not set
 
-  int nrefs;        // # of libuv handles open (2 timer, 1 prepare)
+  int nrefs;        // # of libuv handles open (3 timer, 1 prepare)
   uv_timer_t timer; // RTO, RACK_REO,TLP, ZWP and keepalive timer. stream.pending_timer tells which is currently set (if any)
   uv_timer_t refill_pacing_timer;
+  uv_timer_t delivery_timer;
 
   size_t inflight;
 
@@ -664,7 +664,7 @@ int
 udx_stream_set_keepalive (udx_stream_t *stream, uint32_t keepalive_timeout_ms);
 
 // close with UV_ETIMEDOUT when sent data gets no ack for this long, like TCP_USER_TIMEOUT.
-// 0 (the default) means 13 x rto, values below 3 x rto are raised to 3 x rto.
+// 0 (the default) means 13 s, values below 3 x rto are raised to 3 x rto.
 int
 udx_stream_set_delivery_timeout (udx_stream_t *stream, uint32_t delivery_timeout_ms);
 
