@@ -109,10 +109,17 @@ send_window_in_packets (udx_stream_t *stream) {
 }
 
 static void
+ref_inc (udx_t *udx) {
+  if (udx->refs++ == 0) udx__platform_init(udx);
+}
+
+static void
 ref_dec (udx_t *udx) {
   udx->refs--;
 
   if (udx->refs) return;
+
+  udx__platform_uninit(udx);
 
   if (udx->has_streams) {
     udx__cirbuf_destroy(&(udx->streams_by_id));
@@ -662,9 +669,16 @@ advance_next_send_ts (udx_stream_t *stream, bool sent_packet) {
   uint64_t now_ms = uv_now(stream->udx->loop);
 
   if (sent_packet) {
-    // save in case we need to recompute with a new rate later
-    stream->last_send_ts = stream->next_send_ts;
-    stream->last_send_ts_fraction = stream->next_send_ts_fraction;
+    if (stream->next_send_ts + udx__pacing_max_credit_ms < now_ms) {
+      // allow a bounded amount of credit to absorb timer lateness.
+      // idle streams are reset in _udx_stream_write
+      stream->last_send_ts = now_ms - udx__pacing_max_credit_ms;
+      stream->last_send_ts_fraction = 0.0;
+    } else {
+      // save in case we need to recompute with a new rate later
+      stream->last_send_ts = stream->next_send_ts;
+      stream->last_send_ts_fraction = stream->next_send_ts_fraction;
+    }
   }
 
   // we just sent a packet. adjust next_send_ts
@@ -1959,7 +1973,7 @@ int
 udx_socket_init (udx_t *udx, udx_socket_t *socket, udx_socket_close_cb cb) {
   if (udx->teardown) return UV_EINVAL;
 
-  udx->refs++;
+  ref_inc(udx);
 
   memset(socket, 0, sizeof(*socket));
   udx__link_add(udx->sockets, socket);
@@ -2314,7 +2328,7 @@ udx_stream_init (udx_t *udx, udx_stream_t *stream, uint32_t local_id, udx_stream
 
   memset(stream, 0, sizeof(*stream));
 
-  udx->refs++;
+  ref_inc(udx);
 
   if (!(udx->has_streams)) {
     udx__cirbuf_init(&(udx->streams_by_id), 16);
@@ -2725,13 +2739,12 @@ _udx_stream_write (udx_stream_write_t *write, udx_stream_t *stream, const uv_buf
     udx__queue_tail(&stream->write_queue, &wbuf->queue);
   }
 
-  if (stream_was_idle) {
-    // prevent burst on resuming from idle
-    // todo: maybe budget 1ms of burst?
+  if (stream_was_idle && stream->next_send_ts < uv_now(stream->udx->loop)) {
+    // prevent a burst of accumulated credit on resuming from idle
     stream->next_send_ts = uv_now(stream->udx->loop);
     stream->next_send_ts_fraction = 0.0;
 
-    stream->last_send_ts = uv_now(stream->udx->loop);
+    stream->last_send_ts = stream->next_send_ts;
     stream->last_send_ts_fraction = 0.0;
   }
 
@@ -2889,7 +2902,7 @@ int
 udx_lookup (udx_t *udx, udx_lookup_t *req, const char *host, unsigned int flags, udx_lookup_cb cb) {
   if (udx->teardown) return UV_EINVAL;
 
-  udx->refs++;
+  ref_inc(udx);
 
   req->udx = udx;
   req->on_lookup = cb;
@@ -2998,7 +3011,7 @@ udx_interface_event_init (udx_t *udx, udx_interface_event_t *handle, udx_interfa
 
   handle->timer.data = handle;
 
-  udx->refs++;
+  ref_inc(udx);
   udx__link_add(udx->listeners, handle);
 
   return 0;
