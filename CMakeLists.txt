@@ -44,6 +44,8 @@ target_sources(
     src/udx_rate.c
     src/udx_sack_tree.c
     src/udx_sack_tree.h
+    src/udx_stream_table.c
+    src/udx_stream_table.h
     src/win_filter.h
     src/win_filter.c
     src/win_filter_f64.h

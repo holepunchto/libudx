@@ -95,5 +95,9 @@ main () {
   free(areq);
   free(breq);
 
+  assert(bstream.bytes_queued == buf.len * 2);
+  assert(bstream.bytes_packetized == buf.len * 2);
+  assert(bstream.bytes_acked == buf.len * 2);
+
   return 0;
 }
