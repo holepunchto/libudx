@@ -74,6 +74,12 @@ if(WIN32)
     PRIVATE
       src/io_win.c
   )
+
+  target_link_libraries(
+    udx
+    PUBLIC
+      winmm
+  )
 endif()
 
 add_library(udx_shared SHARED)

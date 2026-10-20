@@ -121,10 +121,17 @@ send_window_in_packets (udx_stream_t *stream) {
 }
 
 static void
+ref_inc (udx_t *udx) {
+  if (udx->refs++ == 0) udx__platform_init(udx);
+}
+
+static void
 ref_dec (udx_t *udx) {
   udx->refs--;
 
   if (udx->refs) return;
+
+  udx__platform_uninit(udx);
 
   if (udx->on_idle != NULL) {
     udx->on_idle(udx);
@@ -147,9 +154,6 @@ on_udx_socket_handle_close (uv_handle_t *handle) {
     ref_dec(udx);
   }
 }
-
-static void
-update_pacing_time (udx_stream_t *stream);
 
 static void
 clear_incoming_packets (udx_stream_t *stream) {
@@ -510,10 +514,10 @@ close_stream_internal (udx_stream_t *stream, int err) {
   udx__cirbuf_destroy(&stream->outgoing);
 
   uv_timer_stop(&stream->timer);
-  uv_timer_stop(&stream->refill_pacing_timer);
+  uv_timer_stop(&stream->pacing_timer);
 
   uv_close((uv_handle_t *) &stream->timer, finalize_maybe);
-  uv_close((uv_handle_t *) &stream->refill_pacing_timer, finalize_maybe);
+  uv_close((uv_handle_t *) &stream->pacing_timer, finalize_maybe);
   uv_close((uv_handle_t *) &stream->pending_packet_prepare, finalize_maybe);
 
   if (udx->teardown && socket != NULL && socket->streams == NULL) {
@@ -677,8 +681,7 @@ send_ack (udx_stream_t *stream) {
 static bool
 stream_may_send (udx_stream_t *stream, bool retransmit) {
   assert(stream->cwnd > 0);
-  update_pacing_time(stream);
-  if (stream->tb_available == 0) {
+  if (stream->next_send_ts > uv_now(stream->udx->loop)) {
     return false;
   }
   if (retransmit) {
@@ -702,6 +705,38 @@ on_stream_data_write (uv_udp_send_t *send, int status) {
   }
 
   deref_packet(pkt);
+}
+
+// if sent_packet, compute next_send_ts based on current rate.
+// else, recompute based on new rate.
+static void
+advance_next_send_ts (udx_stream_t *stream, bool sent_packet) {
+  uint64_t now_ms = uv_now(stream->udx->loop);
+
+  if (sent_packet) {
+    if (stream->next_send_ts + udx__pacing_max_credit_ms < now_ms) {
+      // allow a bounded amount of credit to absorb timer lateness.
+      // idle streams are reset in _udx_stream_write
+      stream->last_send_ts = now_ms - udx__pacing_max_credit_ms;
+      stream->last_send_ts_fraction = 0.0;
+    } else {
+      // save in case we need to recompute with a new rate later
+      stream->last_send_ts = stream->next_send_ts;
+      stream->last_send_ts_fraction = stream->next_send_ts_fraction;
+    }
+  }
+
+  // we just sent a packet. adjust next_send_ts
+
+  double inter_packet_spacing_ms = 1.0 / stream->pacing_packets_per_ms;
+
+  double whole = 0;
+  stream->next_send_ts_fraction = modf(stream->last_send_ts_fraction + inter_packet_spacing_ms, &whole);
+  stream->next_send_ts = stream->last_send_ts + whole;
+
+  if (stream->next_send_ts > now_ms) {
+    uv_timer_start(&stream->pacing_timer, pacing_timer_timeout, stream->next_send_ts - now_ms, 0);
+  }
 }
 
 // called by send_new_packet() and retransmit_packet()
@@ -785,11 +820,7 @@ _send_packet (udx_stream_t *stream, udx_packet_t *pkt, bool is_retransmit) {
   udx->packets_tx++;
   udx->bytes_tx += pkt->size;
 
-  stream->tb_available = pkt->size > stream->tb_available ? 0 : stream->tb_available - pkt->size;
-
-  if (stream->tb_available == 0) {
-    uv_timer_start(&stream->refill_pacing_timer, pacing_timer_timeout, 1, 0);
-  }
+  advance_next_send_ts(stream, true);
 }
 
 static void
@@ -1874,7 +1905,13 @@ process_packet (udx_socket_t *socket, char *buf, ssize_t buf_len, struct sockadd
   if (data_inflight) {
     // don't generate rates / do congestion control if nothing was in flight, and thus nothing could be acked and no new samples are generated
     udx__rate_gen(stream, delivered, lost, &rs);
+    double pacing_rate = stream->pacing_packets_per_ms;
     bbr_main(stream, &rs);
+
+    if (stream->pacing_packets_per_ms != pacing_rate) {
+      // pacing rate changed - compute new next_send_ts
+      advance_next_send_ts(stream, false);
+    }
   }
 
   send_packets(stream);
@@ -1902,23 +1939,9 @@ addr_to_v6 (struct sockaddr_in *addr) {
   memcpy(addr, &in, sizeof(in));
 }
 
-static void
-update_pacing_time (udx_stream_t *stream) {
-  uint64_t now = uv_now(stream->udx->loop); // 1ms granularity
-
-  if (now > stream->tb_last_refill_ms) {
-    uint64_t factor = now - stream->tb_last_refill_ms;
-    assert(stream->pacing_bytes_per_ms > 0);
-    stream->tb_available = factor * stream->pacing_bytes_per_ms;
-    stream->tb_last_refill_ms = now;
-  }
-}
-
 void
 pacing_timer_timeout (uv_timer_t *timer) {
   udx_stream_t *stream = timer->data;
-
-  update_pacing_time(stream);
   send_packets(stream);
 }
 
@@ -2025,7 +2048,7 @@ int
 udx_socket_init (udx_t *udx, udx_socket_t *socket, udx_socket_close_cb cb) {
   if (udx->teardown) return UV_EINVAL;
 
-  udx->refs++;
+  ref_inc(udx);
 
   memset(socket, 0, sizeof(*socket));
   udx__link_add(udx->sockets, socket);
@@ -2386,7 +2409,7 @@ udx_stream_init (udx_t *udx, udx_stream_t *stream, uint32_t local_id, udx_stream
 
   memset(stream, 0, sizeof(*stream));
 
-  udx->refs++;
+  ref_inc(udx);
 
   udx__link_add(udx->streams, stream);
 
@@ -2408,14 +2431,15 @@ udx_stream_init (udx_t *udx, udx_stream_t *stream, uint32_t local_id, udx_stream
 
   win_filter_reset(&stream->rtt_min, uv_now(udx->loop), ~0U);
 
-  stream->tb_available = UDX_INIT_PACING_RATE;
-  stream->tb_last_refill_ms = uv_now(udx->loop);
+  stream->next_send_ts = uv_now(udx->loop);
+  stream->last_send_ts = uv_now(udx->loop);
+  stream->pacing_packets_per_ms = 1.0; // 9.6 mbit/s, adjusted by bbr on ACK.
 
   uv_prepare_init(udx->loop, &stream->pending_packet_prepare);
   stream->pending_packet_prepare.data = stream;
 
-  uv_timer_init(udx->loop, &stream->refill_pacing_timer);
-  stream->refill_pacing_timer.data = stream;
+  uv_timer_init(udx->loop, &stream->pacing_timer);
+  stream->pacing_timer.data = stream;
 
   stream->nrefs = 3; // timer, refill_pacing_timer, pending_packet_prepare
 
@@ -2801,6 +2825,15 @@ _udx_stream_write (udx_stream_write_t *write, udx_stream_t *stream, const uv_buf
     udx__queue_tail(&stream->write_queue, &wbuf->queue);
   }
 
+  if (stream_was_idle && stream->next_send_ts < uv_now(stream->udx->loop)) {
+    // prevent a burst of accumulated credit on resuming from idle
+    stream->next_send_ts = uv_now(stream->udx->loop);
+    stream->next_send_ts_fraction = 0.0;
+
+    stream->last_send_ts = stream->next_send_ts;
+    stream->last_send_ts_fraction = 0.0;
+  }
+
   // if an idle, zero window stream has data queued, send a zero-window probe immediately
   if (stream_was_idle && stream->send_rwnd == 0) {
     send_probe(stream);
@@ -2968,7 +3001,7 @@ int
 udx_lookup (udx_t *udx, udx_lookup_t *req, const char *host, unsigned int flags, udx_lookup_cb cb) {
   if (udx->teardown) return UV_EINVAL;
 
-  udx->refs++;
+  ref_inc(udx);
 
   req->udx = udx;
   req->on_lookup = cb;
@@ -3077,7 +3110,7 @@ udx_interface_event_init (udx_t *udx, udx_interface_event_t *handle, udx_interfa
 
   handle->timer.data = handle;
 
-  udx->refs++;
+  ref_inc(udx);
   udx__link_add(udx->listeners, handle);
 
   return 0;

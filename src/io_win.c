@@ -1,6 +1,8 @@
 #include <assert.h>
 #include <uv.h>
 
+#include <timeapi.h>
+
 #include "internal.h"
 #include "io.h"
 
@@ -69,4 +71,24 @@ udx__udp_set_dontfrag (uv_os_sock_t fd, bool is_ipv6) {
   }
 
   return rc;
+}
+
+// timeBeginPeriod(1) may not be honored, e.g. for occluded or minimized
+// processes on windows 11, leaving timers coalesced to ~15.6 ms
+const uint64_t udx__pacing_max_credit_ms = 16;
+
+void
+udx__platform_init (udx_t *udx) {
+  (void) udx;
+
+  // the pacer relies on short timers. raise the system timer resolution to
+  // 1 ms so they are not coalesced to the default ~15.6 ms tick.
+  timeBeginPeriod(1);
+}
+
+void
+udx__platform_uninit (udx_t *udx) {
+  (void) udx;
+
+  timeEndPeriod(1);
 }
