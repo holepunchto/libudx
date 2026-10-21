@@ -1302,6 +1302,53 @@ clamp_rtt (udx_stream_t *stream, uint64_t rtt) {
   return rtt;
 }
 
+// take one rtt sample per ack from rs->rtt_time_sent
+static void
+ack_update_rtt (udx_stream_t *stream, udx_rate_sample_t *rs) {
+  const uint64_t time = uv_now(stream->udx->loop);
+
+  if (rs->rtt_time_sent) {
+    uint32_t rtt = clamp_rtt(stream, time - rs->rtt_time_sent);
+
+    // with a 1 ms clock a 0 ms sample means "under a millisecond", not "no sample":
+    // srtt == 0 is what schedule_loss_probe and clamp_rtt read as unknown
+    if (rtt == 0) rtt = 1;
+
+    // rack 6.2 step 1 update rack.min_RTT
+    win_filter_apply_min(&stream->rtt_min, UDX_RTT_MIN_WINDOW_MS, time, rtt);
+
+    // First round trip time sample
+    if (stream->srtt == 0) {
+      stream->srtt = rtt;
+      stream->rttvar = rtt / 2;
+    } else {
+      const uint32_t delta = rtt < stream->srtt ? stream->srtt - rtt : rtt - stream->srtt;
+      // RTTVAR <- (1 - beta) * RTTVAR + beta * |SRTT - R'| where beta is 1/4
+      stream->rttvar = (3 * stream->rttvar + delta) / 4;
+
+      // SRTT <- (1 - alpha) * SRTT + alpha * R' where alpha is 1/8
+      stream->srtt = (7 * stream->srtt + rtt) / 8;
+    }
+
+    stream->tlp_permitted = true;
+
+    // RTO <- SRTT + max (G, K*RTTVAR) where K is 4 maxed with 1s
+    stream->rto = max_uint32(stream->srtt + 4 * stream->rttvar, 1000);
+
+    if (stream->rto > UDX_RTO_MAX_MS) {
+      debug_printf("rto: computed rto=%u ms, capping to %u ms\n", stream->rto, UDX_RTO_MAX_MS);
+      stream->rto = UDX_RTO_MAX_MS;
+    }
+
+    rs->rtt_ms = rtt;
+  }
+
+  // rack 6.2 step 2 RACK.rtt, same as above but a retransmission that passed the checks is allowed too
+  if (rs->rack_rtt_time_sent) {
+    stream->rack_rtt = max_uint32(clamp_rtt(stream, time - rs->rack_rtt_time_sent), 1);
+  }
+}
+
 // receiver side calls this to mark a packet acked
 static int
 ack_packet (udx_stream_t *stream, uint32_t seq, int sack, udx_rate_sample_t *rs) {
@@ -1349,46 +1396,17 @@ ack_packet (udx_stream_t *stream, uint32_t seq, int sack, udx_rate_sample_t *rs)
   udx__rate_pkt_delivered(stream, pkt, rs);
 
   const uint64_t time = uv_now(stream->udx->loop);
-  uint32_t rtt = clamp_rtt(stream, time - pkt->time_sent);
+  const uint32_t rtt = clamp_rtt(stream, time - pkt->time_sent);
   const uint32_t next = seq + 1;
 
   if (!pkt->retransmitted) {
-    // with a 1 ms clock a 0 ms sample means "under a millisecond", not "no sample":
-    // srtt == 0 is what schedule_loss_probe and clamp_rtt read as unknown
-    if (rtt == 0) rtt = 1;
-
-    // rack 6.2 step 1 update rack.min_RTT
-    win_filter_apply_min(&stream->rtt_min, UDX_RTT_MIN_WINDOW_MS, time, rtt);
-
-    // First round trip time sample
-    if (stream->srtt == 0) {
-      stream->srtt = rtt;
-      stream->rttvar = rtt / 2;
-    } else {
-      const uint32_t delta = rtt < stream->srtt ? stream->srtt - rtt : rtt - stream->srtt;
-      // RTTVAR <- (1 - beta) * RTTVAR + beta * |SRTT - R'| where beta is 1/4
-      stream->rttvar = (3 * stream->rttvar + delta) / 4;
-
-      // SRTT <- (1 - alpha) * SRTT + alpha * R' where alpha is 1/8
-      stream->srtt = (7 * stream->srtt + rtt) / 8;
-    }
-
-    stream->tlp_permitted = true;
-
-    // RTO <- SRTT + max (G, K*RTTVAR) where K is 4 maxed with 1s
-    stream->rto = max_uint32(stream->srtt + 4 * stream->rttvar, 1000);
-
-    if (stream->rto > UDX_RTO_MAX_MS) {
-      debug_printf("rto: computed rto=%u ms, capping to %u ms\n", stream->rto, UDX_RTO_MAX_MS);
-      stream->rto = UDX_RTO_MAX_MS;
-    }
+    rs->rtt_time_sent = max_uint64(rs->rtt_time_sent, pkt->time_sent);
   }
 
   // rack 6.2 step 2 update the state for the most recently sent segment
 
   if (!pkt->retransmitted || (rtt >= udx_rtt_min(stream))) {
-    stream->rack_rtt = rtt;
-    rs->rtt_ms = rtt;
+    rs->rack_rtt_time_sent = max_uint64(rs->rack_rtt_time_sent, pkt->time_sent);
 
     if (rack_sent_after(pkt->time_sent, next, stream->rack_time_sent, stream->rack_next_seq)) {
       stream->rack_time_sent = pkt->time_sent;
@@ -1829,6 +1847,8 @@ process_packet (udx_socket_t *socket, char *buf, ssize_t buf_len, struct sockadd
   if (stream->status & UDX_STREAM_DEAD) {
     return 1; /* re-entry check */
   }
+
+  ack_update_rtt(stream, &rs);
 
   delivered = stream->delivered - delivered;
 

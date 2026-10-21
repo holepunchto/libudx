@@ -20,7 +20,9 @@ typedef struct {
   int64_t interval_ms;
   uint32_t snd_interval_ms;
   uint32_t rcv_interval_ms;
-  int64_t rtt_ms; // rs.rtt in IETF draft
+  int64_t rtt_ms;              // rs.rtt in BBR IETF draft
+  uint64_t rtt_time_sent;      // time_sent of the most recently sent, never retransmitted packet acked, 0 if none
+  uint64_t rack_rtt_time_sent; // same, but also counting retransmissions that pass rack 6.2 step 2's checks
   int losses;
   uint32_t acked_sacked;
   uint32_t prior_in_flight;
