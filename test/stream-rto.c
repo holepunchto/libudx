@@ -67,7 +67,7 @@ main () {
   e = udx_stream_write(req, &stream, &buf, 1, on_ack);
 
   assert(e);
-  // time out after 3 RTOs, the shortest delivery timeout
+  // time out after 3 x rto, the shortest delivery timeout
   e = udx_stream_set_delivery_timeout(&stream, 1);
   assert(e == 0);
 

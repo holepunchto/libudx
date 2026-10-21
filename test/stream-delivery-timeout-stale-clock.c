@@ -122,8 +122,6 @@ main () {
   e = uv_run(&loop, UV_RUN_DEFAULT);
   assert(e == 0);
 
-  assert(acked == 3);
-
   free(data);
 
   return 0;

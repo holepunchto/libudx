@@ -1,7 +1,6 @@
 #include <assert.h>
 #include <stdint.h>
 #include <stdlib.h>
-#include <string.h>
 
 #include "../include/udx.h"
 #include "../src/endian.h"
@@ -50,7 +49,6 @@ on_send (uv_udp_send_t *req, int status) {
 
 void
 send_ack (uv_timer_t *timer) {
-  memset(&ack_packet, 0, sizeof(ack_packet));
   ack_packet.magic = UDX_MAGIC_BYTE;
   ack_packet.version = UDX_VERSION;
   ack_packet.remote_id = udx__swap_uint32_if_be(1);
@@ -106,8 +104,7 @@ main () {
   assert(e == 0);
 
   size_t data_len = udx__max_payload(&stream) * 2;
-  char *data = malloc(data_len);
-  memset(data, 'a', data_len);
+  char *data = calloc(1, data_len);
 
   udx_stream_write_t *req = malloc(udx_stream_write_sizeof(1));
   uv_buf_t buf = uv_buf_init(data, data_len);

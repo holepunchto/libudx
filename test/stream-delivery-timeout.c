@@ -1,6 +1,5 @@
 #include <assert.h>
 #include <stdlib.h>
-#include <string.h>
 
 #include "../include/udx.h"
 
@@ -90,7 +89,6 @@ main () {
   struct sockaddr_in sink_addr;
   bind_any(&sink, &sink_addr);
 
-  uv_update_time(&loop);
   start = uv_now(&loop);
 
   write_to_sink(&a, 1, &sink_addr);
