@@ -844,7 +844,7 @@ _send_new_packet (udx_stream_t *stream, bool tlp) {
   udx_packet_t *pkt = stream->pkt;
 
   if (stream->remote_acked == stream->seq) {
-    stream->progress_ts = uv_now(stream->udx->loop);
+    stream->progress_ts = uv_hrtime() / 1000000; // not uv_now, which is stale after a callback blocks the loop
 
     if (!uv_is_active((uv_handle_t *) &stream->delivery_timer)) {
       uv_timer_start(&stream->delivery_timer, udx_delivery_timeout, delivery_budget(stream), 0);
@@ -1816,7 +1816,7 @@ process_packet (udx_socket_t *socket, char *buf, ssize_t buf_len, struct sockadd
   if (ack_advanced) {
     stream->remote_acked = ack;
     stream->rto_count = 0;
-    stream->progress_ts = uv_now(stream->udx->loop);
+    stream->progress_ts = uv_hrtime() / 1000000;
   }
 
   if (ended) { // remote acked our end
