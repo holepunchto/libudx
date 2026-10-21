@@ -375,7 +375,6 @@ udx_keepalive_timeout (uv_timer_t *timer);
 static void
 udx_delivery_timeout (uv_timer_t *timer);
 
-// 13 s by default, and never less than 3 rtos
 static uint64_t
 delivery_budget (udx_stream_t *stream) {
   uint32_t timeout = stream->delivery_timeout_ms ? stream->delivery_timeout_ms : UDX_DEFAULT_DELIVERY_TIMEOUT_MS;
