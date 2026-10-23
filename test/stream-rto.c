@@ -67,9 +67,9 @@ main () {
   e = udx_stream_write(req, &stream, &buf, 1, on_ack);
 
   assert(e);
-  // hack to make the packet timeout after 1 RTO, obv. relies
-  // on many internal details that are likely to change
-  stream.rto_count = 6;
+  // time out after 3 x rto, the shortest delivery timeout
+  e = udx_stream_set_delivery_timeout(&stream, 1);
+  assert(e == 0);
 
   e = uv_run(&loop, UV_RUN_DEFAULT);
   assert(e == 0);

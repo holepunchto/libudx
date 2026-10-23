@@ -284,7 +284,7 @@ struct udx_stream_s {
   uint8_t ca_state;
   uint32_t high_seq; // seq at time of congestion, marks end of recovery
   bool hit_high_watermark;
-  uint8_t rto_count; // stream closed if rto_count > UDX_MAX_RTO_TIMEOUTS, reset when ack is advanced.
+  uint8_t rto_count; // consecutive rto expirations, reset when ack is advanced.
   uint16_t zwp_count;
   uint16_t fast_recovery_count;
   uint16_t retransmit_count;
@@ -355,6 +355,8 @@ struct udx_stream_s {
   uint32_t rttvar;
   uint32_t rto;
   uint32_t keepalive_timeout_ms;
+  uint32_t delivery_timeout_ms;
+  uint64_t progress_ts; // first send from idle or last ack advance
 
   win_filter_t rtt_min;
 
@@ -416,9 +418,10 @@ struct udx_stream_s {
   bool tlp_permitted;   // if set, srtt has been updated since the last tlp
   uint32_t tlp_end_seq; // seq at time of tlp sent. invalid if tlp_inflight is not set
 
-  int nrefs;        // # of libuv handles open (2 timer, 1 prepare)
+  int nrefs;        // # of libuv handles open (3 timer, 1 prepare)
   uv_timer_t timer; // RTO, RACK_REO,TLP, ZWP and keepalive timer. stream.pending_timer tells which is currently set (if any)
   uv_timer_t refill_pacing_timer;
+  uv_timer_t delivery_timer;
 
   size_t inflight;
 
@@ -659,6 +662,11 @@ udx_stream_set_seq (udx_stream_t *stream, uint32_t seq);
 
 int
 udx_stream_set_keepalive (udx_stream_t *stream, uint32_t keepalive_timeout_ms);
+
+// close with UV_ETIMEDOUT when sent data gets no ack for this long, like TCP_USER_TIMEOUT.
+// 0 (the default) means 13 s, values below 3 x rto are raised to 3 x rto.
+int
+udx_stream_set_delivery_timeout (udx_stream_t *stream, uint32_t delivery_timeout_ms);
 
 int
 udx_stream_get_ack (udx_stream_t *stream, uint32_t *ack);
