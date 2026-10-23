@@ -50,6 +50,7 @@
 #define UDX_HIGH_WATERMARK 262144
 
 #define UDX_TLP_MAX_ACK_DELAY 2
+#define UDX_MAX_PENDING_ACKS  1
 
 #define UDX_ARRAY_SIZE(a) (sizeof(a) / sizeof((a)[0]))
 
@@ -515,6 +516,7 @@ close_stream_internal (udx_stream_t *stream, int err) {
   uv_close((uv_handle_t *) &stream->timer, finalize_maybe);
   uv_close((uv_handle_t *) &stream->refill_pacing_timer, finalize_maybe);
   uv_close((uv_handle_t *) &stream->pending_packet_prepare, finalize_maybe);
+  uv_close((uv_handle_t *) &stream->delayed_ack_check, finalize_maybe);
 
   if (udx->teardown && socket != NULL && socket->streams == NULL) {
     udx_socket_close(socket);
@@ -602,6 +604,9 @@ rack_update_reo_wnd (udx_stream_t *stream) {
 
 static void
 send_ack (udx_stream_t *stream) {
+  stream->pending_acks = 0;
+  uv_check_stop(&stream->delayed_ack_check);
+
   if (!stream->socket) {
     stream->ack_needed = true; // defer until we are connected
     return;
@@ -672,6 +677,12 @@ send_ack (udx_stream_t *stream) {
     assert(stream->write_queue.len == 0);
     close_stream(stream, 0);
   }
+}
+
+static void
+send_delayed_ack (uv_check_t *check) {
+  udx_stream_t *stream = check->data;
+  send_ack(stream); // resets pending acks and stops check handle
 }
 
 static bool
@@ -770,6 +781,13 @@ _send_packet (udx_stream_t *stream, udx_packet_t *pkt, bool is_retransmit) {
       }
     } else if (err < 0) {
       debug_printf("uv_udp_try_send error: %s\n", uv_strerror(err));
+    }
+
+    // the header carries our current ack, so a delayed ack is redundant
+    // unless it would carry sacks (data packets don't) or goes to another remote
+    if (pkt->remote_id == stream->remote_id && udx_sack_tree_min(&stream->sack_tree) == NULL) {
+      stream->pending_acks = 0;
+      uv_check_stop(&stream->delayed_ack_check);
     }
   }
 
@@ -1864,9 +1882,16 @@ process_packet (udx_socket_t *socket, char *buf, ssize_t buf_len, struct sockadd
   }
 
   if (type & UDX_HEADER_DATA_OR_END) {
-    send_ack(stream);
-    if (stream->status & UDX_STREAM_DEAD) {
-      return 1;
+    if (stream->pending_acks >= UDX_MAX_PENDING_ACKS || type & UDX_HEADER_END) {
+      send_ack(stream);
+      if (stream->status & UDX_STREAM_DEAD) {
+        return 1;
+      }
+    } else {
+      if (stream->pending_acks == 0) {
+        uv_check_start(&stream->delayed_ack_check, send_delayed_ack);
+      }
+      stream->pending_acks += 1;
     }
   }
 
@@ -2412,12 +2437,14 @@ udx_stream_init (udx_t *udx, udx_stream_t *stream, uint32_t local_id, udx_stream
   stream->tb_last_refill_ms = uv_now(udx->loop);
 
   uv_prepare_init(udx->loop, &stream->pending_packet_prepare);
+  uv_check_init(udx->loop, &stream->delayed_ack_check);
   stream->pending_packet_prepare.data = stream;
+  stream->delayed_ack_check.data = stream;
 
   uv_timer_init(udx->loop, &stream->refill_pacing_timer);
   stream->refill_pacing_timer.data = stream;
 
-  stream->nrefs = 3; // timer, refill_pacing_timer, pending_packet_prepare
+  stream->nrefs = 4; // timer, refill_pacing_timer, pending_packet_prepare, delayed_ack_check
 
   udx__queue_init(&stream->inflight_queue);
   udx__queue_init(&stream->retransmit_queue);
@@ -2592,6 +2619,14 @@ udx_stream_change_remote (udx_stream_t *stream, udx_socket_t *socket, uint32_t r
     return UV_EINVAL;
   }
 
+  // flush a delayed ack to the old remote, it acks data that arrived on the old path
+  if (uv_is_active((uv_handle_t *) &stream->delayed_ack_check)) {
+    send_ack(stream);
+    if (stream->status & UDX_STREAM_DEAD) {
+      return UV_EINVAL;
+    }
+  }
+
   if (remote_addr->sa_family == AF_INET) {
     stream->remote_addr_len = sizeof(struct sockaddr_in);
     if (((struct sockaddr_in *) remote_addr)->sin_port == 0) {
@@ -2704,6 +2739,10 @@ udx_stream_connect (udx_stream_t *stream, udx_socket_t *socket, uint32_t remote_
 int
 udx_stream_relay_to (udx_stream_t *stream, udx_stream_t *destination) {
   if (stream->relayed || (destination->status & UDX_STREAM_CLOSED) != 0) return UV_EINVAL;
+
+  // a relayed stream sends nothing of its own, drop any delayed ack
+  stream->pending_acks = 0;
+  uv_check_stop(&stream->delayed_ack_check);
 
   stream->relayed = true;
   stream->relay_to = destination;
@@ -2912,6 +2951,8 @@ udx_stream_destroy (udx_stream_t *stream) {
   }
 
   stream->status |= UDX_STREAM_DESTROYING;
+
+  uv_check_stop(&stream->delayed_ack_check);
 
   if (stream->relayed) {
     close_stream_internal(stream, 0);
