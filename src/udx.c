@@ -40,7 +40,7 @@
 
 #define UDX_DEFAULT_DELIVERY_TIMEOUT_MS 13000
 
-#define UDX_RTO_MAX_MS        30000
+#define UDX_RTO_MAX_MS        29000 // Leave a margin below 30s UDP NAT timeouts.
 #define UDX_RTT_MAX_MS        30000
 #define UDX_RTT_MIN_WINDOW_MS 300000            // 300 seconds, same as Linux default
 #define UDX_DEFAULT_RWND_MAX  (4 * 1024 * 1024) // arbitrary, ~175 1500 mtu packets, @20ms latency = 416 mbits/sec
@@ -375,10 +375,17 @@ udx_keepalive_timeout (uv_timer_t *timer);
 static void
 udx_delivery_timeout (uv_timer_t *timer);
 
+// rto without backoff, so backoff does not raise the delivery timeout floor
+static uint32_t
+base_rto (udx_stream_t *stream) {
+  if (stream->srtt == 0) return 1000;
+  return min_uint32(max_uint32(stream->srtt + 4 * stream->rttvar, 1000), UDX_RTO_MAX_MS);
+}
+
 static uint64_t
 delivery_budget (udx_stream_t *stream) {
   uint32_t timeout = stream->delivery_timeout_ms ? stream->delivery_timeout_ms : UDX_DEFAULT_DELIVERY_TIMEOUT_MS;
-  return max_uint32(timeout, 3 * stream->rto);
+  return max_uint32(timeout, 3 * base_rto(stream));
 }
 
 static void
@@ -1263,7 +1270,8 @@ udx_rto_timeout (uv_timer_t *timer) {
   stream->tlp_is_retrans = false;
 
   assert(!(stream->status & UDX_STREAM_CLOSED));
-  stream_timer_start(stream, UDX_TIMER_RTO, stream->rto * 2);
+  stream->rto = min_uint32(stream->rto * 2, UDX_RTO_MAX_MS);
+  stream_timer_start(stream, UDX_TIMER_RTO, stream->rto);
 
   // zero retransmit queue
   udx__queue_init(&stream->retransmit_queue);
