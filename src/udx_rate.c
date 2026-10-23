@@ -55,6 +55,7 @@ udx__rate_pkt_delivered (udx_stream_t *stream, udx_packet_t *pkt, udx_rate_sampl
 // generate a rate sample and store it in the udx_stream_t
 void
 udx__rate_gen (udx_stream_t *stream, uint32_t delivered, uint32_t lost, udx_rate_sample_t *rs) {
+  // the loop time of the send stamps: delivered_ts becomes the prior_timestamp of packets sent later
   uint64_t now_ms = uv_now(stream->udx->loop);
 
   // clear app limited if bubble is acked and gone
@@ -78,7 +79,8 @@ udx__rate_gen (udx_stream_t *stream, uint32_t delivered, uint32_t lost, udx_rate
   rs->delivered = stream->delivered - rs->prior_delivered;
 
   uint32_t snd_ms = rs->interval_ms;
-  uint32_t ack_ms = stamp_ms_delta(now_ms, rs->prior_timestamp);
+  // the ack's time, as for the rtt sample, or the interval can come out below rtt_min and is dropped
+  uint32_t ack_ms = stamp_ms_delta(rs->ack_time, rs->prior_timestamp);
 
   rs->interval_ms = max_uint32(snd_ms, ack_ms);
 
