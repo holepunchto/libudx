@@ -51,6 +51,8 @@
 
 #define UDX_TLP_MAX_ACK_DELAY 2
 
+#define UDX_MAX_TIMEOUT_DEFERRALS 8
+
 #define UDX_ARRAY_SIZE(a) (sizeof(a) / sizeof((a)[0]))
 
 typedef struct {
@@ -382,6 +384,9 @@ stream_timer_start (udx_stream_t *stream, udx_stream_timer_type_t timer, uint32_
 
   stream->pending_timer = timer;
 
+  // an overdue re-arm (a send while the rto is due) does not grant another deferral
+  if (time_wait_ms > 1 || timer == UDX_TIMER_RACK_REO) stream->timeout_deferred = 0;
+
   // important: order must match order in the udx_stream_timer_type_t enum
   static uv_timer_cb timer_to_callback[] = {
     NULL,
@@ -399,6 +404,24 @@ static void
 stream_timer_stop (udx_stream_t *stream) {
   uv_timer_stop(&stream->timer);
   stream->pending_timer = UDX_TIMER_NONE;
+  stream->timeout_deferred = 0;
+}
+
+// libuv runs due timers before the next poll, so after a long callback a loss timer fires before
+// the acks that arrived meanwhile are read. fire it after that poll, and after the next ones while
+// the socket still has more queued than libuv reads per wakeup
+static bool
+defer_timeout (udx_stream_t *stream, uv_timer_cb cb) {
+  if (stream->timeout_deferred > 0 && (!stream->socket->recv_backlog || stream->timeout_deferred >= UDX_MAX_TIMEOUT_DEFERRALS)) {
+    stream->timeout_deferred = 0;
+    return false;
+  }
+
+  stream->timeout_deferred++;
+
+  // libuv before 1.48 reruns a timer re-armed with 0 in the same pass
+  uv_timer_start(&stream->timer, cb, uv_version() >= 0x013000 ? 0 : 1, 0);
+  return true;
 }
 
 // close stream immediately.
@@ -1012,6 +1035,8 @@ udx_tlp_timeout (uv_timer_t *timer) {
   // rack 7.3
   udx_stream_t *stream = timer->data;
 
+  if (defer_timeout(stream, udx_tlp_timeout)) return;
+
   assert(stream->status & UDX_STREAM_CONNECTED);
 
   if (stream->remote_acked == stream->seq) {
@@ -1182,6 +1207,9 @@ rack_detect_loss_and_arm_timer (udx_stream_t *stream) {
 static void
 udx_rack_reo_timeout (uv_timer_t *timer) {
   udx_stream_t *stream = timer->data;
+
+  if (defer_timeout(stream, udx_rack_reo_timeout)) return;
+
   rack_detect_loss(stream);
 
   bool from_now = !(stream->pending_timer == UDX_TIMER_RACK_REO || stream->pending_timer == UDX_TIMER_TLP);
@@ -1209,6 +1237,9 @@ udx_zwp_timeout (uv_timer_t *timer) {
 static void
 udx_rto_timeout (uv_timer_t *timer) {
   udx_stream_t *stream = timer->data;
+
+  if (defer_timeout(stream, udx_rto_timeout)) return;
+
   stream->pending_timer = UDX_TIMER_NONE;
   assert(stream->status & UDX_STREAM_CONNECTED);
   assert(stream->remote_acked != stream->seq);
@@ -1785,6 +1816,7 @@ process_packet (udx_socket_t *socket, char *buf, ssize_t buf_len, struct sockadd
   if (ack_advanced) {
     stream->remote_acked = ack;
     stream->rto_count = 0;
+    stream->timeout_deferred = 0;
   }
 
   if (ended) { // remote acked our end
@@ -1945,7 +1977,13 @@ arm_stream_timers (udx_stream_t *stream, bool arm_tlp) {
 // our uv_udp_recv_cb
 static void
 on_uv_udp_recv (uv_udp_t *handle, ssize_t nread, const uv_buf_t *buf, const struct sockaddr *addr, unsigned flags) {
-  if (nread == 0 && addr == NULL) return;
+  udx_socket_t *socket = handle->data; // todo: cast instead, save a dereference ?
+
+  // libuv reports EAGAIN as (0, NULL): the socket is drained
+  if (nread == 0 && addr == NULL) {
+    socket->recv_backlog = false;
+    return;
+  }
 
   if (nread < 0) {
     debug_printf("udx: uv_udp_recv err=%s\n", uv_strerror(nread));
@@ -1956,9 +1994,9 @@ on_uv_udp_recv (uv_udp_t *handle, ssize_t nread, const uv_buf_t *buf, const stru
     return;
   }
 
-  udx_socket_t *socket = handle->data; // todo: cast instead, save a dereference ?
-
   assert(!(socket->status & UDX_SOCKET_CLOSED));
+
+  socket->recv_backlog = true;
 
   if (flags & UV_UDP_PARTIAL) {
     debug_printf("udx: uv_udp_recv received partial packet\n");

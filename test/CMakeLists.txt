@@ -44,6 +44,7 @@ list(APPEND tests
   stream-timewait
   stream-timewait-replace-by-new-stream-id
   stream-timewait-ooo-end
+  stream-tlp-queued-ack
 )
 
 list(APPEND skipped_tests

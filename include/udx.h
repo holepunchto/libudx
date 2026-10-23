@@ -222,6 +222,7 @@ struct udx_socket_s {
   uint64_t packets_tx;
 
   int64_t packets_dropped_by_kernel;
+  bool recv_backlog; // the last read stopped at libuv's 32 datagram limit
   uint8_t buffer[UDX_SOCKET_PACKET_BUFFER_SIZE];
 };
 
@@ -348,6 +349,7 @@ struct udx_stream_s {
   uint32_t rate_delivered;         // saved rate sample: packets delivered
   uint32_t rate_interval_ms;       // saved rate sample: time elapsed
   bool rate_sample_is_app_limited; // saved rate sample: app limited?
+  uint8_t timeout_deferred;
 
   udx_stream_timer_type_t pending_timer;
   uint64_t next_rto_ts; // todo: remove this, calculate from oldest packet (head) in rtx queue
