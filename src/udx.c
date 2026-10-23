@@ -1348,7 +1348,7 @@ ack_packet (udx_stream_t *stream, uint32_t seq, int sack, udx_rate_sample_t *rs)
 
   udx__rate_pkt_delivered(stream, pkt, rs);
 
-  const uint64_t time = uv_now(stream->udx->loop);
+  const uint64_t time = rs->ack_time;
   uint32_t rtt = clamp_rtt(stream, time - pkt->time_sent);
   const uint32_t next = seq + 1;
 
@@ -1651,6 +1651,10 @@ process_packet (udx_socket_t *socket, char *buf, ssize_t buf_len, struct sockadd
 
   if (stream->relay_to) return relay_packet(stream, buf, buf_len, type, seq);
 
+  // not uv_now(): after a long callback earlier in this wakeup the loop time is before this
+  // ack's arrival and the rtt sample comes out too short. read before the callbacks below run
+  const uint64_t ack_time = uv_hrtime() / 1000000;
+
   // start ack code
 
   uint32_t delivered = stream->delivered;
@@ -1771,7 +1775,7 @@ process_packet (udx_socket_t *socket, char *buf, ssize_t buf_len, struct sockadd
 
   bool ended = false;
 
-  udx_rate_sample_t rs = {.rtt_ms = -1};
+  udx_rate_sample_t rs = {.rtt_ms = -1, .ack_time = ack_time};
 
   for (uint32_t p = prior_remote_acked; seq_compare(p, ack) < 0; p++) {
     int a = ack_packet(stream, p, 0, &rs);
