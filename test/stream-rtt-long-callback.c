@@ -34,6 +34,7 @@ udx_socket_t recv_sock;
 udx_stream_t stream;
 
 udx_stream_write_t *req;
+uv_timer_t check_timer;
 
 struct sockaddr_in send_addr;
 struct sockaddr_in recv_addr;
@@ -113,16 +114,23 @@ on_read (udx_stream_t *s, ssize_t read_len, const uv_buf_t *buf) {
 }
 
 static void
-on_ack (udx_stream_write_t *req, int status, int unordered) {
-  assert(status == 0);
-
+on_check (uv_timer_t *timer) {
   printf("rtt-long-callback: srtt=%u rtt_min=%u\n", stream.srtt, udx_rtt_min(&stream));
 
   // the ack arrived about 25 ms after P0 was sent
   assert(udx_rtt_min(&stream) >= 20);
   assert(stream.srtt >= 20);
 
+  uv_close((uv_handle_t *) timer, NULL);
   udx_stream_destroy(&stream);
+}
+
+static void
+on_ack (udx_stream_write_t *req, int status, int unordered) {
+  assert(status == 0);
+
+  // the sample may be taken after the write callbacks of this ack run
+  uv_timer_start(&check_timer, on_check, 0, 0);
 }
 
 int
@@ -161,6 +169,8 @@ main () {
 
   e = udx_socket_recv_start(&recv_sock, on_recv);
   assert(e == 0);
+
+  uv_timer_init(&loop, &check_timer);
 
   uv_buf_t buf = uv_buf_init(data, sizeof(data));
   udx_stream_write(req, &stream, &buf, 1, on_ack);
