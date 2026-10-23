@@ -844,10 +844,7 @@ _send_new_packet (udx_stream_t *stream, bool tlp) {
 
   if (stream->remote_acked == stream->seq) {
     stream->progress_ts = uv_hrtime() / 1000000; // not uv_now, which is stale after a callback blocks the loop
-
-    if (!uv_is_active((uv_handle_t *) &stream->delivery_timer)) {
-      uv_timer_start(&stream->delivery_timer, udx_delivery_timeout, delivery_budget(stream), 0);
-    }
+    uv_timer_start(&stream->delivery_timer, udx_delivery_timeout, delivery_budget(stream), 0);
   }
 
   if (pkt->remote_addr_len == 0) {
