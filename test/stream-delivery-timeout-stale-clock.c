@@ -4,9 +4,8 @@
 #include "../include/udx.h"
 #include "../src/internal.h"
 
-// a callback that blocks the loop past the timeout leaves uv_now stale:
-// write 2 is sent from the ack callback of write 1, write 3 from idle in a
-// check callback, and neither may time out
+// progress_ts is not taken from the stale uv_now after a callback blocks the loop:
+// write 2 is sent from the ack callback of write 1, write 3 from idle in a check callback
 
 uv_loop_t loop;
 udx_t udx;
