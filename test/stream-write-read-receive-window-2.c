@@ -65,6 +65,7 @@ application_on_read (udx_stream_t *stream, ssize_t read_len, const uv_buf_t *buf
   // keep draining until EOF: the sender's end packet also needs receive window,
   // so stopping earlier (e.g. on ack) can leave the window closed forever.
   if (read_len == UV_EOF) {
+    assert(application.nbytes_in_buffer < APPLICATION_BUFFER_SIZE); // the end waited for window
     uv_timer_stop(&application_timer);
     uv_close((uv_handle_t *) &application_timer, NULL);
   }
