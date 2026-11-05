@@ -423,9 +423,10 @@ struct udx_stream_s {
   size_t inflight;
 
   uint32_t sacks;
-  uint32_t cwnd;          // packets
-  uint32_t send_rwnd;     // remote advertised rwnd
-  uint32_t recv_rwnd_max; // default: UDX_DEFAULT_RWND_MAX
+  uint32_t cwnd;                 // packets
+  uint32_t send_rwnd;            // remote advertised rwnd
+  uint32_t recv_rwnd_max;        // default: UDX_DEFAULT_RWND_MAX
+  uint32_t recv_rwnd_advertised; // rwnd in the last header we wrote
 
   uint32_t send_wl1; // seq at last window update
   uint32_t send_wl2; // ack at last window update
@@ -677,6 +678,9 @@ udx_stream_get_rwnd_max (udx_stream_t *stream, uint32_t *rwnd_max);
 
 int
 udx_stream_set_rwnd_max (udx_stream_t *stream, uint32_t rwnd_max);
+
+int
+udx_stream_window_update (udx_stream_t *stream);
 
 int
 udx_stream_connect (udx_stream_t *stream, udx_socket_t *socket, uint32_t remote_id, const struct sockaddr *remote_addr);

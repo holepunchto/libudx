@@ -29,6 +29,7 @@ list(APPEND tests
   stream-multiple
   stream-write-read-receive-window
   stream-write-read-receive-window-2
+  stream-window-update
   stream-no-zwp-with-data-in-flight
   win-filter
   stream-bbr-state
