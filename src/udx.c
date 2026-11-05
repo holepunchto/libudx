@@ -583,7 +583,8 @@ udx_keepalive_timeout (uv_timer_t *timer) {
 
 uint32_t
 udx_rtt_min (udx_stream_t *stream) {
-  return win_filter_get(&stream->rtt_min);
+  uint32_t rtt_min = win_filter_get(&stream->rtt_min);
+  return rtt_min == 0 ? 1 : rtt_min; // 0 ms means under a millisecond, see ack_packet
 }
 
 static inline uint32_t
@@ -1353,12 +1354,12 @@ ack_packet (udx_stream_t *stream, uint32_t seq, int sack, udx_rate_sample_t *rs)
   const uint32_t next = seq + 1;
 
   if (!pkt->retransmitted) {
+    // rack 6.2 step 1 update rack.min_RTT, unrounded (see step 2)
+    win_filter_apply_min(&stream->rtt_min, UDX_RTT_MIN_WINDOW_MS, time, rtt);
+
     // with a 1 ms clock a 0 ms sample means "under a millisecond", not "no sample":
     // srtt == 0 is what schedule_loss_probe and clamp_rtt read as unknown
     if (rtt == 0) rtt = 1;
-
-    // rack 6.2 step 1 update rack.min_RTT
-    win_filter_apply_min(&stream->rtt_min, UDX_RTT_MIN_WINDOW_MS, time, rtt);
 
     // First round trip time sample
     if (stream->srtt == 0) {
@@ -1385,8 +1386,10 @@ ack_packet (udx_stream_t *stream, uint32_t seq, int sack, udx_rate_sample_t *rs)
   }
 
   // rack 6.2 step 2 update the state for the most recently sent segment
+  // compare with the unrounded rtt_min: on a sub-millisecond path both read 0
 
-  if (!pkt->retransmitted || (rtt >= udx_rtt_min(stream))) {
+  if (!pkt->retransmitted || (rtt >= win_filter_get(&stream->rtt_min))) {
+    if (rtt == 0) rtt = 1; // an accepted retransmit can read 0 ms, round it like the rest
     stream->rack_rtt = rtt;
     rs->rtt_ms = rtt;
 

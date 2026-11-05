@@ -40,6 +40,7 @@ list(APPEND tests
   stream-retransmit-refreshes-header
   stream-strict-sack
   stream-rack-tlp-example
+  stream-rack-tlp-sub-ms
   stream-ooo-shuffle
   stream-timewait
   stream-timewait-replace-by-new-stream-id
