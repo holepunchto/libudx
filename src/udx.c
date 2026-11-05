@@ -283,6 +283,14 @@ get_recv_rwnd (udx_stream_t *stream) {
   }
 }
 
+// get_recv_rwnd, and remember the value so udx_stream_window_update can tell
+// how far the window has opened since the peer last heard about it
+static uint32_t
+advertise_recv_rwnd (udx_stream_t *stream) {
+  stream->recv_rwnd_advertised = get_recv_rwnd(stream);
+  return stream->recv_rwnd_advertised;
+}
+
 static void
 udx_write_header (uint8_t header[20], udx_stream_t *stream, int type, uint32_t remote_id) {
   uint8_t *b = header;
@@ -298,7 +306,7 @@ udx_write_header (uint8_t header[20], udx_stream_t *stream, int type, uint32_t r
   // 32 bit (le) remote id
   *(i++) = udx__swap_uint32_if_be(remote_id);
   // 32 bit (le) recv window
-  *(i++) = udx__swap_uint32_if_be(get_recv_rwnd(stream));
+  *(i++) = udx__swap_uint32_if_be(advertise_recv_rwnd(stream));
   // 32 bit (le) seq
   *(i++) = udx__swap_uint32_if_be(stream->seq);
   // 32 bit (le) ack
@@ -600,12 +608,10 @@ rack_update_reo_wnd (udx_stream_t *stream) {
   return r < stream->srtt ? r : stream->srtt;
 }
 
+// sends the ack packet only, with no callbacks, so it is safe to call from inside on_read
 static void
-send_ack (udx_stream_t *stream) {
-  if (!stream->socket) {
-    stream->ack_needed = true; // defer until we are connected
-    return;
-  }
+send_ack_packet (udx_stream_t *stream) {
+  assert(stream->socket);
   // todo: if data is available for writing then write a data + ack packet
 
   struct {
@@ -657,6 +663,16 @@ send_ack (udx_stream_t *stream) {
   stream->socket->bytes_tx += buf.len;
   stream->udx->packets_tx++;
   stream->udx->bytes_tx += buf.len;
+}
+
+static void
+send_ack (udx_stream_t *stream) {
+  if (!stream->socket) {
+    stream->ack_needed = true; // defer until we are connected
+    return;
+  }
+
+  send_ack_packet(stream);
 
   // test: do we really need to defer reading EOF until after sending the ACK?
   if ((stream->status & UDX_STREAM_SHOULD_END_REMOTE) == UDX_STREAM_END_REMOTE && seq_compare(stream->remote_ended, stream->ack) <= 0) {
@@ -956,7 +972,7 @@ retransmit_packet (udx_stream_t *stream, udx_packet_t *pkt) {
   bool inflight_queue_was_empty = stream->inflight_queue.len == 0;
 
   // Keep the original sequence and payload, but advertise current receive state.
-  *(uint32_t *) (pkt->header + 8) = udx__swap_uint32_if_be(get_recv_rwnd(stream));
+  *(uint32_t *) (pkt->header + 8) = udx__swap_uint32_if_be(advertise_recv_rwnd(stream));
   *(uint32_t *) (pkt->header + 16) = udx__swap_uint32_if_be(stream->ack);
   _send_packet(stream, pkt, true);
 
@@ -2425,6 +2441,7 @@ udx_stream_init (udx_t *udx, udx_stream_t *stream, uint32_t local_id, udx_stream
 
   stream->cwnd = 10;
   stream->recv_rwnd_max = UDX_DEFAULT_RWND_MAX;
+  stream->recv_rwnd_advertised = UDX_DEFAULT_RWND_MAX; // what the peer assumes before hearing from us
   stream->send_rwnd = UDX_DEFAULT_RWND_MAX;
   stream->on_close = close_cb;
   stream->on_finalize = finalize_cb;
@@ -2511,6 +2528,31 @@ int
 udx_stream_set_rwnd_max (udx_stream_t *stream, uint32_t size) {
   stream->recv_rwnd_max = size;
   return 0;
+}
+
+// An application may call this after consuming data from it's read buffer to
+// notify us that we may want to send a window update. Ideally this is only
+// called when a user reads a chunk asynchronously, ie not from stream->on_read,
+// but it is reentrant just in case.
+//
+// the application _could_ call this from inside on_read, so it must not invoke any
+// callbacks (eof, close): send_ack_packet only sends.
+int
+udx_stream_window_update (udx_stream_t *stream) {
+  if (stream->status & UDX_STREAM_DEAD) return 0;
+  if (!(stream->status & UDX_STREAM_CONNECTED)) return 0;
+  if (!stream->socket) return 0;
+
+  uint32_t rwnd = get_recv_rwnd(stream);
+
+  if (rwnd <= stream->recv_rwnd_advertised) return 0;
+
+  uint32_t threshold = min_uint32(stream->recv_rwnd_max / 2, udx__max_payload(stream));
+
+  if (rwnd - stream->recv_rwnd_advertised < threshold) return 0;
+
+  send_ack_packet(stream);
+  return 1;
 }
 
 int
