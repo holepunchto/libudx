@@ -79,6 +79,14 @@ main () {
 
   assert(astream.packets_tx == 1 || uv_backend_timeout(&loop) == 0);
 
+  // once the deferred work is flushed the loop must be able to sleep again,
+  // i.e. the deferred check/idle handles are stopped rather than left spinning
+  for (int i = 0; i < 100 && uv_backend_timeout(&loop) == 0; i++) {
+    uv_run(&loop, UV_RUN_NOWAIT);
+  }
+  assert(astream.packets_tx == 1);
+  assert(uv_backend_timeout(&loop) != 0);
+
   udx_stream_destroy(&astream);
   udx_stream_destroy(&bstream);
   udx_socket_close(&sock);

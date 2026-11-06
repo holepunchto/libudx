@@ -1130,10 +1130,7 @@ schedule_loss_probe (udx_stream_t *stream, bool advancing_rto) {
   uint32_t timeout = 1000;
 
   if (stream->srtt) {
-    timeout = stream->srtt * 2;
-    if ((stream->inflight_queue.len + stream->retransmit_queue.len) == 1) {
-      timeout += UDX_TLP_MAX_ACK_DELAY;
-    }
+    timeout = stream->srtt * 2 + UDX_TLP_MAX_ACK_DELAY;
   }
 
   uint32_t rto_delta_ms = stream->rto;
