@@ -1935,9 +1935,7 @@ process_packet (udx_socket_t *socket, char *buf, ssize_t buf_len, struct sockadd
         return 1;
       }
     } else {
-      if (stream->pending_acks == 0) {
-        delayed_ack_arm(stream);
-      }
+      delayed_ack_arm(stream);
       stream->pending_acks += 1;
     }
   }
