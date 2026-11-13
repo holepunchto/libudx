@@ -2999,6 +2999,7 @@ udx_stream_destroy (udx_stream_t *stream) {
   stream->status |= UDX_STREAM_DESTROYING;
 
   delayed_ack_cancel(stream);
+  pending_packet_cancel(stream);
 
   if (stream->relayed) {
     close_stream_internal(stream, 0);
