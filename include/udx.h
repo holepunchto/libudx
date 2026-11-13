@@ -354,6 +354,7 @@ struct udx_stream_s {
   uint32_t srtt;
   uint32_t rttvar;
   uint32_t rto;
+  uint64_t rtt_clamp_ts; // when the last clamped rtt sample was taken
   uint32_t keepalive_timeout_ms;
 
   win_filter_t rtt_min;

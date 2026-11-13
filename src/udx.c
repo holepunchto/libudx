@@ -1302,6 +1302,16 @@ clamp_rtt (udx_stream_t *stream, uint64_t rtt) {
   return rtt;
 }
 
+// a clamped sample measures a stall, not the path, and every ack queued during the stall
+// carries one: keep the first, drop the rest from packets sent before it
+static bool
+is_repeated_stall_sample (udx_stream_t *stream, uint64_t time_sent, uint64_t time) {
+  if (clamp_rtt(stream, time - time_sent) == time - time_sent) return false;
+  if (time_sent < stream->rtt_clamp_ts) return true;
+  stream->rtt_clamp_ts = time;
+  return false;
+}
+
 // receiver side calls this to mark a packet acked
 static int
 ack_packet (udx_stream_t *stream, uint32_t seq, int sack, udx_rate_sample_t *rs) {
@@ -1352,7 +1362,7 @@ ack_packet (udx_stream_t *stream, uint32_t seq, int sack, udx_rate_sample_t *rs)
   uint32_t rtt = clamp_rtt(stream, time - pkt->time_sent);
   const uint32_t next = seq + 1;
 
-  if (!pkt->retransmitted) {
+  if (!pkt->retransmitted && !is_repeated_stall_sample(stream, pkt->time_sent, time)) {
     // with a 1 ms clock a 0 ms sample means "under a millisecond", not "no sample":
     // srtt == 0 is what schedule_loss_probe and clamp_rtt read as unknown
     if (rtt == 0) rtt = 1;
