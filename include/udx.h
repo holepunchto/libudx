@@ -293,8 +293,14 @@ struct udx_stream_s {
 
   uint16_t pkt_capacity;
   uint8_t pkt_header_flag;
-  udx_packet_t *pkt; // in construction packet or NULL
-  uv_prepare_t pending_packet_prepare;
+  uint8_t pending_acks;
+  udx_packet_t *pkt;   // in construction packet or NULL
+  bool pending_packet; // pkt holds data and is waiting for deferred_check to send it
+
+  // for both pending data packet and delayed ack
+  // dummy idle callback is used to force libuv timeout to zero
+  uv_check_t deferred_check;
+  uv_idle_t deferred_idle;
 
   // true if data received before we were connected, in this
   // situation we must send an ack to the data after we are connected
@@ -416,7 +422,7 @@ struct udx_stream_s {
   bool tlp_permitted;   // if set, srtt has been updated since the last tlp
   uint32_t tlp_end_seq; // seq at time of tlp sent. invalid if tlp_inflight is not set
 
-  int nrefs;        // # of libuv handles open (2 timer, 1 prepare)
+  int nrefs;        // # of libuv handles open (2 timer, 1 check, 1 idle)
   uv_timer_t timer; // RTO, RACK_REO,TLP, ZWP and keepalive timer. stream.pending_timer tells which is currently set (if any)
   uv_timer_t refill_pacing_timer;
 
