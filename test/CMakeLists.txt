@@ -44,6 +44,8 @@ list(APPEND tests
   stream-timewait
   stream-timewait-replace-by-new-stream-id
   stream-timewait-ooo-end
+  stream-ooo-end-eof
+  stream-run-nowait-no-stall
 )
 
 list(APPEND skipped_tests

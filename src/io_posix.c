@@ -71,6 +71,7 @@ udx__get_link_mtu (const struct sockaddr *addr) {
   int rc = connect(s, addr, addr->sa_family == AF_INET ? sizeof(struct sockaddr_in) : sizeof(struct sockaddr_in6));
 
   if (rc == -1) {
+    close(s);
     return -1;
   }
 
