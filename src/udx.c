@@ -1302,8 +1302,7 @@ clamp_rtt (udx_stream_t *stream, uint64_t rtt) {
   return rtt;
 }
 
-// a clamped sample measures a stall, not the path, and every ack queued during the stall
-// carries one: keep the first, drop the rest from packets sent before it
+// every ack queued during a stall gives a clamped sample of it: keep only the first
 static bool
 is_repeated_stall_sample (udx_stream_t *stream, uint64_t time_sent, uint64_t time) {
   if (clamp_rtt(stream, time - time_sent) == time - time_sent) return false;

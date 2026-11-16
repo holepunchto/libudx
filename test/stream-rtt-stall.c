@@ -8,9 +8,8 @@
 #include "../src/endian.h"
 #include "../src/internal.h"
 
-// The peer holds the acks for a burst and sends them back to back, as if they had
-// queued while our loop was stalled for 15 s. Every one of them gives a clamped
-// sample, but they all measure the same stall: only the first may feed the estimator.
+// Acks queued during a 15 s stall arrive back to back. Each gives a clamped
+// sample of the same stall: only the first may feed the estimator.
 
 #define BURST    8
 #define STALL_MS 15000
@@ -22,18 +21,12 @@ udx_socket_t sock;
 udx_stream_t stream;
 
 uv_udp_t peer;
-uv_timer_t ack_timer;
-uv_timer_t poll_timer;
 
 struct sockaddr_in sock_addr;
-struct sockaddr_in peer_addr;
 
 uint32_t seen[BURST + 1];
-uint32_t received;
 uint32_t srtt;
 uint32_t rttvar;
-uint64_t started;
-int phase;
 
 struct {
   uint8_t magic;
@@ -56,11 +49,6 @@ send_ack (uint32_t ack) {
 }
 
 static void
-on_ack_timer (uv_timer_t *timer) {
-  send_ack(1);
-}
-
-static void
 on_alloc (uv_handle_t *handle, size_t size, uv_buf_t *buf) {
   static char data[2048];
   *buf = uv_buf_init(data, sizeof(data));
@@ -77,26 +65,29 @@ on_recv (uv_udp_t *handle, ssize_t nread, const uv_buf_t *buf, const struct sock
 
   if (seen[seq]++) return;
 
+  udx_packet_t *pkt = (udx_packet_t *) udx__cirbuf_get(&stream.outgoing, seq);
+  assert(pkt != NULL);
+
   if (seq == 0) {
-    uv_timer_start(&ack_timer, on_ack_timer, 100, 0);
+    pkt->time_sent -= 100; // a 100 ms first sample, so rttvar > 0
+    send_ack(1);
     return;
   }
 
-  // as if sent before the stall: move the packet, and rack's newest send time once, back by it
-  udx_packet_t *pkt = (udx_packet_t *) udx__cirbuf_get(&stream.outgoing, seq);
-  assert(pkt != NULL);
+  // as if sent before the stall; move rack's newest send time too, or rack resends them
   pkt->time_sent -= STALL_MS;
-  if (++received == 1) stream.rack_time_sent -= STALL_MS;
-  if (received < BURST) return;
+  if (seq == 1) stream.rack_time_sent -= STALL_MS;
+  if (seq < BURST) return;
 
   srtt = stream.srtt;
   rttvar = stream.rttvar;
+  assert(rttvar > 0);
 
   for (uint32_t ack = 2; ack <= BURST + 1; ack++) send_ack(ack);
 }
 
 static void
-write_bytes (size_t len) {
+write_bytes (size_t len, udx_stream_ack_cb on_ack) {
   char *data = malloc(len);
   assert(data != NULL);
   memset(data, 'a', len);
@@ -105,24 +96,17 @@ write_bytes (size_t len) {
   assert(req != NULL);
 
   uv_buf_t buf = uv_buf_init(data, len);
-  udx_stream_write(req, &stream, &buf, 1, NULL);
+  udx_stream_write(req, &stream, &buf, 1, on_ack);
 }
 
 static void
-on_poll (uv_timer_t *timer) {
-  assert(uv_now(&loop) - started < 3000);
+on_burst_ack (udx_stream_write_t *req, int status, int unordered) {
+  uv_stop(&loop);
+}
 
-  if (phase == 0 && stream.remote_acked == 1) {
-    assert(stream.rttvar > 0);
-    phase = 1;
-    write_bytes(udx__max_payload(&stream) * BURST);
-  } else if (phase == 1 && stream.remote_acked == BURST + 1) {
-    // one clamped sample (srtt + 5 * rttvar) doubles rttvar, each further one doubles it again
-    assert(stream.srtt == (8 * srtt + 5 * rttvar) / 8);
-    assert(stream.rttvar == 2 * rttvar);
-
-    uv_stop(&loop);
-  }
+static void
+on_first_ack (udx_stream_write_t *req, int status, int unordered) {
+  write_bytes(udx__max_payload(&stream) * BURST, on_burst_ack);
 }
 
 int
@@ -145,6 +129,7 @@ main () {
   e = uv_udp_init(&loop, &peer);
   assert(e == 0);
 
+  struct sockaddr_in peer_addr;
   uv_ip4_addr("127.0.0.1", 18142, &peer_addr);
   e = uv_udp_bind(&peer, (struct sockaddr *) &peer_addr, 0);
   assert(e == 0);
@@ -164,17 +149,13 @@ main () {
   ack_packet.remote_id = udx__swap_uint32_if_be(1);
   ack_packet.rwnd = udx__swap_uint32_if_be(UINT32_MAX);
 
-  e = uv_timer_init(&loop, &ack_timer);
-  assert(e == 0);
+  write_bytes(1, on_first_ack);
 
-  e = uv_timer_init(&loop, &poll_timer);
-  assert(e == 0);
-
-  write_bytes(1);
-
-  started = uv_now(&loop);
-  uv_timer_start(&poll_timer, on_poll, 5, 5);
   uv_run(&loop, UV_RUN_DEFAULT);
+
+  // exactly one clamped sample of srtt + 5 * rttvar
+  assert(stream.srtt == (8 * srtt + 5 * rttvar) / 8);
+  assert(stream.rttvar == 2 * rttvar);
 
   return 0;
 }
