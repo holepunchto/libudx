@@ -751,6 +751,7 @@ on_stream_data_write (uv_udp_send_t *send, int status) {
     debug_printf("sendmsg: %s\n", uv_strerror(status));
   }
 
+  free(send->data);
   deref_packet(pkt);
 }
 
@@ -811,10 +812,24 @@ _send_packet (udx_stream_t *stream, udx_packet_t *pkt, bool is_retransmit) {
   if (!drop_packet) {
     int err = uv_udp_try_send(&stream->socket->uv_udp, bufs, nbufs, (struct sockaddr *) &pkt->remote_addr);
     if (err == UV_EAGAIN) {
+      // the writes can be acked or cancelled before libuv sends this, so send a copy
+      size_t len = 0;
+      for (int i = 0; i < nbufs; i++) {
+        len += bufs[i].len;
+      }
+
+      uv_buf_t buf = uv_buf_init(malloc(len), 0);
+      for (int i = 0; i < nbufs; i++) {
+        memcpy(buf.base + buf.len, bufs[i].base, bufs[i].len);
+        buf.len += bufs[i].len;
+      }
+
       pkt->ref_count++;
       assert(pkt->ref_count == 2);
-      int err = uv_udp_send(&pkt->uv_udp_send, &stream->socket->uv_udp, bufs, nbufs, (struct sockaddr *) &pkt->remote_addr, on_stream_data_write);
+      pkt->uv_udp_send.data = buf.base;
+      int err = uv_udp_send(&pkt->uv_udp_send, &stream->socket->uv_udp, &buf, 1, (struct sockaddr *) &pkt->remote_addr, on_stream_data_write);
       if (err) {
+        free(buf.base);
         deref_packet(pkt);
         debug_printf("uv_udp_send error: %s\n", uv_strerror(err));
       }
