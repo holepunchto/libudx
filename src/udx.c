@@ -1372,6 +1372,11 @@ static void
 ack_update_rtt (udx_stream_t *stream, udx_rate_sample_t *rs) {
   const uint64_t time = uv_now(stream->udx->loop);
 
+  // rack 6.2 step 2 RACK.rtt
+  if (rs->rack_rtt_time_sent) {
+    stream->rack_rtt = max_uint32(clamp_rtt(stream, time - rs->rack_rtt_time_sent), 1);
+  }
+
   if (rs->rtt_time_sent) {
     uint32_t rtt = clamp_rtt(stream, time - rs->rtt_time_sent);
 
@@ -1406,11 +1411,6 @@ ack_update_rtt (udx_stream_t *stream, udx_rate_sample_t *rs) {
     }
 
     rs->rtt_ms = rtt;
-  }
-
-  // rack 6.2 step 2 RACK.rtt, same as above but a retransmission that passed the checks is allowed too
-  if (rs->rack_rtt_time_sent) {
-    stream->rack_rtt = max_uint32(clamp_rtt(stream, time - rs->rack_rtt_time_sent), 1);
   }
 }
 
