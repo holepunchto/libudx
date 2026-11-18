@@ -12,7 +12,8 @@ udx__rate_pkt_sent (udx_stream_t *stream, udx_packet_t *pkt) {
     uint64_t now_ms = uv_now(stream->udx->loop);
 
     stream->first_sent_ts = now_ms;
-    stream->delivered_ts = now_ms;
+    // an ack read late in this wakeup can be past the loop time, and bbr needs delivered_ts to never go back
+    stream->delivered_ts = max_uint64(stream->delivered_ts, now_ms);
   }
 
   pkt->first_sent_ts = stream->first_sent_ts;
@@ -55,7 +56,8 @@ udx__rate_pkt_delivered (udx_stream_t *stream, udx_packet_t *pkt, udx_rate_sampl
 // generate a rate sample and store it in the udx_stream_t
 void
 udx__rate_gen (udx_stream_t *stream, uint32_t delivered, uint32_t lost, udx_rate_sample_t *rs) {
-  uint64_t now_ms = uv_now(stream->udx->loop);
+  // the ack's time, as for the rtt sample: it ends this interval and, as delivered_ts, starts later ones
+  uint64_t now_ms = rs->ack_time;
 
   // clear app limited if bubble is acked and gone
   if (stream->app_limited && seq_compare(stream->delivered, stream->app_limited) > 0) {

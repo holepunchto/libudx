@@ -37,6 +37,8 @@ list(APPEND tests
   stream-keepalive
   stream-rto
   stream-rto-sack-progress
+  stream-rtt-long-callback
+  stream-rtt-long-callback-retransmit
   stream-retransmit-refreshes-header
   stream-strict-sack
   stream-rack-tlp-example

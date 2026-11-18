@@ -1428,14 +1428,21 @@ ack_packet (udx_stream_t *stream, uint32_t seq, int sack, udx_rate_sample_t *rs)
 
   udx__rate_pkt_delivered(stream, pkt, rs);
 
-  const uint64_t time = uv_now(stream->udx->loop);
-  uint32_t rtt = clamp_rtt(stream, time - pkt->time_sent);
+  const uint64_t time = rs->ack_time;
+  const uint64_t loop_time = uv_now(stream->udx->loop);
+  // a callback can move the loop time, and a send stamp, past the ack's time
+  uint32_t rtt = clamp_rtt(stream, time > pkt->time_sent ? time - pkt->time_sent : 0);
+  // rack's timers run on the loop time, so its sample does too
+  uint32_t rack_rtt = clamp_rtt(stream, loop_time - pkt->time_sent);
+  // read well into the wakeup, the fresh sample can hold callback time: srtt and the check below then take rack_rtt
+  const bool read_late = stream->srtt != 0 && time > loop_time + max_uint32(4, stream->srtt / 4);
   const uint32_t next = seq + 1;
 
   if (!pkt->retransmitted) {
     // with a 1 ms clock a 0 ms sample means "under a millisecond", not "no sample":
     // srtt == 0 is what schedule_loss_probe and clamp_rtt read as unknown
     if (rtt == 0) rtt = 1;
+    if (rack_rtt == 0) rack_rtt = 1;
 
     // rack 6.2 step 1 update rack.min_RTT
     win_filter_apply_min(&stream->rtt_min, UDX_RTT_MIN_WINDOW_MS, time, rtt);
@@ -1445,12 +1452,13 @@ ack_packet (udx_stream_t *stream, uint32_t seq, int sack, udx_rate_sample_t *rs)
       stream->srtt = rtt;
       stream->rttvar = rtt / 2;
     } else {
-      const uint32_t delta = rtt < stream->srtt ? stream->srtt - rtt : rtt - stream->srtt;
+      const uint32_t sample = read_late ? rack_rtt : rtt;
+      const uint32_t delta = sample < stream->srtt ? stream->srtt - sample : sample - stream->srtt;
       // RTTVAR <- (1 - beta) * RTTVAR + beta * |SRTT - R'| where beta is 1/4
       stream->rttvar = (3 * stream->rttvar + delta) / 4;
 
       // SRTT <- (1 - alpha) * SRTT + alpha * R' where alpha is 1/8
-      stream->srtt = (7 * stream->srtt + rtt) / 8;
+      stream->srtt = (7 * stream->srtt + sample) / 8;
     }
 
     stream->tlp_permitted = true;
@@ -1466,8 +1474,9 @@ ack_packet (udx_stream_t *stream, uint32_t seq, int sack, udx_rate_sample_t *rs)
 
   // rack 6.2 step 2 update the state for the most recently sent segment
 
-  if (!pkt->retransmitted || (rtt >= udx_rtt_min(stream))) {
-    stream->rack_rtt = rtt;
+  // rack_rtt == 0: sent at this loop time, possibly by a callback after the ack was read
+  if (!pkt->retransmitted || (rack_rtt > 0 && (read_late ? rack_rtt : rtt) >= udx_rtt_min(stream))) {
+    stream->rack_rtt = rack_rtt;
     rs->rtt_ms = rtt;
 
     if (rack_sent_after(pkt->time_sent, next, stream->rack_time_sent, stream->rack_next_seq)) {
@@ -1731,6 +1740,10 @@ process_packet (udx_socket_t *socket, char *buf, ssize_t buf_len, struct sockadd
 
   if (stream->relay_to) return relay_packet(stream, buf, buf_len, type, seq);
 
+  // not uv_now(): after a long callback earlier in this wakeup the loop time is before this
+  // ack's arrival and the rtt sample comes out too short. read before the callbacks below run
+  const uint64_t ack_time = uv_hrtime() / 1000000;
+
   // start ack code
 
   uint32_t delivered = stream->delivered;
@@ -1851,7 +1864,7 @@ process_packet (udx_socket_t *socket, char *buf, ssize_t buf_len, struct sockadd
 
   bool ended = false;
 
-  udx_rate_sample_t rs = {.rtt_ms = -1};
+  udx_rate_sample_t rs = {.rtt_ms = -1, .ack_time = ack_time};
 
   for (uint32_t p = prior_remote_acked; seq_compare(p, ack) < 0; p++) {
     int a = ack_packet(stream, p, 0, &rs);
