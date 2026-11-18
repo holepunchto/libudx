@@ -46,6 +46,7 @@ list(APPEND tests
   stream-timewait-ooo-end
   stream-ooo-end-eof
   stream-run-nowait-no-stall
+  stream-write-slow-path-cancel
 )
 
 list(APPEND skipped_tests
