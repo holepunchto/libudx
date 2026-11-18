@@ -12,22 +12,6 @@
 // the receiver sends data that the sender reads first. the read callback blocks for 50 ms
 // and the ack for P0 with P2-P4 sacked arrives 25 ms in, so it is read later in the same wakeup.
 
-#if defined(_WIN32)
-void
-sleep_ms (long milliseconds) {
-  Sleep(milliseconds);
-}
-#else
-#include <time.h>
-void
-sleep_ms (long milliseconds) {
-  struct timespec ts;
-  ts.tv_sec = milliseconds / 1000;
-  ts.tv_nsec = (milliseconds % 1000) * 1000000L;
-  nanosleep(&ts, NULL);
-}
-#endif
-
 uv_loop_t loop;
 udx_t udx;
 
@@ -56,11 +40,6 @@ typedef struct {
 } packet_t;
 
 static void
-on_socket_close (udx_socket_t *socket) {
-  (void) socket;
-}
-
-static void
 on_stream_close (udx_stream_t *s, int status) {
   (void) s;
   (void) status;
@@ -73,16 +52,10 @@ udx_socket_send_t data_req;
 udx_socket_send_t ack_req;
 
 static void
-on_sent (udx_socket_send_t *req, int status) {
-  (void) req;
-  (void) status;
-}
-
-static void
 send_packet (udx_socket_send_t *req, packet_t *pkt, uint8_t type, uint32_t seq, uint32_t ack, uint32_t sack_start, uint32_t sack_end) {
   memset(pkt, 0, sizeof(*pkt));
-  pkt->magic = 0xff;
-  pkt->version = 1;
+  pkt->magic = UDX_MAGIC_BYTE;
+  pkt->version = UDX_VERSION;
   pkt->type = type;
   pkt->id = udx__swap_uint32_if_be(1);
   pkt->rwnd = 0xffffffffu;
@@ -92,7 +65,7 @@ send_packet (udx_socket_send_t *req, packet_t *pkt, uint8_t type, uint32_t seq, 
   pkt->payload[1] = udx__swap_uint32_if_be(sack_end);
 
   uv_buf_t buf = uv_buf_init((char *) pkt, sizeof(*pkt));
-  udx_socket_send(req, &recv_sock, &buf, 1, (struct sockaddr *) &send_addr, on_sent);
+  udx_socket_send(req, &recv_sock, &buf, 1, (struct sockaddr *) &send_addr, NULL);
 }
 
 static void
@@ -103,7 +76,8 @@ on_recv (udx_socket_t *handle, ssize_t read_len, const uv_buf_t *buf, const stru
 
   // read in a later millisecond than the send stamps of P0-P4, on the clock of the loop time
   uint64_t until = uv_hrtime() + 2000000;
-  while (uv_hrtime() < until) sleep_ms(1);
+  while (uv_hrtime() < until)
+    uv_sleep(1);
 
   // data that does not ack P0 yet
   static packet_t pkt;
@@ -128,23 +102,16 @@ static void
 on_read (udx_stream_t *s, ssize_t read_len, const uv_buf_t *buf) {
   if (read_len <= 0) return;
 
-  sleep_ms(25);
+  uv_sleep(25);
 
   // lands on send_sock while libuv is still reading it in this wakeup
   static packet_t pkt;
   send_packet(&ack_req, &pkt, UDX_HEADER_SACK, 1, 1, 2, 5);
 
-  sleep_ms(25);
+  uv_sleep(25);
 
   // runs after the rest of this wakeup's reads
   uv_timer_start(&check_timer, on_check, 0, 0);
-}
-
-static void
-on_ack (udx_stream_write_t *req, int status, int unordered) {
-  (void) req;
-  (void) status;
-  (void) unordered;
 }
 
 int
@@ -158,10 +125,10 @@ main () {
   e = udx_init(&loop, &udx, NULL);
   assert(e == 0);
 
-  e = udx_socket_init(&udx, &send_sock, on_socket_close);
+  e = udx_socket_init(&udx, &send_sock, NULL);
   assert(e == 0);
 
-  e = udx_socket_init(&udx, &recv_sock, on_socket_close);
+  e = udx_socket_init(&udx, &recv_sock, NULL);
   assert(e == 0);
 
   uv_ip4_addr("127.0.0.1", 18093, &send_addr);
@@ -187,7 +154,7 @@ main () {
   uv_timer_init(&loop, &check_timer);
 
   uv_buf_t buf = uv_buf_init(data, sizeof(data));
-  udx_stream_write(req, &stream, &buf, 1, on_ack);
+  udx_stream_write(req, &stream, &buf, 1, NULL);
 
   e = uv_run(&loop, UV_RUN_DEFAULT);
   assert(e == 0);
