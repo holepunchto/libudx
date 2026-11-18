@@ -1350,13 +1350,11 @@ ack_packet (udx_stream_t *stream, uint32_t seq, int sack, udx_rate_sample_t *rs)
 
   const uint64_t time = rs->ack_time;
   const uint64_t loop_time = uv_now(stream->udx->loop);
-  // a callback can have moved the loop time, and a send stamp, past the ack's time
+  // a callback can move the loop time, and a send stamp, past the ack's time
   uint32_t rtt = clamp_rtt(stream, time > pkt->time_sent ? time - pkt->time_sent : 0);
-  // rack compares send stamps with the loop time and arms its timers on it, so it samples on the loop time
+  // rack's timers run on the loop time, so its sample does too
   uint32_t rack_rtt = clamp_rtt(stream, loop_time - pkt->time_sent);
-  // an ack read well into this wakeup may have waited behind callbacks, and then its fresh sample also holds
-  // their time. rtt_min, which a too short sample would pin, still takes the fresh sample, but srtt and the
-  // retransmission check below take the loop-time one
+  // read well into the wakeup, the fresh sample can hold callback time: srtt and the check below then take rack_rtt
   const bool read_late = stream->srtt != 0 && time > loop_time + max_uint32(4, stream->srtt / 4);
   const uint32_t next = seq + 1;
 
@@ -1396,8 +1394,7 @@ ack_packet (udx_stream_t *stream, uint32_t seq, int sack, udx_rate_sample_t *rs)
 
   // rack 6.2 step 2 update the state for the most recently sent segment
 
-  // a retransmission's sample must reach rtt_min, or the ack can be for the original transmission. one stamped
-  // at the current loop time is rejected too: a callback of this packet may have sent it after the ack was read
+  // rack_rtt == 0: sent at this loop time, possibly by a callback after the ack was read
   if (!pkt->retransmitted || (rack_rtt > 0 && (read_late ? rack_rtt : rtt) >= udx_rtt_min(stream))) {
     stream->rack_rtt = rack_rtt;
     rs->rtt_ms = rtt;
