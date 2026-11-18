@@ -5,8 +5,10 @@
 
 #include "../include/udx.h"
 
-// sends a UDX_MTU_MAX * 6 (8000?) byte write to an application with a 2000 byte buffer.
-// the application consumes 1000 bytes / second (5 bytes per 5 ms)
+// sends a UDX_MTU_MAX * 3 (4500) byte write to an application with a 2000 byte buffer.
+// the application consumes 500 bytes / second (500 bytes per 1000 ms tick), so the
+// receive window is mostly closed and the sender relies on zero-window probes to
+// discover when it reopens.
 
 uv_loop_t loop;
 udx_t udx;
@@ -39,11 +41,6 @@ app_tick (uv_timer_t *timer) {
     application.nbytes_in_buffer -= 500;
   }
   printf("%zu\n", application.nbytes_in_buffer);
-
-  if (application.nbytes_in_buffer == 0 && ack_called) {
-    uv_timer_stop(timer);
-    uv_close((uv_handle_t *) timer, NULL);
-  }
 }
 
 uint32_t
@@ -64,6 +61,15 @@ void
 application_on_read (udx_stream_t *stream, ssize_t read_len, const uv_buf_t *buf) {
 
   printf("read=%zd", read_len);
+
+  // keep draining until EOF: the sender's end packet also needs receive window,
+  // so stopping earlier (e.g. on ack) can leave the window closed forever.
+  if (read_len == UV_EOF) {
+    assert(application.nbytes_in_buffer < APPLICATION_BUFFER_SIZE); // the end waited for window
+    uv_timer_stop(&application_timer);
+    uv_close((uv_handle_t *) &application_timer, NULL);
+  }
+
   if (read_len > 0) {
     application.nbytes_in_buffer += read_len;
   }
@@ -164,7 +170,7 @@ main () {
   e = udx_stream_read_start(&recv_stream, application_on_read);
   assert(e == 0);
 
-  int data_sz = UDX_MTU_MAX * 6;
+  int data_sz = UDX_MTU_MAX * 3;
   char *data = malloc(data_sz);
   uv_buf_t buf = uv_buf_init(data, data_sz);
 
@@ -173,10 +179,11 @@ main () {
 
   uv_run(&loop, UV_RUN_DEFAULT);
 
-  // zwp_count only counts the number of zwp timeouts, since we start with a zero window
-  // we automatically probe (without waiting for a timeout) when data is queued.
+  // zwp_count counts zwp timeouts. the window starts open, but once the application
+  // buffer fills each further packet waits for a probe to discover the reopened window.
+  // 4500 bytes is ~4 packets and typically takes 5 probes.
 
-  assert(send_stream.zwp_count > 10);
+  assert(send_stream.zwp_count >= 3);
   assert(recv_stream.zwp_count == 0);
   assert(ack_called);
   assert(send_stream.rto_count == 0);
