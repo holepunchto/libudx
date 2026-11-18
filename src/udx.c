@@ -38,7 +38,7 @@
 #define UDX_INIT_PACING_RATE    25000 // 25MB/s, 200mbit. updated by bbr_init
 #define UDX_DEFAULT_SNDBUF_SIZE 212992
 
-#define UDX_MAX_RTO_TIMEOUTS 6
+#define UDX_DEFAULT_DELIVERY_TIMEOUT_MS 13000
 
 #define UDX_RTO_MAX_MS        30000
 #define UDX_RTT_MAX_MS        30000
@@ -373,6 +373,14 @@ static void
 udx_zwp_timeout (uv_timer_t *timer);
 static void
 udx_keepalive_timeout (uv_timer_t *timer);
+static void
+udx_delivery_timeout (uv_timer_t *timer);
+
+static uint64_t
+delivery_budget (udx_stream_t *stream) {
+  uint32_t timeout = stream->delivery_timeout_ms ? stream->delivery_timeout_ms : UDX_DEFAULT_DELIVERY_TIMEOUT_MS;
+  return max_uint32(timeout, 3 * stream->rto);
+}
 
 static void
 stream_timer_start (udx_stream_t *stream, udx_stream_timer_type_t timer, uint32_t time_wait_ms) {
@@ -512,9 +520,11 @@ close_stream_internal (udx_stream_t *stream, int err) {
 
   uv_timer_stop(&stream->timer);
   uv_timer_stop(&stream->refill_pacing_timer);
+  uv_timer_stop(&stream->delivery_timer);
 
   uv_close((uv_handle_t *) &stream->timer, finalize_maybe);
   uv_close((uv_handle_t *) &stream->refill_pacing_timer, finalize_maybe);
+  uv_close((uv_handle_t *) &stream->delivery_timer, finalize_maybe);
   uv_close((uv_handle_t *) &stream->deferred_check, finalize_maybe);
   uv_close((uv_handle_t *) &stream->deferred_idle, finalize_maybe);
 
@@ -905,6 +915,11 @@ _send_new_packet (udx_stream_t *stream, bool tlp) {
 
   udx_packet_t *pkt = stream->pkt;
 
+  if (stream->remote_acked == stream->seq) {
+    stream->progress_ts = uv_hrtime() / 1000000; // not uv_now, which is stale after a callback blocks the loop
+    uv_timer_start(&stream->delivery_timer, udx_delivery_timeout, delivery_budget(stream), 0);
+  }
+
   if (pkt->remote_addr_len == 0) {
     bind_packet_remote(pkt, stream);
   }
@@ -1287,6 +1302,23 @@ udx_zwp_timeout (uv_timer_t *timer) {
 }
 
 static void
+udx_delivery_timeout (uv_timer_t *timer) {
+  udx_stream_t *stream = timer->data;
+
+  if (stream->remote_acked == stream->seq) return;
+
+  uint64_t now = uv_now(timer->loop);
+  uint64_t deadline = stream->progress_ts + delivery_budget(stream);
+
+  if (now >= deadline) {
+    close_stream(stream, UV_ETIMEDOUT);
+    return;
+  }
+
+  uv_timer_start(&stream->delivery_timer, udx_delivery_timeout, deadline - now, 0);
+}
+
+static void
 udx_rto_timeout (uv_timer_t *timer) {
   udx_stream_t *stream = timer->data;
   stream->pending_timer = UDX_TIMER_NONE;
@@ -1302,7 +1334,7 @@ udx_rto_timeout (uv_timer_t *timer) {
 
   // exit fast recovery if we are in it
   stream->high_seq = stream->seq;
-  stream->rto_count++;
+  if (stream->rto_count < UINT8_MAX) stream->rto_count++;
   stream->lifetime_rto_count++;
   stream->ca_state = UDX_CA_LOSS;
 
@@ -1320,11 +1352,6 @@ udx_rto_timeout (uv_timer_t *timer) {
 
   uint64_t now = uv_now(timer->loop);
   uint32_t rack_reo_wnd = rack_update_reo_wnd(stream);
-
-  if (stream->rto_count > UDX_MAX_RTO_TIMEOUTS) {
-    close_stream(stream, UV_ETIMEDOUT);
-    return;
-  }
   // rack 6.3
 
   for (uint32_t seq = stream->remote_acked; seq != stream->seq; seq++) {
@@ -1865,6 +1892,7 @@ process_packet (udx_socket_t *socket, char *buf, ssize_t buf_len, struct sockadd
   if (ack_advanced) {
     stream->remote_acked = ack;
     stream->rto_count = 0;
+    stream->progress_ts = uv_hrtime() / 1000000;
   }
 
   if (ended) { // remote acked our end
@@ -1918,6 +1946,7 @@ process_packet (udx_socket_t *socket, char *buf, ssize_t buf_len, struct sockadd
     if (stream->remote_acked == stream->seq) {
       arm_rto_or_tlp = false;
       assert(stream->inflight_queue.len == 0 && stream->retransmit_queue.len == 0);
+      uv_timer_stop(&stream->delivery_timer);
       bool end_queued = (stream->status & (UDX_STREAM_ENDING | UDX_STREAM_ENDED)) == UDX_STREAM_ENDING;
 
       if (stream->send_rwnd == 0 && (stream->writes_queued_bytes > 0 || end_queued)) {
@@ -2504,7 +2533,10 @@ udx_stream_init (udx_t *udx, udx_stream_t *stream, uint32_t local_id, udx_stream
   uv_timer_init(udx->loop, &stream->refill_pacing_timer);
   stream->refill_pacing_timer.data = stream;
 
-  stream->nrefs = 4; // timer, refill_pacing_timer, deferred_check, deferred_idle
+  uv_timer_init(udx->loop, &stream->delivery_timer);
+  stream->delivery_timer.data = stream;
+
+  stream->nrefs = 5; // timer, refill_pacing_timer, delivery_timer, deferred_check, deferred_idle
 
   udx__queue_init(&stream->inflight_queue);
   udx__queue_init(&stream->retransmit_queue);
@@ -2570,6 +2602,19 @@ udx_stream_set_keepalive (udx_stream_t *stream, uint32_t keepalive_timeout_ms) {
 
   if (stream->remote_acked == stream->seq && keepalive_timeout_ms && stream->status & UDX_STREAM_CONNECTED) {
     stream_timer_start(stream, UDX_TIMER_KEEPALIVE, stream->keepalive_timeout_ms);
+  }
+
+  return 0;
+}
+
+int
+udx_stream_set_delivery_timeout (udx_stream_t *stream, uint32_t delivery_timeout_ms) {
+  stream->delivery_timeout_ms = delivery_timeout_ms;
+
+  if (uv_is_active((uv_handle_t *) &stream->delivery_timer)) {
+    uint64_t now = uv_now(stream->udx->loop);
+    uint64_t deadline = stream->progress_ts + delivery_budget(stream);
+    uv_timer_start(&stream->delivery_timer, udx_delivery_timeout, deadline > now ? deadline - now : 0, 0);
   }
 
   return 0;
