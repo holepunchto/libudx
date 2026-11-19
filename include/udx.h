@@ -171,6 +171,8 @@ struct udx_s {
   uint64_t packets_tx;
 
   int64_t packets_dropped_by_kernel;
+
+  uint64_t stall_detected_ts; // loop time when a loop stall was last detected
 };
 
 struct udx_queue_node_s {
@@ -187,8 +189,10 @@ struct udx_socket_s {
   uv_udp_t uv_udp;            // must be first
   uv_check_t ttl_check;       // used for draining the specific-ttl-send-queue
   uv_timer_t ttl_check_timer; // used for draining the specific-ttl-send-queue
+  uv_timer_t stall_timer;     // ticks while a stream on this socket has data in flight
+  uint64_t stall_check_ts;    // loop time of the last stall_timer tick
 
-  int nrefs; // 3 - uv_udp, ttl_check and ttl_check_timer
+  int nrefs; // 4 - uv_udp, ttl_check, ttl_check_timer and stall_timer
 
   // packets queued with udx_socket_send_ttl that both
   // 1. override the socket's TTL value and
@@ -414,7 +418,7 @@ struct udx_stream_s {
   // tlp
   bool tlp_is_retrans;  // the probe in-flight was a retransmission
   bool tlp_in_flight;   // if set, tlp_end_seq indicates the seqno
-  bool tlp_permitted;   // if set, srtt has been updated since the last tlp
+  bool tlp_permitted;   // if set, a non-retransmitted packet has been acked since the last tlp
   uint32_t tlp_end_seq; // seq at time of tlp sent. invalid if tlp_inflight is not set
 
   int nrefs;        // # of libuv handles open (2 timer, 1 prepare)

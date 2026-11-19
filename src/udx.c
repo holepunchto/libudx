@@ -45,6 +45,9 @@
 #define UDX_RTT_MIN_WINDOW_MS 300000            // 300 seconds, same as Linux default
 #define UDX_DEFAULT_RWND_MAX  (4 * 1024 * 1024) // arbitrary, ~175 1500 mtu packets, @20ms latency = 416 mbits/sec
 
+#define UDX_STALL_CHECK_PERIOD_MS 1000
+#define UDX_STALL_THRESHOLD_MS    1000
+
 #define UDX_STREAM_TIMEWAIT_TIMEOUT_MS 5000
 
 #define UDX_HIGH_WATERMARK 262144
@@ -1360,8 +1363,9 @@ ack_packet (udx_stream_t *stream, uint32_t seq, int sack, udx_rate_sample_t *rs)
   const uint64_t time = uv_now(stream->udx->loop);
   uint32_t rtt = clamp_rtt(stream, time - pkt->time_sent);
   const uint32_t next = seq + 1;
+  const bool stalled = pkt->time_sent < stream->udx->stall_detected_ts; // the sample includes a loop stall
 
-  if (!pkt->retransmitted && !is_repeated_stall_sample(stream, pkt->time_sent, time)) {
+  if (!pkt->retransmitted && !stalled && !is_repeated_stall_sample(stream, pkt->time_sent, time)) {
     // with a 1 ms clock a 0 ms sample means "under a millisecond", not "no sample":
     // srtt == 0 is what schedule_loss_probe and clamp_rtt read as unknown
     if (rtt == 0) rtt = 1;
@@ -1382,8 +1386,6 @@ ack_packet (udx_stream_t *stream, uint32_t seq, int sack, udx_rate_sample_t *rs)
       stream->srtt = (7 * stream->srtt + rtt) / 8;
     }
 
-    stream->tlp_permitted = true;
-
     // RTO <- SRTT + max (G, K*RTTVAR) where K is 4 maxed with 1s
     stream->rto = max_uint32(stream->srtt + 4 * stream->rttvar, 1000);
 
@@ -1393,11 +1395,15 @@ ack_packet (udx_stream_t *stream, uint32_t seq, int sack, udx_rate_sample_t *rs)
     }
   }
 
+  if (!pkt->retransmitted) stream->tlp_permitted = true;
+
   // rack 6.2 step 2 update the state for the most recently sent segment
 
   if (!pkt->retransmitted || (rtt >= udx_rtt_min(stream))) {
-    stream->rack_rtt = rtt;
-    rs->rtt_ms = rtt;
+    if (!stalled) {
+      stream->rack_rtt = rtt;
+      rs->rtt_ms = rtt;
+    }
 
     if (rack_sent_after(pkt->time_sent, next, stream->rack_time_sent, stream->rack_next_seq)) {
       stream->rack_time_sent = pkt->time_sent;
@@ -1931,6 +1937,42 @@ pacing_timer_timeout (uv_timer_t *timer) {
   send_packets(stream);
 }
 
+// a stall_timer tick overdue by more than the threshold means the loop did not run:
+// rtt samples of packets sent before then include the stall
+static void
+check_stall (udx_socket_t *socket, uint64_t now) {
+  if (!uv_is_active((uv_handle_t *) &socket->stall_timer)) return; // nothing in flight
+
+  if (now - socket->stall_check_ts > UDX_STALL_CHECK_PERIOD_MS + UDX_STALL_THRESHOLD_MS) {
+    socket->udx->stall_detected_ts = now;
+    socket->stall_check_ts = now;
+  }
+}
+
+static void
+on_stall_timer (uv_timer_t *timer) {
+  udx_socket_t *socket = timer->data;
+  uint64_t now = uv_now(timer->loop);
+
+  check_stall(socket, now);
+  socket->stall_check_ts = now;
+
+  udx_stream_t *stream;
+  udx__link_foreach(socket->streams, stream) {
+    if (stream->seq != stream->remote_acked) return;
+  }
+
+  uv_timer_stop(timer);
+}
+
+static void
+arm_stall_timer (udx_socket_t *socket) {
+  if (uv_is_active((uv_handle_t *) &socket->stall_timer)) return;
+
+  socket->stall_check_ts = uv_now(socket->udx->loop);
+  uv_timer_start(&socket->stall_timer, on_stall_timer, UDX_STALL_CHECK_PERIOD_MS, UDX_STALL_CHECK_PERIOD_MS);
+}
+
 // arms the retransmit timers (RTO, TLP), called after data is transmitted
 // or retransmitted. 'arm_tlp' is set when transmitting new data that is not itself a TLP
 static void
@@ -1939,6 +1981,8 @@ arm_stream_timers (udx_stream_t *stream, bool arm_tlp) {
   assert(stream->remote_acked != stream->seq);
   assert(stream->rto > 0);
   assert(stream->status != UDX_STREAM_CLOSED);
+
+  arm_stall_timer(stream->socket);
 
   if (stream->pending_timer == UDX_TIMER_NONE || stream->pending_timer == UDX_TIMER_ZWP || stream->pending_timer == UDX_TIMER_KEEPALIVE) {
     stream_timer_start(stream, UDX_TIMER_RTO, stream->rto);
@@ -1974,6 +2018,7 @@ on_uv_udp_recv (uv_udp_t *handle, ssize_t nread, const uv_buf_t *buf, const stru
   }
 
   assert((size_t) nread <= buf->len);
+  check_stall(socket, uv_now(handle->loop));
   if (!process_packet(socket, buf->base, nread, (struct sockaddr *) addr) && socket->on_recv) {
     if (is_addr_v4_mapped((struct sockaddr *) addr)) {
       addr_to_v4((struct sockaddr_in6 *) addr);
@@ -2063,8 +2108,12 @@ udx_socket_init (udx_t *udx, udx_socket_t *socket, udx_socket_close_cb cb) {
   err = uv_timer_init(udx->loop, &socket->ttl_check_timer);
   assert(err == 0);
   socket->ttl_check_timer.data = socket;
+  err = uv_timer_init(udx->loop, &socket->stall_timer);
+  assert(err == 0);
+  socket->stall_timer.data = socket;
+  uv_unref((uv_handle_t *) &socket->stall_timer);
 
-  socket->nrefs = 3;
+  socket->nrefs = 4;
 
   return err;
 }
@@ -2357,6 +2406,8 @@ udx_socket_close (udx_socket_t *socket) {
   uv_close((uv_handle_t *) &socket->ttl_check, on_udx_socket_handle_close);
   uv_timer_stop(&socket->ttl_check_timer);
   uv_close((uv_handle_t *) &socket->ttl_check_timer, on_udx_socket_handle_close);
+  uv_timer_stop(&socket->stall_timer);
+  uv_close((uv_handle_t *) &socket->stall_timer, on_udx_socket_handle_close);
 
   while (socket->timewait_queue.len > 0) {
     udx_timewait_t *timewait = udx__queue_data(udx__queue_peek(&socket->timewait_queue), udx_timewait_t, queue);
