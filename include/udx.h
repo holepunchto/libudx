@@ -189,7 +189,7 @@ struct udx_socket_s {
   uv_udp_t uv_udp;            // must be first
   uv_check_t ttl_check;       // used for draining the specific-ttl-send-queue
   uv_timer_t ttl_check_timer; // used for draining the specific-ttl-send-queue
-  uv_timer_t stall_timer;     // ticks while a stream on this socket has data in flight
+  uv_timer_t stall_timer;     // ticks every 250 ms while a stream on this socket has data in flight
   uint64_t stall_check_ts;    // loop time of the last stall_timer tick
   bool stall_timer_on;        // set from arm_stall_timer until a tick stops the timer
 

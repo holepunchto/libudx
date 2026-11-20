@@ -8,14 +8,14 @@
 #include "../src/endian.h"
 #include "../src/internal.h"
 
-// Our loop really stalls, inside another handle's callback, with a burst in flight.
+// Our loop really stalls for a second, inside another handle's callback, with a burst in flight.
 // The acks queued meanwhile are read only after the timers phase, where the stream's
 // loss probe fires before the stall timer's tick. No sample may be used.
 
 #define BURST 8
 
 #ifndef STALL_MS
-#define STALL_MS 2500 // over period + threshold (2 s); 1000 is enough with 250 + 250
+#define STALL_MS 1000 // over period + threshold
 #endif
 
 uv_loop_t loop;

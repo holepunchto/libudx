@@ -45,8 +45,8 @@
 #define UDX_RTT_MIN_WINDOW_MS 300000            // 300 seconds, same as Linux default
 #define UDX_DEFAULT_RWND_MAX  (4 * 1024 * 1024) // arbitrary, ~175 1500 mtu packets, @20ms latency = 416 mbits/sec
 
-#define UDX_STALL_CHECK_PERIOD_MS 1000
-#define UDX_STALL_THRESHOLD_MS    1000
+#define UDX_STALL_CHECK_PERIOD_MS 250
+#define UDX_STALL_THRESHOLD_MS    250
 
 #define UDX_STREAM_TIMEWAIT_TIMEOUT_MS 5000
 
