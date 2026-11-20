@@ -122,7 +122,7 @@ main () {
   e = udx_socket_init(&udx, &sock, NULL);
   assert(e == 0);
 
-  uv_ip4_addr("127.0.0.1", 18141, &sock_addr);
+  uv_ip4_addr("127.0.0.1", 18191, &sock_addr);
   e = udx_socket_bind(&sock, (struct sockaddr *) &sock_addr, 0);
   assert(e == 0);
 
@@ -130,7 +130,7 @@ main () {
   assert(e == 0);
 
   struct sockaddr_in peer_addr;
-  uv_ip4_addr("127.0.0.1", 18142, &peer_addr);
+  uv_ip4_addr("127.0.0.1", 18192, &peer_addr);
   e = uv_udp_bind(&peer, (struct sockaddr *) &peer_addr, 0);
   assert(e == 0);
 
