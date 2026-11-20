@@ -40,6 +40,7 @@ list(APPEND tests
   stream-rtt-stall
   stream-rtt-loop-stall
   stream-rtt-io-stall
+  stream-rtt-stall-idle
   stream-retransmit-refreshes-header
   stream-strict-sack
   stream-rack-tlp-example
