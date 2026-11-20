@@ -1305,15 +1305,6 @@ clamp_rtt (udx_stream_t *stream, uint64_t rtt) {
   return rtt;
 }
 
-// every ack queued during a stall gives a clamped sample of it: keep only the first
-static bool
-is_repeated_stall_sample (udx_stream_t *stream, uint64_t time_sent, uint64_t time) {
-  if (clamp_rtt(stream, time - time_sent) == time - time_sent) return false;
-  if (time_sent < stream->rtt_clamp_ts) return true;
-  stream->rtt_clamp_ts = time;
-  return false;
-}
-
 // receiver side calls this to mark a packet acked
 static int
 ack_packet (udx_stream_t *stream, uint32_t seq, int sack, udx_rate_sample_t *rs) {
@@ -1362,10 +1353,16 @@ ack_packet (udx_stream_t *stream, uint32_t seq, int sack, udx_rate_sample_t *rs)
 
   const uint64_t time = uv_now(stream->udx->loop);
   uint32_t rtt = clamp_rtt(stream, time - pkt->time_sent);
+  const bool clamped = rtt != time - pkt->time_sent;
   const uint32_t next = seq + 1;
-  const bool stalled = pkt->time_sent < stream->udx->stall_detected_ts; // the sample includes a loop stall
 
-  if (!pkt->retransmitted && !stalled && !is_repeated_stall_sample(stream, pkt->time_sent, time)) {
+  // the sample includes a loop stall we detected, or it is a clamped sample of an outlier we
+  // already took one clamped sample of (every ack queued during a stall the detector missed)
+  const bool stalled = pkt->time_sent < stream->udx->stall_detected_ts || (clamped && pkt->time_sent < stream->rtt_clamp_ts);
+
+  if (!pkt->retransmitted && !stalled) {
+    if (clamped) stream->rtt_clamp_ts = time;
+
     // with a 1 ms clock a 0 ms sample means "under a millisecond", not "no sample":
     // srtt == 0 is what schedule_loss_probe and clamp_rtt read as unknown
     if (rtt == 0) rtt = 1;
@@ -1944,7 +1941,8 @@ check_stall (udx_socket_t *socket, uint64_t now) {
   if (!socket->stall_timer_on) return; // nothing in flight
 
   if (now - socket->stall_check_ts > UDX_STALL_CHECK_PERIOD_MS + UDX_STALL_THRESHOLD_MS) {
-    socket->udx->stall_detected_ts = now;
+    // unless another socket caught this stall already: packets sent since then are clean
+    if (socket->stall_check_ts >= socket->udx->stall_detected_ts) socket->udx->stall_detected_ts = now;
     socket->stall_check_ts = now;
   }
 }
@@ -1959,7 +1957,7 @@ on_stall_timer (uv_timer_t *timer) {
 
   udx_stream_t *stream;
   udx__link_foreach(socket->streams, stream) {
-    if (stream->seq != stream->remote_acked) return;
+    if (stream->relay_to == NULL && stream->seq != stream->remote_acked) return; // relaying advances seq only
   }
 
   socket->stall_timer_on = false;

@@ -153,9 +153,10 @@ main () {
 
   uv_run(&loop, UV_RUN_DEFAULT);
 
-  // exactly one clamped sample of srtt + 5 * rttvar
+  // exactly one clamped sample of srtt + 5 * rttvar, for rack too
   assert(stream.srtt == (8 * srtt + 5 * rttvar) / 8);
   assert(stream.rttvar == 2 * rttvar);
+  assert(stream.rack_rtt == srtt + 5 * rttvar);
 
   return 0;
 }
