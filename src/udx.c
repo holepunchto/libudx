@@ -1941,7 +1941,7 @@ pacing_timer_timeout (uv_timer_t *timer) {
 // rtt samples of packets sent before then include the stall
 static void
 check_stall (udx_socket_t *socket, uint64_t now) {
-  if (!uv_is_active((uv_handle_t *) &socket->stall_timer)) return; // nothing in flight
+  if (!socket->stall_timer_on) return; // nothing in flight
 
   if (now - socket->stall_check_ts > UDX_STALL_CHECK_PERIOD_MS + UDX_STALL_THRESHOLD_MS) {
     socket->udx->stall_detected_ts = now;
@@ -1962,12 +1962,16 @@ on_stall_timer (uv_timer_t *timer) {
     if (stream->seq != stream->remote_acked) return;
   }
 
+  socket->stall_timer_on = false;
   uv_timer_stop(timer);
 }
 
 static void
 arm_stall_timer (udx_socket_t *socket) {
-  if (uv_is_active((uv_handle_t *) &socket->stall_timer)) return;
+  // not uv_is_active(): libuv stops a due timer before running it, and restarting it
+  // from an earlier timer's callback (a loss probe after a stall) would skip its tick
+  if (socket->stall_timer_on) return;
+  socket->stall_timer_on = true;
 
   socket->stall_check_ts = uv_now(socket->udx->loop);
   uv_timer_start(&socket->stall_timer, on_stall_timer, UDX_STALL_CHECK_PERIOD_MS, UDX_STALL_CHECK_PERIOD_MS);
