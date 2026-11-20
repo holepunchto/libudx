@@ -30,6 +30,7 @@ list(APPEND tests
   stream-write-read-receive-window
   stream-write-read-receive-window-2
   stream-no-zwp-with-data-in-flight
+  stream-zero-window-retransmit
   win-filter
   stream-bbr-state
   stream-bbr-recovery-loss
