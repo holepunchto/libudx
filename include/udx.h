@@ -413,7 +413,7 @@ struct udx_stream_s {
   double pacing_bytes_per_ns; // fractional, 1 Gbit/s is 0.125. computed by bbr module. 'BBR.pacing_rate' in IETF draft
 
   // pacing (tb = token bucket)
-  uint32_t tb_available;
+  int64_t tb_available; // bytes. goes negative when a packet is larger than the remaining tokens, the debt is repaid by later refills
   uint64_t tb_last_refill_ts; // ns timestamp
 
   // tlp

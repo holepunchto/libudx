@@ -61,9 +61,6 @@ static const uint32_t bbr_ack_epoch_acked_reset_thresh = UINT32_MAX;
 
 static const uint64_t bbr_extra_acked_max_ns = 100 * NS_PER_MS; // 100 ms
 
-// lower bound for the pacing rate, 1 byte/ms
-static const double bbr_min_pacing_rate = 1.0 / NS_PER_MS;
-
 // windowed max recent bandwidth sample, packets/ns
 static double
 bbr_max_bw (udx_stream_t *stream) {
@@ -91,7 +88,11 @@ static double
 bbr_bw_to_pacing_rate (udx_stream_t *stream, double bw, double gain) {
   uint32_t mss = udx__max_payload(stream);
   double rate = bw * mss * gain * bbr_pacing_margin_percent;
-  return rate < bbr_min_pacing_rate ? bbr_min_pacing_rate : rate;
+
+  // lower bound of one full packet per second, so that a stream doesn't stop sampling the path
+  // alternately: bound the pacer timeout
+  double min_rate = (double) mss / NS_PER_SEC;
+  return rate < min_rate ? min_rate : rate;
 }
 
 static void

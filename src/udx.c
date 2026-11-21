@@ -105,7 +105,7 @@ addr_to_v4 (struct sockaddr_in6 *addr) {
 
 uint32_t
 udx__max_payload (udx_stream_t *stream) {
-  assert(stream->mtu > (AF_INET ? UDX_IPV4_HEADER_SIZE : UDX_IPV6_HEADER_SIZE));
+  assert(stream->mtu > (stream->remote_addr.ss_family == AF_INET ? UDX_IPV4_HEADER_SIZE : UDX_IPV6_HEADER_SIZE));
   return stream->mtu - (stream->remote_addr.ss_family == AF_INET ? UDX_IPV4_HEADER_SIZE : UDX_IPV6_HEADER_SIZE);
 }
 
@@ -742,7 +742,7 @@ static bool
 stream_may_send (udx_stream_t *stream, bool retransmit) {
   assert(stream->cwnd > 0);
   update_pacing_time(stream, false);
-  if (stream->tb_available == 0) {
+  if (stream->tb_available <= 0) {
     return false;
   }
   if (retransmit) {
@@ -874,9 +874,9 @@ _send_packet (udx_stream_t *stream, udx_packet_t *pkt, bool is_retransmit) {
   udx->packets_tx++;
   udx->bytes_tx += pkt->size;
 
-  stream->tb_available = pkt->size > stream->tb_available ? 0 : stream->tb_available - pkt->size;
+  stream->tb_available -= pkt->size;
 
-  if (stream->tb_available == 0) {
+  if (stream->tb_available <= 0) {
     uv_timer_start(&stream->refill_pacing_timer, pacing_timer_timeout, UDX_PACING_REFILL_INTERVAL_NS / NS_PER_MS, 0);
   }
 }
@@ -2015,12 +2015,13 @@ addr_to_v6 (struct sockaddr_in *addr) {
 }
 
 // refills the token bucket with the bytes that the pacing rate allows for the time since the last refill.
-// a refill replaces the bucket rather than adding to it, so it must not run on every call: with a
-// nanosecond clock 'now' always advances, and the bucket would be overwritten with a few microseconds
-// worth of tokens each time. refill once per UDX_PACING_REFILL_INTERVAL_NS, which is what the 1 ms
-// granularity of uv_now() used to do implicitly.
+// a refill discards unused tokens but carries debt over: the bucket becomes the tokens earned since the
+// last refill, less whatever the last packet overdrew. because unused tokens are discarded it must not
+// run on every call: with a nanosecond clock 'now' always advances, and the bucket would be overwritten
+// with a few microseconds worth of tokens each time. refill once per UDX_PACING_REFILL_INTERVAL_NS,
+// which is what the 1 ms granularity of uv_now() used to do implicitly.
 // 'force' is set by the refill timer. libuv measures 1 ms from its cached loop time, so the timer can
-// fire a little under 1 ms after the last refill, and nothing would re-arm it if the bucket stayed empty.
+// fire a little under 1 ms after the last refill.
 static void
 update_pacing_time (udx_stream_t *stream, bool force) {
   uint64_t now = uv_hrtime();
@@ -2029,9 +2030,8 @@ update_pacing_time (udx_stream_t *stream, bool force) {
   if (elapsed_ns >= UDX_PACING_REFILL_INTERVAL_NS || force) {
     assert(stream->pacing_bytes_per_ns > 0);
     double bytes = elapsed_ns * stream->pacing_bytes_per_ns;
-    // at least 1 so that a forced refill always lets a packet through
-    stream->tb_available = bytes < 1 ? 1 : bytes > UINT32_MAX ? UINT32_MAX
-                                                              : (uint32_t) bytes;
+    int64_t debt = stream->tb_available < 0 ? stream->tb_available : 0;
+    stream->tb_available = debt + (bytes > UINT32_MAX ? UINT32_MAX : (int64_t) bytes);
     stream->tb_last_refill_ts = now;
   }
 }
@@ -2041,6 +2041,13 @@ pacing_timer_timeout (uv_timer_t *timer) {
   udx_stream_t *stream = timer->data;
 
   update_pacing_time(stream, true);
+
+  if (stream->tb_available <= 0) {
+    // still in debt, nothing else will wake the stream up
+    uv_timer_start(&stream->refill_pacing_timer, pacing_timer_timeout, UDX_PACING_REFILL_INTERVAL_NS / NS_PER_MS, 0);
+    return;
+  }
+
   send_packets(stream);
 }
 
