@@ -143,7 +143,7 @@ main () {
 
   recv_stream.get_read_buffer_size = &pretend_buffer_is_full;
   send_stream.send_rwnd = FIRST_DATA_SIZE;
-  send_stream.rto = 200;
+  send_stream.rto_ns = 200 * 1000000ULL; // 200 ms
 
   e = udx_stream_connect(
     &recv_stream,

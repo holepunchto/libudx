@@ -57,9 +57,9 @@
 
 #include "win_filter.h"
 
-static uint32_t
-win_filter_apply_common (win_filter_t *wf, uint32_t win, uint64_t t, uint32_t v) {
-  uint32_t dt = t - wf->entries[0].t;
+static uint64_t
+win_filter_apply_common (win_filter_t *wf, uint64_t win, uint64_t t, uint64_t v) {
+  uint64_t dt = t - wf->entries[0].t;
 
   win_filter_entry_t new = {.t = t, .v = v};
 
@@ -84,16 +84,16 @@ win_filter_apply_common (win_filter_t *wf, uint32_t win, uint64_t t, uint32_t v)
   return wf->entries[0].v;
 }
 
-uint32_t
-win_filter_reset (win_filter_t *wf, uint64_t t, uint32_t v) {
+uint64_t
+win_filter_reset (win_filter_t *wf, uint64_t t, uint64_t v) {
   win_filter_entry_t val = {.t = t, .v = v};
 
   wf->entries[2] = wf->entries[1] = wf->entries[0] = val;
   return wf->entries[0].v;
 }
 
-uint32_t
-win_filter_apply_max (win_filter_t *wf, uint32_t win, uint64_t t, uint32_t v) {
+uint64_t
+win_filter_apply_max (win_filter_t *wf, uint64_t win, uint64_t t, uint64_t v) {
   //  new maximum           || nothing in window
   if (v >= wf->entries[0].v || t - wf->entries[2].t > win) {
     return win_filter_reset(wf, t, v);
@@ -113,8 +113,8 @@ win_filter_apply_max (win_filter_t *wf, uint32_t win, uint64_t t, uint32_t v) {
   return win_filter_apply_common(wf, win, t, v);
 }
 
-uint32_t
-win_filter_apply_min (win_filter_t *wf, uint32_t win, uint64_t t, uint32_t v) {
+uint64_t
+win_filter_apply_min (win_filter_t *wf, uint64_t win, uint64_t t, uint64_t v) {
   //   new minimum           || nothing in window
   if (v <= wf->entries[0].v || t - wf->entries[2].t > win) {
     return win_filter_reset(wf, t, v);

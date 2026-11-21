@@ -14,7 +14,7 @@
 // 2. send at max rate until bbr has been through PROBE_RTT and back to PROBE_BW
 //   a. expected result: we leave STARTUP into PROBE_BW and see each of its gain phases. DRAIN isn't
 //      checked: one ack can enter and leave it (bbr_check_drain), so it may not be seen
-//   b. PROBE_RTT starts when the min_rtt sample is UDX_BBR_MIN_RTT_INTERVAL_MS (10s) old. rather than
+//   b. PROBE_RTT starts when the min_rtt sample is UDX_BBR_MIN_RTT_INTERVAL_NS (10s) old. rather than
 //      wait, once every gain phase has been seen, the sample's timestamp is moved back so the next
 //      ack finds it expired
 //   c. bbr's state is checked after each loop iteration's packets are processed
@@ -57,7 +57,7 @@ struct sockaddr_in recv_addr;
 #define LOW_BW_MS          500
 #define TIMEOUT_MS         5000 // less than MIN_RTT_INTERVAL_MS, so PROBE_RTT can't come from waiting
 
-#define MIN_RTT_INTERVAL_MS 10000 // UDX_BBR_MIN_RTT_INTERVAL_MS in src/udx_bbr.c
+#define MIN_RTT_INTERVAL_NS 10000000000ULL // UDX_BBR_MIN_RTT_INTERVAL_NS in src/udx_bbr.c
 
 int state; // only increases
 
@@ -83,7 +83,7 @@ int fast_writes_pending;
 bool heartbeat_sent;
 double max_bw_before_heartbeat;
 uint32_t rate_delivered_before_heartbeat;
-uint32_t rate_interval_before_heartbeat;
+uint64_t rate_interval_before_heartbeat;
 
 unsigned char small_message[] = "hello";
 unsigned char large_message[0x1000];
@@ -93,7 +93,7 @@ udx_stream_write_t *recv_end_request;
 
 static uint64_t
 elapsed_ms (void) {
-  return uv_now(&loop) - start_ms;
+  return uv_hrtime() / 1000000 - start_ms;
 }
 
 static void
@@ -177,7 +177,7 @@ observe_bbr (uv_check_t *check) {
     // every gain phase seen, expire the min_rtt sample to start PROBE_RTT
     if (cycle_indexes_seen == 0xff && !min_rtt_expired) {
       printf("test stream-bbr-state: t=%" PRIu64 "ms expiring min_rtt\n", elapsed_ms());
-      send_stream.bbr.min_rtt_stamp = uv_now(&loop) - MIN_RTT_INTERVAL_MS - 1;
+      send_stream.bbr.min_rtt_stamp_ts = uv_hrtime() - MIN_RTT_INTERVAL_NS - 1;
       min_rtt_expired = true;
     }
 
@@ -224,7 +224,7 @@ on_driver_timer (uv_timer_t *timer) {
     heartbeat_sent = true;
     max_bw_before_heartbeat = max_bw();
     rate_delivered_before_heartbeat = send_stream.rate_delivered;
-    rate_interval_before_heartbeat = send_stream.rate_interval_ms;
+    rate_interval_before_heartbeat = send_stream.rate_interval_ns;
     write_heartbeat(send_ack_app_limited);
   }
 }
@@ -242,9 +242,9 @@ send_ack_fast (udx_stream_write_t *r, int status, int unordered) {
 
 static void
 send_ack_app_limited (udx_stream_write_t *r, int status, int unordered) {
-  printf("test stream-bbr-state: app limited ack, max_bw before=%.3f after=%.3f pkts/ms\n", max_bw_before_heartbeat, max_bw());
-  printf("test stream-bbr-state: app limited ack, rate sample before=%u/%ums after=%u/%ums app_limited=%d\n", rate_delivered_before_heartbeat, rate_interval_before_heartbeat, send_stream.rate_delivered, send_stream.rate_interval_ms, send_stream.rate_sample_is_app_limited);
-  assert(send_stream.rate_sample_is_app_limited || (send_stream.rate_delivered == rate_delivered_before_heartbeat && send_stream.rate_interval_ms == rate_interval_before_heartbeat));
+  printf("test stream-bbr-state: app limited ack, max_bw before=%.3f after=%.3f pkts/ms\n", max_bw_before_heartbeat * 1e6, max_bw() * 1e6);
+  printf("test stream-bbr-state: app limited ack, rate sample before=%u/%" PRIu64 "ns after=%u/%" PRIu64 "ns app_limited=%d\n", rate_delivered_before_heartbeat, rate_interval_before_heartbeat, send_stream.rate_delivered, send_stream.rate_interval_ns, send_stream.rate_sample_is_app_limited);
+  assert(send_stream.rate_sample_is_app_limited || (send_stream.rate_delivered == rate_delivered_before_heartbeat && send_stream.rate_interval_ns == rate_interval_before_heartbeat));
   assert(max_bw() == max_bw_before_heartbeat);
   free(r);
   finish();
@@ -326,7 +326,7 @@ main () {
   uv_check_start(&observer, observe_bbr);
 
   uv_timer_init(&loop, &timer);
-  start_ms = uv_now(&loop);
+  start_ms = uv_hrtime() / 1000000;
 
   uv_timer_start(&timer, on_driver_timer, 0, DRIVER_INTERVAL_MS);
 

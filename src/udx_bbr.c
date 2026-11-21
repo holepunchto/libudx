@@ -19,13 +19,17 @@
 // 2. bw and bdp are measured in packets, e.g. bdp of 20 means that the network can
 // support 20 packets in flight. the idea with bbr is to set the cwnd to our estimate
 // of the BDP
-// TODO: confirm we've corrected this everywhere, as we mixes packets/second for some measurements in the past
-// 3. we use milliseconds for time measurements
+// 3. we use nanoseconds for time measurements, so bw is in packets/ns and
+// the pacing rate in bytes/ns. both are fractional and must stay doubles
+
+// not namepaced for readability. undef'd at end of file
+#define NS_PER_MS  UINT64_C(1000000)
+#define NS_PER_SEC UINT64_C(1000000000)
 
 #define UDX_BBR_CYCLE_LEN             8
 #define UDX_BBR_BW_FILTER_CYCLES      (UDX_BBR_CYCLE_LEN + 2)
-#define UDX_BBR_MIN_RTT_INTERVAL_MS   10000
-#define UDX_BBR_MIN_PROBE_RTT_MODE_MS 200
+#define UDX_BBR_MIN_RTT_INTERVAL_NS   (10 * NS_PER_SEC) // 10 s
+#define UDX_BBR_MIN_PROBE_RTT_MODE_NS (200 * NS_PER_MS) // 200 ms
 
 static const double bbr_pacing_margin_percent = 0.99;
 static const double bbr_high_gain = 2.88539; // 2/ln(2)
@@ -55,9 +59,12 @@ static const double bbr_extra_acked_gain = 1.0;
 static const uint32_t bbr_extra_acked_win_rtts = 5;
 static const uint32_t bbr_ack_epoch_acked_reset_thresh = UINT32_MAX;
 
-static const uint32_t bbr_extra_acked_max_ms = 100;
+static const uint64_t bbr_extra_acked_max_ns = 100 * NS_PER_MS; // 100 ms
 
-// windowed max recent bandwidth sample, packets/ms
+// lower bound for the pacing rate, 1 byte/ms
+static const double bbr_min_pacing_rate = 1.0 / NS_PER_MS;
+
+// windowed max recent bandwidth sample, packets/ns
 static double
 bbr_max_bw (udx_stream_t *stream) {
   return win_filter_f64_get(&stream->bbr.bw);
@@ -68,7 +75,7 @@ bbr_full_bw_reached (udx_stream_t *stream) {
   return stream->bbr.full_bw_reached;
 }
 
-// return the estimated bandwidth for the stream, pkts/ms
+// return the estimated bandwidth for the stream, pkts/ns
 static double
 bbr_bw (udx_stream_t *stream) {
   return bbr_max_bw(stream);
@@ -79,41 +86,42 @@ bbr_extra_acked (udx_stream_t *stream) {
   return max_uint32(stream->bbr.extra_acked[0], stream->bbr.extra_acked[1]);
 }
 
-static uint64_t
+// bw in packets/ns, returns bytes/ns
+static double
 bbr_bw_to_pacing_rate (udx_stream_t *stream, double bw, double gain) {
   uint32_t mss = udx__max_payload(stream);
-  uint64_t bpms = bw * mss * gain * bbr_pacing_margin_percent;
-  return max_uint64(bpms, 1);
+  double rate = bw * mss * gain * bbr_pacing_margin_percent;
+  return rate < bbr_min_pacing_rate ? bbr_min_pacing_rate : rate;
 }
 
 static void
 bbr_init_pacing_rate_from_rtt (udx_stream_t *stream) {
-  uint32_t srtt = 0;
-  if (stream->srtt) {
-    srtt = stream->srtt;
+  uint64_t srtt_ns = 0;
+  if (stream->srtt_ns) {
+    srtt_ns = stream->srtt_ns;
     stream->bbr.has_seen_rtt = 1;
   } else {
-    srtt = 1;
+    srtt_ns = NS_PER_MS; // no rtt sample yet, assume 1 ms
   }
 
   uint64_t rate = stream->cwnd;
-  double bw = (double) rate / srtt;
+  double bw = (double) rate / srtt_ns;
 
   assert(bw != 0);
 
-  stream->pacing_bytes_per_ms = bbr_bw_to_pacing_rate(stream, bw, bbr_high_gain);
+  stream->pacing_bytes_per_ns = bbr_bw_to_pacing_rate(stream, bw, bbr_high_gain);
 }
 
 static void
 bbr_set_pacing_rate (udx_stream_t *stream, double bw, double gain) {
-  uint64_t rate_bpms = bbr_bw_to_pacing_rate(stream, bw, gain);
+  double rate = bbr_bw_to_pacing_rate(stream, bw, gain);
 
-  if (!stream->bbr.has_seen_rtt && stream->srtt) {
+  if (!stream->bbr.has_seen_rtt && stream->srtt_ns) {
     bbr_init_pacing_rate_from_rtt(stream);
   }
 
-  if (stream->bbr.full_bw_reached || rate_bpms > stream->pacing_bytes_per_ms) {
-    stream->pacing_bytes_per_ms = rate_bpms;
+  if (stream->bbr.full_bw_reached || rate > stream->pacing_bytes_per_ns) {
+    stream->pacing_bytes_per_ns = rate;
   }
 }
 
@@ -129,36 +137,36 @@ bbr_save_cwnd (udx_stream_t *stream) {
 }
 
 static void
-bbr_check_probe_rtt_done (udx_stream_t *stream, uint64_t now_ms);
+bbr_check_probe_rtt_done (udx_stream_t *stream, uint64_t now_ts);
 
 void
-bbr_on_transmit_start (udx_stream_t *stream, uint64_t now_ms) {
+bbr_on_transmit_start (udx_stream_t *stream, uint64_t now_ts) {
   // BBR 4.2.2
   if (stream->app_limited) {
     stream->bbr.idle_restart = true;
-    stream->bbr.ack_epoch_start = now_ms;
+    stream->bbr.ack_epoch_start = now_ts;
     stream->bbr.ack_epoch_acked = 0;
 
     if (stream->bbr.state == UDX_BBR_STATE_PROBE_BW) {
       bbr_set_pacing_rate(stream, bbr_bw(stream), 1.0);
     } else if (stream->bbr.state == UDX_BBR_STATE_PROBE_RTT) {
-      bbr_check_probe_rtt_done(stream, now_ms);
+      bbr_check_probe_rtt_done(stream, now_ts);
     }
   }
 }
 
 // calculate bdp based on min RTT and the estimated bottleneck bandwidth
-// bdp = bw * min_rtt * gain, unit is bytes
+// bdp = bw (packets/ns) * min_rtt (ns) * gain
 // note: bdp is in packets!
 
 static uint32_t
 bbr_bdp (udx_stream_t *stream, double bw, double gain) {
 
-  if (stream->bbr.min_rtt_ms == ~0U) {
+  if (stream->bbr.min_rtt_ns == UINT64_MAX) {
     return 10; // cap at initial cwnd
   }
 
-  return max_uint32(bw * stream->bbr.min_rtt_ms * gain, 1);
+  return max_uint32(bw * stream->bbr.min_rtt_ns * gain, 1);
 }
 
 static uint32_t
@@ -176,8 +184,8 @@ static uint32_t
 bbr_ack_aggregation_cwnd (udx_stream_t *stream) {
   uint32_t aggr_cwnd = 0;
   if (bbr_extra_acked_gain && bbr_full_bw_reached(stream)) {
-    // clamps extra aggregation packets to at most extra_acked_max_ms (100ms) of packets at current bw
-    uint32_t max_aggr_cwnd = bbr_bw(stream) * bbr_extra_acked_max_ms;
+    // clamps extra aggregation packets to at most bbr_extra_acked_max_ns (100ms) of packets at current bw
+    uint32_t max_aggr_cwnd = bbr_bw(stream) * bbr_extra_acked_max_ns;
 
     aggr_cwnd = (bbr_extra_acked_gain * bbr_extra_acked(stream));
     aggr_cwnd = min_uint32(aggr_cwnd, max_aggr_cwnd);
@@ -249,14 +257,14 @@ done:
   }
 }
 
-static uint32_t
-time_delta_ms (uint64_t t1, uint64_t t0) {
-  return max_uint32((int64_t) t1 - (int64_t) t0, 0);
+static uint64_t
+time_delta_ns (uint64_t t1, uint64_t t0) {
+  return max_int64((int64_t) t1 - (int64_t) t0, 0);
 }
 
 static bool
 bbr_is_next_cycle_phase (udx_stream_t *stream, udx_rate_sample_t *rs) {
-  bool is_full_length = time_delta_ms(stream->delivered_ts, stream->bbr.cycle_timestamp) > stream->bbr.min_rtt_ms;
+  bool is_full_length = time_delta_ns(stream->delivered_ts, stream->bbr.cycle_start_ts) > stream->bbr.min_rtt_ns;
 
   if (stream->bbr.pacing_gain == 1.0) {
     return is_full_length;
@@ -276,7 +284,7 @@ static void
 bbr_advance_cycle_phase (udx_stream_t *stream) {
   stream->bbr.cycle_index = (stream->bbr.cycle_index + 1) & (UDX_BBR_CYCLE_LEN - 1);
   // debug_printf("bbr: cycle_index advanced: index=%d time=%ld rate=%1.2f\n", stream->bbr.cycle_index, stream->delivered_ts, bbr_pacing_gain[stream->bbr.cycle_index]);
-  stream->bbr.cycle_timestamp = stream->delivered_ts;
+  stream->bbr.cycle_start_ts = stream->delivered_ts;
 }
 
 static void
@@ -299,7 +307,7 @@ bbr_reset_probe_bw_mode (udx_stream_t *stream) {
     debug_throughput_printf(stream, "probe_bw");
   }
   stream->bbr.state = UDX_BBR_STATE_PROBE_BW;
-  // debug_printf("bbr: rid=%u entering PROBE_BW time=%ld\n", stream->remote_id, uv_now(stream->udx->loop));
+  // debug_printf("bbr: rid=%u entering PROBE_BW time=%ld\n", stream->remote_id, uv_hrtime());
   // todo: use an rng?
   // probable reasoning: multiple streams may start simultaneously in many scenarios,
   // starting on random phases makes them more fair by staggering their rttprobe / backoff phases
@@ -322,7 +330,7 @@ static void
 bbr_update_bw (udx_stream_t *stream, udx_rate_sample_t *rs) {
   stream->bbr.round_start = false;
 
-  if (rs->delivered < 0 || rs->interval_ms <= 0) {
+  if (rs->delivered < 0 || rs->interval_ns <= 0) {
     return;
   }
 
@@ -334,12 +342,12 @@ bbr_update_bw (udx_stream_t *stream, udx_rate_sample_t *rs) {
     stream->bbr.use_packet_conservation = false;
   }
 
-  // divide delivered / interval to find a bw sample (in packets/ms)
-  double bw = (double) rs->delivered / rs->interval_ms;
+  // divide delivered / interval to find a bw sample (in packets/ns)
+  double bw = (double) rs->delivered / rs->interval_ns;
   assert(bw != 0);
 
   if (!rs->is_app_limited || bw >= bbr_max_bw(stream)) {
-    // debug_printf("bw=%lu (rs->delivered=%u / rs->interval_ms=%ld)\n", bw, rs->delivered, rs->interval_ms);
+    // debug_printf("bw=%lu (rs->delivered=%u / rs->interval_ns=%ld)\n", bw, rs->delivered, rs->interval_ns);
     win_filter_f64_apply_max(&stream->bbr.bw, UDX_BBR_CYCLE_LEN + 2, stream->bbr.rtt_count, bw);
   }
 }
@@ -348,7 +356,7 @@ bbr_update_bw (udx_stream_t *stream, udx_rate_sample_t *rs) {
 // unlike Linux TCP we always aggregate ACKs on the sender side in the current implementation
 static void
 bbr_update_ack_aggregation (udx_stream_t *stream, udx_rate_sample_t *rs) {
-  if (!bbr_extra_acked_gain || rs->acked_sacked <= 0 || rs->delivered < 0 || rs->interval_ms <= 0) {
+  if (!bbr_extra_acked_gain || rs->acked_sacked <= 0 || rs->delivered < 0 || rs->interval_ns <= 0) {
     return;
   }
 
@@ -362,8 +370,8 @@ bbr_update_ack_aggregation (udx_stream_t *stream, udx_rate_sample_t *rs) {
     }
   }
 
-  uint32_t epoch_ms = time_delta_ms(stream->delivered_ts, stream->bbr.ack_epoch_start);
-  uint32_t expected_acked = bbr_bw(stream) * epoch_ms;
+  uint64_t epoch_ns = time_delta_ns(stream->delivered_ts, stream->bbr.ack_epoch_start);
+  uint32_t expected_acked = bbr_bw(stream) * epoch_ns;
 
   // reset aggregation epoch if
   // 1. ACK rate is below expected or
@@ -425,7 +433,7 @@ bbr_check_drain (udx_stream_t *stream, udx_rate_sample_t *rs) {
 
     debug_throughput_printf(stream, "drain");
     stream->bbr.state = UDX_BBR_STATE_DRAIN; // drain hypothetical bottleneck queue
-    // debug_printf("bbr: rid=%u entering DRAIN cwnd=%u bbr_max_bw=%f time=%lu\n", stream->remote_id, stream->cwnd, bbr_max_bw(stream), uv_now(stream->udx->loop));
+    // debug_printf("bbr: rid=%u entering DRAIN cwnd=%u bbr_max_bw=%f time=%lu\n", stream->remote_id, stream->cwnd, bbr_max_bw(stream), uv_hrtime());
   }
 
   if (stream->bbr.state == UDX_BBR_STATE_DRAIN && stream->inflight_queue.len <= bbr_inflight(stream, bbr_max_bw(stream), 1.0)) {
@@ -439,12 +447,12 @@ time_diff (uint64_t a, uint64_t b) {
 }
 
 static void
-bbr_check_probe_rtt_done (udx_stream_t *stream, uint64_t now_ms) {
-  if (!(stream->bbr.probe_rtt_done_time && time_diff(now_ms, stream->bbr.probe_rtt_done_time) > 0)) {
+bbr_check_probe_rtt_done (udx_stream_t *stream, uint64_t now_ts) {
+  if (!(stream->bbr.probe_rtt_done_ts && time_diff(now_ts, stream->bbr.probe_rtt_done_ts) > 0)) {
     return;
   }
   debug_throughput_printf(stream, "probe_rtt_done");
-  stream->bbr.min_rtt_stamp = now_ms;
+  stream->bbr.min_rtt_stamp_ts = now_ts;
   stream->cwnd = max_uint32(stream->cwnd, stream->bbr.prior_cwnd);
   bbr_reset_mode(stream);
 }
@@ -463,35 +471,34 @@ bbr_check_probe_rtt_done (udx_stream_t *stream, uint64_t now_ms) {
 // these min RTT measurements opportunistically with the min_RTT filter. (-:
 static void
 bbr_update_min_rtt (udx_stream_t *stream, udx_rate_sample_t *rs) {
-  bool filter_expired;
 
-  uint64_t now = uv_now(stream->udx->loop); // may want to cache current time on each stream
+  uint64_t now = uv_hrtime();
+  bool filter_expired = time_diff(now, stream->bbr.min_rtt_stamp_ts + UDX_BBR_MIN_RTT_INTERVAL_NS) > 0;
 
-  filter_expired = time_diff(now, stream->bbr.min_rtt_stamp + UDX_BBR_MIN_RTT_INTERVAL_MS) > 0;
-
-  if (rs->rtt_ms >= 0 && (rs->rtt_ms < (int64_t) stream->bbr.min_rtt_ms || (filter_expired && !rs->is_ack_delayed))) {
-    // round up to 1ms, since our timer has 1ms resolution
-    stream->bbr.min_rtt_ms = rs->rtt_ms ? rs->rtt_ms : 1;
-    stream->bbr.min_rtt_stamp = now;
+  // compare unsigned: min_rtt_ns is UINT64_MAX until the first sample, which is negative as an int64_t
+  if (rs->rtt_ns >= 0 && ((uint64_t) rs->rtt_ns < stream->bbr.min_rtt_ns || (filter_expired && !rs->is_ack_delayed))) {
+    // never store 0, a zero min_rtt gives a zero bdp
+    stream->bbr.min_rtt_ns = rs->rtt_ns ? rs->rtt_ns : 1;
+    stream->bbr.min_rtt_stamp_ts = now;
   }
 
-  if (UDX_BBR_MIN_PROBE_RTT_MODE_MS > 0 && filter_expired && !stream->bbr.idle_restart && stream->bbr.state != UDX_BBR_STATE_PROBE_RTT) {
+  if (UDX_BBR_MIN_PROBE_RTT_MODE_NS > 0 && filter_expired && !stream->bbr.idle_restart && stream->bbr.state != UDX_BBR_STATE_PROBE_RTT) {
     // debug_printf("bbr: rid=%u entering PROBE_RTT time=%ld\n", stream->remote_id, now);
     debug_throughput_printf(stream, "probe_rtt");
     stream->bbr.state = UDX_BBR_STATE_PROBE_RTT;
     bbr_save_cwnd(stream);
-    stream->bbr.probe_rtt_done_time = 0;
+    stream->bbr.probe_rtt_done_ts = 0;
   }
 
   if (stream->bbr.state == UDX_BBR_STATE_PROBE_RTT) {
 
     stream->app_limited = (stream->delivered + stream->inflight_queue.len) ?: 1;
 
-    if (!stream->bbr.probe_rtt_done_time && stream->inflight_queue.len <= bbr_cwnd_min_target) {
-      stream->bbr.probe_rtt_done_time = now + UDX_BBR_MIN_PROBE_RTT_MODE_MS; // 200 ms
+    if (!stream->bbr.probe_rtt_done_ts && stream->inflight_queue.len <= bbr_cwnd_min_target) {
+      stream->bbr.probe_rtt_done_ts = now + UDX_BBR_MIN_PROBE_RTT_MODE_NS; // 200 ms
       stream->bbr.probe_rtt_round_done = false;
       stream->bbr.next_rtt_delivered = stream->delivered;
-    } else if (stream->bbr.probe_rtt_done_time) {
+    } else if (stream->bbr.probe_rtt_done_ts) {
       if (stream->bbr.round_start)
         stream->bbr.probe_rtt_round_done = true;
       if (stream->bbr.probe_rtt_round_done)
@@ -561,10 +568,10 @@ bbr_init (udx_stream_t *stream) {
   stream->bbr.prev_ca_state = UDX_CA_OPEN;
   stream->bbr.use_packet_conservation = false;
 
-  stream->bbr.probe_rtt_done_time = 0;
+  stream->bbr.probe_rtt_done_ts = 0;
   stream->bbr.probe_rtt_round_done = 0;
-  stream->bbr.min_rtt_ms = udx_rtt_min(stream);
-  stream->bbr.min_rtt_stamp = uv_now(stream->udx->loop);
+  stream->bbr.min_rtt_ns = udx_rtt_min(stream);
+  stream->bbr.min_rtt_stamp_ts = uv_hrtime();
 
   win_filter_f64_reset(&stream->bbr.bw, stream->bbr.rtt_count, 0);
 
@@ -576,11 +583,11 @@ bbr_init (udx_stream_t *stream) {
   stream->bbr.full_bw_reached = 0;
   stream->bbr.full_bw = 0.0;
   stream->bbr.full_bw_count = 0;
-  stream->bbr.cycle_timestamp = 0;
+  stream->bbr.cycle_start_ts = 0;
   stream->bbr.cycle_index = 0;
   bbr_reset_startup_mode(stream);
 
-  stream->bbr.ack_epoch_start = uv_now(stream->udx->loop);
+  stream->bbr.ack_epoch_start = uv_hrtime();
   stream->bbr.ack_epoch_acked = 0;
   stream->bbr.extra_acked_win_rtts = 0;
   stream->bbr.extra_acked_win_index = 0;
@@ -590,17 +597,20 @@ bbr_init (udx_stream_t *stream) {
 
 int
 udx_stream_get_bw (udx_stream_t *stream, uint64_t *bw_bytes_per_sec_out) {
-  double bw_packets_per_ms = bbr_bw(stream); // packets / ms
+  double bw_packets_per_ns = bbr_bw(stream); // packets / ns
   uint32_t mss = udx__max_payload(stream);   // excludes header size, ie the value returned is bandwidth available for payload
 
-  *bw_bytes_per_sec_out = bw_packets_per_ms * 1000 * mss;
+  *bw_bytes_per_sec_out = bw_packets_per_ns * NS_PER_SEC * mss;
 
   return 0;
 }
 
 int
 udx_stream_get_min_rtt (udx_stream_t *stream, uint32_t *min_rtt_ms) {
-  *min_rtt_ms = stream->bbr.min_rtt_ms;
+  // the public unit stays milliseconds, rounded up so that a sub-millisecond rtt reads 1 and not 0.
+  // ~0U means no sample, as before
+  uint64_t min_rtt_ns = stream->bbr.min_rtt_ns;
+  *min_rtt_ms = min_rtt_ns == UINT64_MAX ? ~0U : (uint32_t) ((min_rtt_ns + NS_PER_MS - 1) / NS_PER_MS);
 
   return 0;
 }
@@ -613,3 +623,6 @@ bbr_on_rto (udx_stream_t *stream) {
   stream->bbr.full_bw = 0.0;
   stream->bbr.round_start = true;
 }
+
+#undef NS_PER_MS
+#undef NS_PER_SEC

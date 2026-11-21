@@ -87,7 +87,7 @@ main () {
   assert(e == 0);
   e = udx_stream_connect(&stream, &sender, 2, (struct sockaddr *) &receiver_addr);
   assert(e == 0);
-  stream.rto = 20;
+  stream.rto_ns = 20 * 1000000ULL; // 20 ms
 
   write_req = malloc(udx_stream_write_sizeof(1));
   assert(write_req != NULL);

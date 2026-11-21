@@ -19,7 +19,7 @@ static uint64_t debug_start = 0;
 static inline void
 debug_print_cwnd_stats (udx_stream_t *stream) {
   if (!debug_start) debug_start = uv_hrtime() / 1000000;
-  printf("%llu %u %u %u\n", (uv_hrtime() / 1000000) - debug_start, stream->cwnd, stream->cwnd_cnt, stream->srtt);
+  printf("%llu %u %u %u\n", (uv_hrtime() / 1000000) - debug_start, stream->cwnd, stream->cwnd_cnt, (uint32_t) (stream->srtt_ns / 1000000));
 }
 #else
 static inline void
@@ -40,12 +40,12 @@ open_throughput_file (udx_stream_t *stream) {
 }
 
 // prints a throughput record. tp = throughput
-// <timestamp> tp <seq> <acked>
+// <timestamp ms> tp <seq> <acked>
 static inline void
 debug_throughput (udx_stream_t *stream) {
   open_throughput_file(stream);
 
-  fprintf(stream->throughput_fd, "%" PRIu64 " tp %u %u\n", uv_now(stream->udx->loop), stream->seq, stream->remote_acked);
+  fprintf(stream->throughput_fd, "%" PRIu64 " tp %u %u\n", uv_hrtime() / 1000000, stream->seq, stream->remote_acked);
 }
 
 static inline void
@@ -55,14 +55,14 @@ debug_throughput_init (udx_stream_t *stream) {
 
 #include <stdarg.h>
 // prints with format
-// <timestamp> <formatted_string>
+// <timestamp ms> <formatted_string>
 static inline void
 debug_throughput_printf (udx_stream_t *stream, char *fmt, ...) {
   open_throughput_file(stream);
 
   va_list ap;
   va_start(ap, fmt);
-  fprintf(stream->throughput_fd, "%" PRIu64 " ", uv_now(stream->udx->loop));
+  fprintf(stream->throughput_fd, "%" PRIu64 " ", uv_hrtime() / 1000000);
   vfprintf(stream->throughput_fd, fmt, ap);
   fprintf(stream->throughput_fd, "\n");
   va_end(ap);
@@ -110,7 +110,7 @@ debug_print_outgoing (udx_stream_t *stream) {
     }
     debug_printf("\n");
 
-    uint64_t now = uv_hrtime() / 1000000;
+    uint64_t now = uv_hrtime();
     udx_queue_node_t *q;
     if (stream->inflight_queue.len > 0) {
       debug_printf("inflight q =");
@@ -118,7 +118,7 @@ debug_print_outgoing (udx_stream_t *stream) {
         // for (udx_queue_node_t *q = stream->inflight_queue.node.next; q != &stream->inflight_queue.node; q = q->next) {
         udx_packet_t *pkt = udx__queue_data(q, udx_packet_t, queue);
         assert(!pkt->lost);
-        debug_printf("%u %lums ", pkt->seq, now - pkt->time_sent);
+        debug_printf("%u %lums ", pkt->seq, (now - pkt->time_sent) / 1000000);
       }
       debug_printf("\n");
     }
@@ -129,7 +129,7 @@ debug_print_outgoing (udx_stream_t *stream) {
       udx__queue_foreach(q, &stream->retransmit_queue.node) {
         udx_packet_t *pkt = udx__queue_data(q, udx_packet_t, queue);
         assert(pkt->lost);
-        debug_printf("%u %lums ", pkt->seq, now - pkt->time_sent);
+        debug_printf("%u %lums ", pkt->seq, (now - pkt->time_sent) / 1000000);
       }
       debug_printf("\n");
     }

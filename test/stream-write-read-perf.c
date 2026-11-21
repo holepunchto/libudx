@@ -89,8 +89,9 @@ print_rate_on_interval (uv_timer_t *t) {
   udx_stream_get_bw(&astream, &a_bw);
   udx_stream_get_bw(&bstream, &b_bw);
 
-  double a_rate = astream.rate_interval_ms ? astream.rate_delivered / (1.0f * astream.rate_interval_ms) : 0.0;
-  double b_rate = bstream.rate_interval_ms ? bstream.rate_delivered / (1.0f * bstream.rate_interval_ms) : 0.0;
+  // packets/ns * 1e6 = packets/ms = kpkts/sec
+  double a_rate = astream.rate_interval_ns ? astream.rate_delivered * 1e6 / astream.rate_interval_ns : 0.0;
+  double b_rate = bstream.rate_interval_ns ? bstream.rate_delivered * 1e6 / bstream.rate_interval_ns : 0.0;
 
   printf("A bbr.bw=%12" PRIu64 " rate=%9.3f/kpkts/sec %s\n", a_bw, a_rate, astream.rate_sample_is_app_limited ? "(app limited)" : "");
   printf("B bbr.bw=%12" PRIu64 " rate=%9.3f/kpkts/sec %s\n", b_bw, b_rate, bstream.rate_sample_is_app_limited ? "(app limited)" : "");
