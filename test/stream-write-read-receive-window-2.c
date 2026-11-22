@@ -153,7 +153,7 @@ main () {
 
   init_application();
   send_stream.send_rwnd = APPLICATION_BUFFER_SIZE;
-  assert(recv_stream.rto == 1000);
+  assert(recv_stream.rto_ns == 1000 * 1000000ULL); // 1 s
 
   e = udx_stream_connect(&recv_stream, &recv_sock, 2, (struct sockaddr *) &send_addr);
   assert(e == 0);

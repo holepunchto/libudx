@@ -20,6 +20,10 @@
 #include "udx_stream_table.h"
 #include "win_filter.h"
 
+// not namepaced for readability. undef'd at end of file
+#define NS_PER_MS  UINT64_C(1000000)
+#define NS_PER_SEC UINT64_C(1000000000)
+
 #define UDX_STREAM_ALL_ENDED (UDX_STREAM_ENDED | UDX_STREAM_ENDED_REMOTE)
 #define UDX_STREAM_DEAD      (UDX_STREAM_DESTROYING | UDX_STREAM_CLOSED)
 
@@ -35,22 +39,28 @@
 #define UDX_HEADER_DATA_OR_END (UDX_HEADER_DATA | UDX_HEADER_END)
 
 #define UDX_DEFAULT_TTL         64
-#define UDX_INIT_PACING_RATE    25000 // 25MB/s, 200mbit. updated by bbr_init
+#define UDX_INIT_PACING_RATE    25000 // initial token bucket size in bytes, 1 ms at 25MB/s (200mbit). the rate itself is set by bbr_init
 #define UDX_DEFAULT_SNDBUF_SIZE 212992
 
 #define UDX_MAX_RTO_TIMEOUTS 6
 
-#define UDX_RTO_MAX_MS        30000
-#define UDX_RTT_MAX_MS        30000
-#define UDX_RTT_MIN_WINDOW_MS 300000            // 300 seconds, same as Linux default
-#define UDX_DEFAULT_RWND_MAX  (4 * 1024 * 1024) // arbitrary, ~175 1500 mtu packets, @20ms latency = 416 mbits/sec
+#define UDX_RTO_MIN_NS        (1 * NS_PER_SEC)
+#define UDX_RTO_MAX_NS        (30 * NS_PER_SEC)
+#define UDX_RTT_MAX_NS        (30 * NS_PER_SEC)
+#define UDX_RTT_OUTLIER_NS    (5 * NS_PER_SEC)
+#define UDX_RTT_MIN_WINDOW_NS (300 * NS_PER_SEC) // 300 seconds, same as Linux default
+#define UDX_DEFAULT_RWND_MAX  (4 * 1024 * 1024)  // arbitrary, ~175 1500 mtu packets, @20ms latency = 416 mbits/sec
 
-#define UDX_STREAM_TIMEWAIT_TIMEOUT_MS 5000
+#define UDX_STREAM_TIMEWAIT_TIMEOUT_MS 5000 // milliseconds, passed straight to uv_timer_start
+
+// the token bucket is refilled at most once per interval, which is also the period of the refill timer
+#define UDX_PACING_REFILL_INTERVAL_NS (1 * NS_PER_MS)
 
 #define UDX_HIGH_WATERMARK 262144
 
-#define UDX_TLP_MAX_ACK_DELAY 2
-#define UDX_MAX_PENDING_ACKS  1
+#define UDX_TLP_MAX_ACK_DELAY_NS (2 * NS_PER_MS)
+#define UDX_TLP_DEFAULT_PTO_NS   (1 * NS_PER_SEC) // probe timeout used before the first rtt sample
+#define UDX_MAX_PENDING_ACKS     1
 
 #define UDX_ARRAY_SIZE(a) (sizeof(a) / sizeof((a)[0]))
 
@@ -95,7 +105,7 @@ addr_to_v4 (struct sockaddr_in6 *addr) {
 
 uint32_t
 udx__max_payload (udx_stream_t *stream) {
-  assert(stream->mtu > (AF_INET ? UDX_IPV4_HEADER_SIZE : UDX_IPV6_HEADER_SIZE));
+  assert(stream->mtu > (stream->remote_addr.ss_family == AF_INET ? UDX_IPV4_HEADER_SIZE : UDX_IPV6_HEADER_SIZE));
   return stream->mtu - (stream->remote_addr.ss_family == AF_INET ? UDX_IPV4_HEADER_SIZE : UDX_IPV6_HEADER_SIZE);
 }
 
@@ -150,7 +160,7 @@ on_udx_socket_handle_close (uv_handle_t *handle) {
 }
 
 static void
-update_pacing_time (udx_stream_t *stream);
+update_pacing_time (udx_stream_t *stream, bool force);
 
 static void
 clear_incoming_packets (udx_stream_t *stream) {
@@ -375,10 +385,10 @@ static void
 udx_keepalive_timeout (uv_timer_t *timer);
 
 static void
-stream_timer_start (udx_stream_t *stream, udx_stream_timer_type_t timer, uint32_t time_wait_ms) {
+stream_timer_start (udx_stream_t *stream, udx_stream_timer_type_t timer, uint64_t time_wait_ns) {
   // as a special case, save the next_rto_ts so that it can be restored if necessary
   if (timer == UDX_TIMER_RTO) {
-    stream->next_rto_ts = uv_now(stream->udx->loop) + time_wait_ms;
+    stream->next_rto_ts = uv_hrtime() + time_wait_ns;
   }
 
   stream->pending_timer = timer;
@@ -392,6 +402,9 @@ stream_timer_start (udx_stream_t *stream, udx_stream_timer_type_t timer, uint32_
     udx_zwp_timeout,
     udx_keepalive_timeout
   };
+
+  // round up to 1ms instead of down
+  uint64_t time_wait_ms = (time_wait_ns + NS_PER_MS - 1) / NS_PER_MS;
 
   uv_timer_start(&stream->timer, timer_to_callback[timer], time_wait_ms, 0);
 }
@@ -578,17 +591,18 @@ udx_keepalive_timeout (uv_timer_t *timer) {
 
   send_probe(stream);
 
-  stream_timer_start(stream, UDX_TIMER_KEEPALIVE, stream->keepalive_timeout_ms);
+  stream_timer_start(stream, UDX_TIMER_KEEPALIVE, stream->keepalive_timeout_ns);
 }
 
 // rack recovery implemented using https://datatracker.ietf.org/doc/rfc8985/
 
-uint32_t
+uint64_t
 udx_rtt_min (udx_stream_t *stream) {
   return win_filter_get(&stream->rtt_min);
 }
 
-static inline uint32_t
+// returns the reordering window in ns
+static inline uint64_t
 rack_update_reo_wnd (udx_stream_t *stream) {
   // rack 6.2.4
   // TODO: add the DSACK logic also (skipped for now as we didnt impl and only recommended...)
@@ -598,8 +612,8 @@ rack_update_reo_wnd (udx_stream_t *stream) {
     if (stream->sacks >= 3) return 0;
   }
 
-  uint32_t r = udx_rtt_min(stream) / 4;
-  return r < stream->srtt ? r : stream->srtt;
+  uint64_t r = udx_rtt_min(stream) / 4;
+  return r < stream->srtt_ns ? r : stream->srtt_ns;
 }
 
 static void
@@ -727,8 +741,8 @@ send_ack (udx_stream_t *stream) {
 static bool
 stream_may_send (udx_stream_t *stream, bool retransmit) {
   assert(stream->cwnd > 0);
-  update_pacing_time(stream);
-  if (stream->tb_available == 0) {
+  update_pacing_time(stream, false);
+  if (stream->tb_available <= 0) {
     return false;
   }
   if (retransmit) {
@@ -758,13 +772,15 @@ on_stream_data_write (uv_udp_send_t *send, int status) {
 // called by send_new_packet() and retransmit_packet()
 static void
 _send_packet (udx_stream_t *stream, udx_packet_t *pkt, bool is_retransmit) {
+  uint64_t now_ns = uv_hrtime();
+
   udx__rate_check_app_limited(stream);
 
   if (pkt->transmits < 255) pkt->transmits++;
   if (is_retransmit) pkt->retransmitted = true; // true if packet was _ever_ retransmitted
 
-  pkt->time_sent = uv_now(stream->udx->loop);
-  udx__rate_pkt_sent(stream, pkt);
+  pkt->time_sent = now_ns;
+  udx__rate_pkt_sent(stream, pkt, now_ns);
 
   if (pkt->lost) {
     // is a retransmit
@@ -858,10 +874,10 @@ _send_packet (udx_stream_t *stream, udx_packet_t *pkt, bool is_retransmit) {
   udx->packets_tx++;
   udx->bytes_tx += pkt->size;
 
-  stream->tb_available = pkt->size > stream->tb_available ? 0 : stream->tb_available - pkt->size;
+  stream->tb_available -= pkt->size;
 
-  if (stream->tb_available == 0) {
-    uv_timer_start(&stream->refill_pacing_timer, pacing_timer_timeout, 1, 0);
+  if (stream->tb_available <= 0) {
+    uv_timer_start(&stream->refill_pacing_timer, pacing_timer_timeout, UDX_PACING_REFILL_INTERVAL_NS / NS_PER_MS, 0);
   }
 }
 
@@ -899,6 +915,8 @@ bind_packet_remote (udx_packet_t *pkt, udx_stream_t *stream) {
 // sends stream->pkt
 static void
 _send_new_packet (udx_stream_t *stream, bool tlp) {
+  uint64_t now = uv_hrtime();
+
   assert((stream->pkt_header_flag & ~(UDX_HEADER_DATA_OR_END)) == 0);
 
   bool inflight_queue_was_empty = stream->inflight_queue.len == 0;
@@ -924,7 +942,7 @@ _send_new_packet (udx_stream_t *stream, bool tlp) {
   stream->seq++;
 
   if (inflight_queue_was_empty) {
-    bbr_on_transmit_start(stream, uv_now(stream->udx->loop));
+    bbr_on_transmit_start(stream, now);
   }
 
   if (mtu_probe) {
@@ -1046,7 +1064,7 @@ retransmit_packet (udx_stream_t *stream, udx_packet_t *pkt) {
   stream->retransmit_count++;
 
   if (inflight_queue_was_empty) {
-    bbr_on_transmit_start(stream, uv_now(stream->udx->loop));
+    bbr_on_transmit_start(stream, uv_hrtime());
   }
 
   arm_stream_timers(stream, false); // don't arm TLP on retransmit
@@ -1077,16 +1095,16 @@ rearm_rto (udx_stream_t *stream, bool from_now) {
   if (stream->seq == stream->remote_acked) {
     stream_timer_stop(stream);
   } else {
-    uint64_t rto = stream->rto;
+    uint64_t rto_ns = stream->rto_ns;
     if (!from_now) {
       assert(stream->pending_timer == UDX_TIMER_RACK_REO || stream->pending_timer == UDX_TIMER_TLP);
-      int64_t rto_delta_ms = stream->next_rto_ts - uv_now(stream->udx->loop);
-      if (rto_delta_ms < 0) {
-        rto_delta_ms = 1;
+      int64_t rto_delta_ns = stream->next_rto_ts - uv_hrtime();
+      if (rto_delta_ns < 0) {
+        rto_delta_ns = 1; // already due, stream_timer_start rounds this up to 1 ms
       }
-      rto = rto_delta_ms;
+      rto_ns = rto_delta_ns;
     }
-    stream_timer_start(stream, UDX_TIMER_RTO, rto);
+    stream_timer_start(stream, UDX_TIMER_RTO, rto_ns);
   }
 }
 
@@ -1142,33 +1160,34 @@ schedule_loss_probe (udx_stream_t *stream, bool advancing_rto) {
   }
 
   // rack 7.2
-  uint32_t timeout = 1000;
+  uint64_t timeout_ns = UDX_TLP_DEFAULT_PTO_NS;
 
-  if (stream->srtt) {
-    timeout = stream->srtt * 2 + UDX_TLP_MAX_ACK_DELAY;
+  if (stream->srtt_ns) {
+    timeout_ns = stream->srtt_ns * 2 + UDX_TLP_MAX_ACK_DELAY_NS;
   }
 
-  uint32_t rto_delta_ms = stream->rto;
+  uint64_t rto_delta_ns = stream->rto_ns;
 
   if (!advancing_rto) {
-    int64_t delta = stream->next_rto_ts - uv_now(stream->udx->loop);
+    int64_t delta = stream->next_rto_ts - uv_hrtime();
     if (delta < 0) {
       delta = 1;
     }
-    rto_delta_ms = delta;
+    rto_delta_ns = delta;
   }
 
-  timeout = min_uint32(timeout, rto_delta_ms);
+  timeout_ns = min_uint64(timeout_ns, rto_delta_ns);
 
-  stream_timer_start(stream, UDX_TIMER_TLP, timeout);
+  stream_timer_start(stream, UDX_TIMER_TLP, timeout_ns);
   return true;
 }
 
-static uint32_t
+// returns the time in ns until the next packet may be declared lost, 0 if no timer is needed
+static uint64_t
 rack_detect_loss (udx_stream_t *stream) {
-  uint64_t timeout = 0;
-  uint32_t reo_wnd = rack_update_reo_wnd(stream);
-  uint64_t now = uv_now(stream->udx->loop);
+  uint64_t timeout_ns = 0;
+  uint64_t reo_wnd = rack_update_reo_wnd(stream);
+  uint64_t now = uv_hrtime();
 
   int resending = 0;
   int mtu_probes_lost = 0;
@@ -1191,12 +1210,12 @@ rack_detect_loss (udx_stream_t *stream) {
     // hack - skip the packet if it is already queued for transmission
     // by checking ref_count == 2. This is done to prevent de-queueing
     // and re-queueing packets that are timing out before being transmitted.
-    // this can happen in tests on localhost where rtt is 0.
+    // this can happen in tests on localhost where rtt is close to 0.
     if (pkt->ref_count == 2) continue;
 
     if (rack_sent_after(stream->rack_time_sent, stream->rack_next_seq, pkt->time_sent, pkt->seq + 1)) {
 
-      int64_t remaining = pkt->time_sent + stream->rack_rtt + reo_wnd - now;
+      int64_t remaining = pkt->time_sent + stream->rack_rtt_ns + reo_wnd - now;
 
       if (remaining <= 0) {
         pkt->lost = true;
@@ -1215,8 +1234,8 @@ rack_detect_loss (udx_stream_t *stream) {
 
         resending++;
 
-      } else if ((uint64_t) remaining > timeout) {
-        timeout = remaining;
+      } else if ((uint64_t) remaining > timeout_ns) {
+        timeout_ns = remaining;
       }
     }
   }
@@ -1238,22 +1257,22 @@ rack_detect_loss (udx_stream_t *stream) {
     stream->tlp_in_flight = false;
     stream->tlp_is_retrans = false;
 
-    // debug_printf("rack: fast recovery rid=%u start=[%u:%u] (%u pkts) inflight=%zu cwnd=%u srtt=%u\n", stream->remote_id, stream->remote_acked, stream->seq, stream->seq - stream->remote_acked, stream->inflight, stream->cwnd, stream->srtt);
+    // debug_printf("rack: fast recovery rid=%u start=[%u:%u] (%u pkts) inflight=%zu cwnd=%u srtt_ns=%" PRIu64 "\n", stream->remote_id, stream->remote_acked, stream->seq, stream->seq - stream->remote_acked, stream->inflight, stream->cwnd, stream->srtt_ns);
   }
 
   send_packets(stream);
 
-  return timeout;
+  return timeout_ns;
 }
 
 // return true if timer was started
 static bool
 rack_detect_loss_and_arm_timer (udx_stream_t *stream) {
-  uint32_t timeout = rack_detect_loss(stream);
+  uint64_t timeout_ns = rack_detect_loss(stream);
 
-  if (timeout > 0) {
+  if (timeout_ns > 0) {
     assert(!(stream->status & UDX_STREAM_CLOSED));
-    stream_timer_start(stream, UDX_TIMER_RACK_REO, timeout);
+    stream_timer_start(stream, UDX_TIMER_RACK_REO, timeout_ns);
     return true;
   }
   return false;
@@ -1262,7 +1281,15 @@ rack_detect_loss_and_arm_timer (udx_stream_t *stream) {
 static void
 udx_rack_reo_timeout (uv_timer_t *timer) {
   udx_stream_t *stream = timer->data;
-  rack_detect_loss(stream);
+  uint64_t timeout_ns = rack_detect_loss(stream);
+
+  // libuv measures a timeout from its cached loop time, which is older than the uv_hrtime() the
+  // deadline was computed from, so this callback can run just before the deadline. in that case
+  // nothing was marked lost yet, keep waiting instead of falling back to the rto.
+  if (timeout_ns > 0 && stream->pending_timer == UDX_TIMER_RACK_REO) {
+    stream_timer_start(stream, UDX_TIMER_RACK_REO, timeout_ns);
+    return;
+  }
 
   bool from_now = !(stream->pending_timer == UDX_TIMER_RACK_REO || stream->pending_timer == UDX_TIMER_TLP);
 
@@ -1283,7 +1310,7 @@ udx_zwp_timeout (uv_timer_t *timer) {
   send_probe(stream);
   assert(stream->pending_timer == UDX_TIMER_ZWP);
   assert(stream->writes_queued_bytes > 0 || (stream->status & (UDX_STREAM_ENDING | UDX_STREAM_ENDED)) == UDX_STREAM_ENDING);
-  stream_timer_start(stream, UDX_TIMER_ZWP, stream->rto * 2);
+  stream_timer_start(stream, UDX_TIMER_ZWP, stream->rto_ns * 2);
 }
 
 static void
@@ -1311,15 +1338,15 @@ udx_rto_timeout (uv_timer_t *timer) {
   stream->tlp_is_retrans = false;
 
   assert(!(stream->status & UDX_STREAM_CLOSED));
-  stream_timer_start(stream, UDX_TIMER_RTO, stream->rto * 2);
+  stream_timer_start(stream, UDX_TIMER_RTO, stream->rto_ns * 2);
 
   // zero retransmit queue
   udx__queue_init(&stream->retransmit_queue);
 
-  debug_printf("rto: lost rid=%u [%u:%u] inflight=%zu cwnd=%u srtt=%u\n", stream->remote_id, stream->remote_acked, stream->seq, stream->inflight, stream->cwnd, stream->srtt);
+  debug_printf("rto: lost rid=%u [%u:%u] inflight=%zu cwnd=%u srtt_ns=%" PRIu64 "\n", stream->remote_id, stream->remote_acked, stream->seq, stream->inflight, stream->cwnd, stream->srtt_ns);
 
-  uint64_t now = uv_now(timer->loop);
-  uint32_t rack_reo_wnd = rack_update_reo_wnd(stream);
+  uint64_t now = uv_hrtime();
+  uint64_t rack_reo_wnd = rack_update_reo_wnd(stream);
 
   if (stream->rto_count > UDX_MAX_RTO_TIMEOUTS) {
     close_stream(stream, UV_ETIMEDOUT);
@@ -1336,7 +1363,7 @@ udx_rto_timeout (uv_timer_t *timer) {
       continue;
     }
 
-    int64_t remaining = pkt->time_sent + stream->rack_rtt + rack_reo_wnd - now;
+    int64_t remaining = pkt->time_sent + stream->rack_rtt_ns + rack_reo_wnd - now;
 
     if (pkt->seq == stream->remote_acked || remaining < 0) {
       stream->lost++;
@@ -1367,19 +1394,19 @@ udx_rto_timeout (uv_timer_t *timer) {
 // clamp RTT samples over 5 seconds and over srtt + 5 * rttvar
 // to min(srtt + 5 * rttvar, 30s)
 
-static uint32_t
-clamp_rtt (udx_stream_t *stream, uint64_t rtt) {
+static uint64_t
+clamp_rtt (udx_stream_t *stream, uint64_t rtt_ns) {
   // first sample special case, just clamp to max
-  if (stream->srtt == 0) {
-    return min_uint32(rtt, UDX_RTT_MAX_MS);
+  if (stream->srtt_ns == 0) {
+    return min_uint64(rtt_ns, UDX_RTT_MAX_NS);
   }
-  const uint32_t outlier_threshold = stream->srtt + 5 * stream->rttvar;
-  if (rtt > outlier_threshold && rtt > 5000) {
-    rtt = min_uint32(outlier_threshold, UDX_RTT_MAX_MS);
-    debug_printf("rtt: clamp rtt for stream=%u to rtt=%" PRIu64 "\n", stream->remote_id, rtt);
+  const uint64_t outlier_threshold = stream->srtt_ns + 5 * stream->rttvar_ns;
+  if (rtt_ns > outlier_threshold && rtt_ns > UDX_RTT_OUTLIER_NS) {
+    rtt_ns = min_uint64(outlier_threshold, UDX_RTT_MAX_NS);
+    debug_printf("rtt: clamp rtt for stream=%u to rtt_ns=%" PRIu64 "\n", stream->remote_id, rtt_ns);
   }
 
-  return rtt;
+  return rtt_ns;
 }
 
 // receiver side calls this to mark a packet acked
@@ -1428,47 +1455,47 @@ ack_packet (udx_stream_t *stream, uint32_t seq, int sack, udx_rate_sample_t *rs)
 
   udx__rate_pkt_delivered(stream, pkt, rs);
 
-  const uint64_t time = uv_now(stream->udx->loop);
-  uint32_t rtt = clamp_rtt(stream, time - pkt->time_sent);
+  const uint64_t now = uv_hrtime();
+  uint64_t rtt = clamp_rtt(stream, now - pkt->time_sent); // ns
   const uint32_t next = seq + 1;
 
   if (!pkt->retransmitted) {
-    // with a 1 ms clock a 0 ms sample means "under a millisecond", not "no sample":
-    // srtt == 0 is what schedule_loss_probe and clamp_rtt read as unknown
+    // a 0 ns sample is all but impossible with uv_hrtime, but srtt_ns == 0 is what
+    // schedule_loss_probe and clamp_rtt read as unknown, so never let it through
     if (rtt == 0) rtt = 1;
 
     // rack 6.2 step 1 update rack.min_RTT
-    win_filter_apply_min(&stream->rtt_min, UDX_RTT_MIN_WINDOW_MS, time, rtt);
+    win_filter_apply_min(&stream->rtt_min, UDX_RTT_MIN_WINDOW_NS, now, rtt);
 
     // First round trip time sample
-    if (stream->srtt == 0) {
-      stream->srtt = rtt;
-      stream->rttvar = rtt / 2;
+    if (stream->srtt_ns == 0) {
+      stream->srtt_ns = rtt;
+      stream->rttvar_ns = rtt / 2;
     } else {
-      const uint32_t delta = rtt < stream->srtt ? stream->srtt - rtt : rtt - stream->srtt;
+      const uint64_t delta = rtt < stream->srtt_ns ? stream->srtt_ns - rtt : rtt - stream->srtt_ns;
       // RTTVAR <- (1 - beta) * RTTVAR + beta * |SRTT - R'| where beta is 1/4
-      stream->rttvar = (3 * stream->rttvar + delta) / 4;
+      stream->rttvar_ns = (3 * stream->rttvar_ns + delta) / 4;
 
       // SRTT <- (1 - alpha) * SRTT + alpha * R' where alpha is 1/8
-      stream->srtt = (7 * stream->srtt + rtt) / 8;
+      stream->srtt_ns = (7 * stream->srtt_ns + rtt) / 8;
     }
 
     stream->tlp_permitted = true;
 
     // RTO <- SRTT + max (G, K*RTTVAR) where K is 4 maxed with 1s
-    stream->rto = max_uint32(stream->srtt + 4 * stream->rttvar, 1000);
+    stream->rto_ns = max_uint64(stream->srtt_ns + 4 * stream->rttvar_ns, UDX_RTO_MIN_NS);
 
-    if (stream->rto > UDX_RTO_MAX_MS) {
-      debug_printf("rto: computed rto=%u ms, capping to %u ms\n", stream->rto, UDX_RTO_MAX_MS);
-      stream->rto = UDX_RTO_MAX_MS;
+    if (stream->rto_ns > UDX_RTO_MAX_NS) {
+      debug_printf("rto: computed rto=%" PRIu64 " ns, capping to %" PRIu64 " ns\n", stream->rto_ns, UDX_RTO_MAX_NS);
+      stream->rto_ns = UDX_RTO_MAX_NS;
     }
   }
 
   // rack 6.2 step 2 update the state for the most recently sent segment
 
   if (!pkt->retransmitted || (rtt >= udx_rtt_min(stream))) {
-    stream->rack_rtt = rtt;
-    rs->rtt_ms = rtt;
+    stream->rack_rtt_ns = rtt;
+    rs->rtt_ns = rtt;
 
     if (rack_sent_after(pkt->time_sent, next, stream->rack_time_sent, stream->rack_next_seq)) {
       stream->rack_time_sent = pkt->time_sent;
@@ -1851,7 +1878,7 @@ process_packet (udx_socket_t *socket, char *buf, ssize_t buf_len, struct sockadd
 
   bool ended = false;
 
-  udx_rate_sample_t rs = {.rtt_ms = -1};
+  udx_rate_sample_t rs = {.rtt_ns = -1};
 
   for (uint32_t p = prior_remote_acked; seq_compare(p, ack) < 0; p++) {
     int a = ack_packet(stream, p, 0, &rs);
@@ -1873,8 +1900,8 @@ process_packet (udx_socket_t *socket, char *buf, ssize_t buf_len, struct sockadd
     }
 
     if (stream->remote_acked == stream->seq) {
-      if (stream->keepalive_timeout_ms) {
-        stream_timer_start(stream, UDX_TIMER_KEEPALIVE, stream->keepalive_timeout_ms);
+      if (stream->keepalive_timeout_ns) {
+        stream_timer_start(stream, UDX_TIMER_KEEPALIVE, stream->keepalive_timeout_ns);
       } else {
         stream_timer_stop(stream);
       }
@@ -1921,14 +1948,14 @@ process_packet (udx_socket_t *socket, char *buf, ssize_t buf_len, struct sockadd
       bool end_queued = (stream->status & (UDX_STREAM_ENDING | UDX_STREAM_ENDED)) == UDX_STREAM_ENDING;
 
       if (stream->send_rwnd == 0 && (stream->writes_queued_bytes > 0 || end_queued)) {
-        stream_timer_start(stream, UDX_TIMER_ZWP, stream->rto);
-      } else if (stream->keepalive_timeout_ms) {
-        stream_timer_start(stream, UDX_TIMER_KEEPALIVE, stream->keepalive_timeout_ms);
+        stream_timer_start(stream, UDX_TIMER_ZWP, stream->rto_ns);
+      } else if (stream->keepalive_timeout_ns) {
+        stream_timer_start(stream, UDX_TIMER_KEEPALIVE, stream->keepalive_timeout_ns);
       } else {
         stream_timer_stop(stream);
       }
     } else {
-      stream->next_rto_ts = uv_now(stream->udx->loop) + stream->rto;
+      stream->next_rto_ts = uv_hrtime() + stream->rto_ns;
     }
 
     // rack 6.2.5
@@ -1987,15 +2014,25 @@ addr_to_v6 (struct sockaddr_in *addr) {
   memcpy(addr, &in, sizeof(in));
 }
 
+// refills the token bucket with the bytes that the pacing rate allows for the time since the last refill.
+// a refill discards unused tokens but carries debt over: the bucket becomes the tokens earned since the
+// last refill, less whatever the last packet overdrew. because unused tokens are discarded it must not
+// run on every call: with a nanosecond clock 'now' always advances, and the bucket would be overwritten
+// with a few microseconds worth of tokens each time. refill once per UDX_PACING_REFILL_INTERVAL_NS,
+// which is what the 1 ms granularity of uv_now() used to do implicitly.
+// 'force' is set by the refill timer. libuv measures 1 ms from its cached loop time, so the timer can
+// fire a little under 1 ms after the last refill.
 static void
-update_pacing_time (udx_stream_t *stream) {
-  uint64_t now = uv_now(stream->udx->loop); // 1ms granularity
+update_pacing_time (udx_stream_t *stream, bool force) {
+  uint64_t now = uv_hrtime();
+  uint64_t elapsed_ns = now - stream->tb_last_refill_ts;
 
-  if (now > stream->tb_last_refill_ms) {
-    uint64_t factor = now - stream->tb_last_refill_ms;
-    assert(stream->pacing_bytes_per_ms > 0);
-    stream->tb_available = factor * stream->pacing_bytes_per_ms;
-    stream->tb_last_refill_ms = now;
+  if (elapsed_ns >= UDX_PACING_REFILL_INTERVAL_NS || force) {
+    assert(stream->pacing_bytes_per_ns > 0);
+    double bytes = elapsed_ns * stream->pacing_bytes_per_ns;
+    int64_t debt = stream->tb_available < 0 ? stream->tb_available : 0;
+    stream->tb_available = debt + (bytes > UINT32_MAX ? UINT32_MAX : (int64_t) bytes);
+    stream->tb_last_refill_ts = now;
   }
 }
 
@@ -2003,7 +2040,14 @@ void
 pacing_timer_timeout (uv_timer_t *timer) {
   udx_stream_t *stream = timer->data;
 
-  update_pacing_time(stream);
+  update_pacing_time(stream, true);
+
+  if (stream->tb_available <= 0) {
+    // still in debt, nothing else will wake the stream up
+    uv_timer_start(&stream->refill_pacing_timer, pacing_timer_timeout, UDX_PACING_REFILL_INTERVAL_NS / NS_PER_MS, 0);
+    return;
+  }
+
   send_packets(stream);
 }
 
@@ -2013,11 +2057,11 @@ static void
 arm_stream_timers (udx_stream_t *stream, bool arm_tlp) {
   assert(stream->inflight_queue.len > 0);
   assert(stream->remote_acked != stream->seq);
-  assert(stream->rto > 0);
+  assert(stream->rto_ns > 0);
   assert(stream->status != UDX_STREAM_CLOSED);
 
   if (stream->pending_timer == UDX_TIMER_NONE || stream->pending_timer == UDX_TIMER_ZWP || stream->pending_timer == UDX_TIMER_KEEPALIVE) {
-    stream_timer_start(stream, UDX_TIMER_RTO, stream->rto);
+    stream_timer_start(stream, UDX_TIMER_RTO, stream->rto_ns);
   }
 
   // rack 7.2 rearm tlp timer
@@ -2471,6 +2515,8 @@ udx_stream_init (udx_t *udx, udx_stream_t *stream, uint32_t local_id, udx_stream
 
   memset(stream, 0, sizeof(*stream));
 
+  uint64_t now = uv_hrtime();
+
   udx->refs++;
 
   udx__link_add(udx->streams, stream);
@@ -2486,15 +2532,15 @@ udx_stream_init (udx_t *udx, udx_stream_t *stream, uint32_t local_id, udx_stream
   stream->app_limited = ~0;
   stream->rate_sample_is_app_limited = true;
 
-  stream->rto = 1000;
+  stream->rto_ns = UDX_RTO_MIN_NS;
 
   uv_timer_init(udx->loop, &stream->timer);
   stream->timer.data = stream;
 
-  win_filter_reset(&stream->rtt_min, uv_now(udx->loop), ~0U);
+  win_filter_reset(&stream->rtt_min, now, UINT64_MAX);
 
   stream->tb_available = UDX_INIT_PACING_RATE;
-  stream->tb_last_refill_ms = uv_now(udx->loop);
+  stream->tb_last_refill_ts = now;
 
   uv_check_init(udx->loop, &stream->deferred_check);
   uv_idle_init(udx->loop, &stream->deferred_idle);
@@ -2566,10 +2612,10 @@ udx_stream_set_seq (udx_stream_t *stream, uint32_t seq) {
 
 int
 udx_stream_set_keepalive (udx_stream_t *stream, uint32_t keepalive_timeout_ms) {
-  stream->keepalive_timeout_ms = keepalive_timeout_ms;
+  stream->keepalive_timeout_ns = keepalive_timeout_ms * NS_PER_MS;
 
   if (stream->remote_acked == stream->seq && keepalive_timeout_ms && stream->status & UDX_STREAM_CONNECTED) {
-    stream_timer_start(stream, UDX_TIMER_KEEPALIVE, stream->keepalive_timeout_ms);
+    stream_timer_start(stream, UDX_TIMER_KEEPALIVE, stream->keepalive_timeout_ns);
   }
 
   return 0;
@@ -2789,8 +2835,8 @@ udx_stream_connect (udx_stream_t *stream, udx_socket_t *socket, uint32_t remote_
     }
   }
 
-  if (stream->keepalive_timeout_ms) {
-    stream_timer_start(stream, UDX_TIMER_KEEPALIVE, stream->keepalive_timeout_ms);
+  if (stream->keepalive_timeout_ns) {
+    stream_timer_start(stream, UDX_TIMER_KEEPALIVE, stream->keepalive_timeout_ns);
   }
 
   return 0;
@@ -2902,7 +2948,7 @@ _udx_stream_write (udx_stream_write_t *write, udx_stream_t *stream, const uv_buf
   // if an idle, zero window stream has data queued, send a zero-window probe immediately
   if (stream_was_idle && stream->send_rwnd == 0) {
     send_probe(stream);
-    stream_timer_start(stream, UDX_TIMER_ZWP, stream->rto);
+    stream_timer_start(stream, UDX_TIMER_ZWP, stream->rto_ns);
   }
   send_packets(stream);
 }
@@ -3217,3 +3263,6 @@ udx_interface_event_close (udx_interface_event_t *handle) {
 
   return 0;
 }
+
+#undef NS_PER_MS
+#undef NS_PER_SEC

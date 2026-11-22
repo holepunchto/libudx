@@ -57,10 +57,10 @@ static void
 on_recv (udx_socket_t *handle, ssize_t read_len, const uv_buf_t *buf, const struct sockaddr *from) {
 
   if (!t0) {
-    t0 = uv_now(&loop);
+    t0 = uv_hrtime() / 1000000;
   }
 
-  int time_ms = uv_now(&loop) - t0;
+  int time_ms = uv_hrtime() / 1000000 - t0;
 
   uint8_t *b = (uint8_t *) buf->base;
 

@@ -95,6 +95,11 @@ typedef struct {
   uv_timer_t report_timer;
 } udxperf_client_t;
 
+static uint64_t
+now_ms (void) {
+  return uv_hrtime() / 1000000;
+}
+
 uint32_t client_id = 1;
 uint32_t server_id;
 
@@ -276,7 +281,7 @@ print_interval (udxperf_client_t *client, uint64_t bytes, uint64_t start, uint64
 
   printf("[%3d] %6.4f-%6.4f sec %s %s/sec", stream->entry.local_id, (start - client->start_time) / 1000.0, (end - client->start_time) / 1000.0, bytes_buf, bps_buf);
   if (is_client && extra_wanted) {
-    printf(" cwnd=%d pacing_rate=%u fast_recovery_count=%d rto_count=%d rtx_count=%d", stream->cwnd, stream->pacing_bytes_per_ms, stream->fast_recovery_count, stream->rto_count, stream->retransmit_count);
+    printf(" cwnd=%d pacing_rate=%.0f fast_recovery_count=%d rto_count=%d rtx_count=%d", stream->cwnd, stream->pacing_bytes_per_ns * 1000000 /* bytes/ms */, stream->fast_recovery_count, stream->rto_count, stream->retransmit_count);
   }
 
   uint64_t bw;
@@ -300,7 +305,7 @@ server_on_finalize (udx_stream_t *stream) {
 static void
 server_on_read (udx_stream_t *stream, ssize_t read_len, const uv_buf_t *buf) {
   udxperf_client_t *c = (udxperf_client_t *) stream;
-  c->end_time = uv_now(&loop);
+  c->end_time = now_ms();
 
   if (read_len == UV_EOF) {
     print_interval(c, stream->bytes_rx, c->start_time, c->end_time);
@@ -319,7 +324,7 @@ server_report_interval (uv_timer_t *timer) {
   udxperf_client_t *c = timer->data;
   udx_stream_t *stream = &c->stream;
 
-  uint64_t now = uv_now(&loop);
+  uint64_t now = now_ms();
 
   if (c->time_last_report) {
     print_interval(c, stream->bytes_rx - c->bytes_last_report, c->time_last_report, now);
@@ -361,12 +366,12 @@ server_handshake (udx_socket_t *sock, ssize_t read_len, const uv_buf_t *buf, con
 
   uint16_t rport = htons(((struct sockaddr_in *) from)->sin_port);
 
-  c->start_time = uv_now(&loop);
+  c->start_time = now_ms();
 
   if (interval_ms) {
     uv_timer_init(&loop, &c->report_timer);
     c->report_timer.data = c;
-    c->time_last_report = uv_now(&loop);
+    c->time_last_report = now_ms();
     uv_timer_start(&c->report_timer, server_report_interval, interval_ms, interval_ms);
   }
   printf("[%3d] %s:%d connected with %s:%d\n", server_id, lstring, port, rstring, rport);
@@ -428,7 +433,7 @@ write_end_cb (udx_stream_write_t *req, int status, int unordered) {
 static void
 finish_timer_cb (uv_timer_t *timer) {
   udxperf_client_t *c = timer->data;
-  c->end_time = uv_now(&loop);
+  c->end_time = now_ms();
 
   udx_stream_t *stream = &c->stream;
 
@@ -449,7 +454,7 @@ client_report_interval (uv_timer_t *timer) {
   udxperf_client_t *c = timer->data;
   udx_stream_t *stream = &c->stream;
 
-  uint64_t now = uv_now(&loop);
+  uint64_t now = now_ms();
 
   if (c->time_last_report) {
     print_interval(c, stream->bytes_tx - c->bytes_last_report, c->time_last_report, now);
@@ -484,7 +489,7 @@ client_handshake_response (udx_socket_t *sock, ssize_t read_len, const uv_buf_t 
 
   assert(time_ms && "timer must be set");
 
-  c->start_time = uv_now(&loop);
+  c->start_time = now_ms();
 
   if (time_ms) {
     uv_timer_init(&loop, &client_complete_timer);

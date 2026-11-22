@@ -126,7 +126,7 @@ main () {
 
   recv_stream.get_read_buffer_size = &pretend_buffer_is_full;
   send_stream.send_rwnd = 0;
-  assert(recv_stream.rto == 1000);
+  assert(recv_stream.rto_ns == 1000 * 1000000ULL); // 1 s
 
   // after two seconds, open the window
   uv_timer_init(&loop, &after_two_seconds_timer);

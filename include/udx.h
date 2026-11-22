@@ -101,7 +101,7 @@ struct udx_stream_entry_s {
 
 typedef struct {
   uint64_t t;
-  uint32_t v;
+  uint64_t v;
 } win_filter_entry_t;
 
 typedef struct {
@@ -352,36 +352,36 @@ struct udx_stream_s {
   uint64_t first_sent_ts;          // start of window send interval
   uint64_t delivered_ts;           // time we reached 'delivered'
   uint32_t rate_delivered;         // saved rate sample: packets delivered
-  uint32_t rate_interval_ms;       // saved rate sample: time elapsed
+  uint64_t rate_interval_ns;       // saved rate sample: time elapsed
   bool rate_sample_is_app_limited; // saved rate sample: app limited?
 
   udx_stream_timer_type_t pending_timer;
   uint64_t next_rto_ts; // todo: remove this, calculate from oldest packet (head) in rtx queue
-  uint32_t srtt;
-  uint32_t rttvar;
-  uint32_t rto;
-  uint32_t keepalive_timeout_ms;
+  uint64_t srtt_ns;
+  uint64_t rttvar_ns;
+  uint64_t rto_ns;
+  uint64_t keepalive_timeout_ns;
 
-  win_filter_t rtt_min;
+  win_filter_t rtt_min; // windowed min RTT (ns), UINT64_MAX until the first sample
 
   // rack data...
-  uint32_t rack_rtt;
-  uint64_t rack_time_sent;
+  uint64_t rack_rtt_ns;
+  uint64_t rack_time_sent; // ns timestamp
   uint32_t rack_next_seq;
   uint32_t rack_fack;
 
-  // packet delivery rate measured in packets/ms
+  // packet delivery rate measured in packets/ns
 
   struct {
-    uint32_t min_rtt_ms;          // min RTT in past min_rtt_win (10 seconds). BBR.rtprop in IETF draft
-    uint64_t min_rtt_stamp;       // timestamp min_rtt_ms sample was taken.    BBR.rtprop_stamp in IETF draft
-    uint64_t probe_rtt_done_time; // end time for UDX_BBR_STATE_PROBE_RTT
-    win_filter_f64_t bw;          // maximum recent delivery rate in packets/ms. BBR.BtlBwFilter in IETF draft.
-    uint32_t rtt_count;           // count of packet-timed round trips. BBR.round_count in IETF draft
-    uint32_t next_rtt_delivered;  // pkt.delivered at end of round
-    uint64_t cycle_timestamp;     // time of this phase start
-    uint8_t state;                // UDX_BBR_STATE_*.
-    uint8_t prev_ca_state;        // TCP_Ca_*.
+    uint64_t min_rtt_ns;         // UINT64_MAX until the first sample. min RTT in past min_rtt_win (10 seconds). BBR.rtprop in IETF draft
+    uint64_t min_rtt_stamp_ts;   // timestamp min_rtt_ns sample was taken.    BBR.rtprop_stamp in IETF draft
+    uint64_t probe_rtt_done_ts;  // end time for UDX_BBR_STATE_PROBE_RTT
+    win_filter_f64_t bw;         // maximum recent delivery rate in packets/ns. BBR.BtlBwFilter in IETF draft.
+    uint32_t rtt_count;          // count of packet-timed round trips. BBR.round_count in IETF draft
+    uint32_t next_rtt_delivered; // pkt.delivered at end of round
+    uint64_t cycle_start_ts;     // ns timestamp of this phase start
+    uint8_t state;               // UDX_BBR_STATE_*.
+    uint8_t prev_ca_state;       // TCP_Ca_*.
 
     // flags
     bool use_packet_conservation; // flag set on transition into fast recovery, limits packets sent in fast recovery
@@ -402,7 +402,7 @@ struct udx_stream_s {
     // track windowed maximum of ACK aggregation This enables increasing cwnd
     // on networks with high ACK aggregation to continue sending during interruptions in the ACK stream.
 
-    uint64_t ack_epoch_start;      // timestamp of current ack epoch. reset when ack rate is <= expected
+    uint64_t ack_epoch_start;      // ns timestamp of current ack epoch. reset when ack rate is <= expected
     uint16_t extra_acked[2];       // track the windowed maximum degree of ack aggregation
     uint32_t ack_epoch_acked;      // packets (S)ACKed in current sampling epoch
     uint8_t extra_acked_win_rtts;  // after extra_acked_win_rtts intervals rotate extra_acked_win_index
@@ -410,11 +410,11 @@ struct udx_stream_s {
 
   } bbr;
 
-  uint32_t pacing_bytes_per_ms; // computed by bbr module. 'BBR.pacing_rate' in IETF draft
+  double pacing_bytes_per_ns; // fractional, 1 Gbit/s is 0.125. computed by bbr module. 'BBR.pacing_rate' in IETF draft
 
   // pacing (tb = token bucket)
-  uint32_t tb_available;
-  uint64_t tb_last_refill_ms;
+  int64_t tb_available; // bytes. goes negative when a packet is larger than the remaining tokens, the debt is repaid by later refills
+  uint64_t tb_last_refill_ts; // ns timestamp
 
   // tlp
   bool tlp_is_retrans;  // the probe in-flight was a retransmission
@@ -478,13 +478,13 @@ struct udx_packet_s {
   int remote_addr_len;
   uint32_t remote_id;
 
-  uint64_t time_sent;
+  uint64_t time_sent; // ns timestamp of the most recent (re)transmit
 
   uint64_t stream_offset; // bytes_packetized at time of packet
 
   // rate sampling state
-  uint64_t first_sent_ts; // not the same as pkt->time_sent! this is the time sent of the most recently acked packet, used for the start interval of a rate sample
-  uint64_t delivered_ts;  // time stamp when the 'delivered' value was taken
+  uint64_t first_sent_ts; // ns timestamp. not the same as pkt->time_sent! this is the time sent of the most recently acked packet, used for the start interval of a rate sample
+  uint64_t delivered_ts;  // ns timestamp when the 'delivered' value was taken
   uint32_t delivered;     // #pkts delivered when packet was transmitted
   bool is_app_limited;    // was throughput app-limited (vs network limited) at the time the packet was transmitted?
 
@@ -741,7 +741,8 @@ udx_interface_event_stop (udx_interface_event_t *handle);
 int
 udx_interface_event_close (udx_interface_event_t *handle);
 
-uint32_t
+// windowed min RTT in nanoseconds, UINT64_MAX if there is no sample yet
+uint64_t
 udx_rtt_min (udx_stream_t *stream);
 
 #ifdef __cplusplus

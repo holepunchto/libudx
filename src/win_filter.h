@@ -4,16 +4,18 @@
 #include "../include/udx.h"
 #include <stdint.h>
 
-static inline uint32_t
+static inline uint64_t
 win_filter_get (win_filter_t *wf) {
   return wf->entries[0].v;
 }
 
-uint32_t
-win_filter_reset (win_filter_t *wf, uint64_t t, uint32_t value);
-uint32_t
-win_filter_apply_min (win_filter_t *wf, uint32_t win, uint64_t t, uint32_t v);
-uint32_t
-win_filter_apply_max (win_filter_t *wf, uint32_t win, uint64_t t, uint32_t v);
+// t, win and v share no unit requirement beyond t and win matching each other.
+// all three are 64 bit so that nanosecond timestamps, windows and values fit
+uint64_t
+win_filter_reset (win_filter_t *wf, uint64_t t, uint64_t value);
+uint64_t
+win_filter_apply_min (win_filter_t *wf, uint64_t win, uint64_t t, uint64_t v);
+uint64_t
+win_filter_apply_max (win_filter_t *wf, uint64_t win, uint64_t t, uint64_t v);
 
 #endif // UDX_WINDOWED_FILTER

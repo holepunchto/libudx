@@ -13,14 +13,14 @@
   ((type *) ((char *) (ptr) - offsetof(type, member)))
 
 typedef struct {
-  uint64_t prior_timestamp;
+  uint64_t prior_timestamp; // ns timestamp
   uint32_t prior_delivered;
 
   int32_t delivered;
-  int64_t interval_ms;
-  uint32_t snd_interval_ms;
-  uint32_t rcv_interval_ms;
-  int64_t rtt_ms; // rs.rtt in IETF draft
+  int64_t interval_ns; // -1 if the sample is invalid
+  uint64_t snd_interval_ns;
+  uint64_t rcv_interval_ns;
+  int64_t rtt_ns; // -1 if no sample. rs.rtt in IETF draft
   int losses;
   uint32_t acked_sacked;
   uint32_t prior_in_flight;
@@ -81,7 +81,7 @@ uint32_t
 udx__max_payload (udx_stream_t *stream);
 
 void
-udx__rate_pkt_sent (udx_stream_t *stream, udx_packet_t *pkt);
+udx__rate_pkt_sent (udx_stream_t *stream, udx_packet_t *pkt, uint64_t now_ns);
 
 void
 udx__rate_pkt_delivered (udx_stream_t *stream, udx_packet_t *pkt, udx_rate_sample_t *rs);
@@ -107,6 +107,6 @@ void
 bbr_main (udx_stream_t *stream, udx_rate_sample_t *rs);
 
 void
-bbr_on_transmit_start (udx_stream_t *stream, uint64_t now_ms);
+bbr_on_transmit_start (udx_stream_t *stream, uint64_t now_ts);
 
 #endif // UDX_INTERNAL_H
