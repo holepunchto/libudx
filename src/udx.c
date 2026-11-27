@@ -1044,6 +1044,9 @@ retransmit_packet (udx_stream_t *stream, udx_packet_t *pkt) {
   _send_packet(stream, pkt, true);
 
   stream->retransmit_count++;
+  if (stream->send_rwnd == 0) {
+    stream->zero_window_retransmit_count++;
+  }
 
   if (inflight_queue_was_empty) {
     bbr_on_transmit_start(stream, uv_now(stream->udx->loop));
@@ -1842,6 +1845,9 @@ process_packet (udx_socket_t *socket, char *buf, ssize_t buf_len, struct sockadd
       // update send window
       if (rwnd > 0 && stream->pending_timer == UDX_TIMER_ZWP) {
         stream_timer_stop(stream);
+      }
+      if (rwnd == 0 && stream->send_rwnd > 0 && ack != stream->seq) {
+        debug_printf("zwp: rid=%u peer shrank window to zero with data in flight ack=%u seq=%u\n", stream->remote_id, ack, stream->seq);
       }
       stream->send_rwnd = rwnd;
       stream->send_wl1 = seq;

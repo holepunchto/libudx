@@ -49,6 +49,7 @@ check_rack_retransmit (uv_timer_t *timer) {
   assert(stream.remote_acked == 0);
   assert(stream.sacks > 0);
   assert(stream.retransmit_count == 1);
+  assert(stream.zero_window_retransmit_count == 0);
 }
 
 static void

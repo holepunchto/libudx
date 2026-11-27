@@ -289,7 +289,8 @@ struct udx_stream_s {
   uint16_t fast_recovery_count;
   uint16_t retransmit_count;
   uint16_t lifetime_rto_count; // total rto expirations over the lifetime of the stream
-  size_t writes_queued_bytes;  // todo: redundant? just bytes_queued - bytes_sent
+  uint16_t zero_window_retransmit_count;
+  size_t writes_queued_bytes; // todo: redundant? just bytes_queued - bytes_sent
 
   uint16_t pkt_capacity;
   uint8_t pkt_header_flag;
